@@ -1,13 +1,16 @@
 ﻿// CancelCop Sample - Demonstrates the analyzer detecting missing CancellationToken parameters
 
+using System.Net.Http;
 using Microsoft.EntityFrameworkCore;
 
 var service = new DataService();
 var repo = new UserRepository();
+var apiClient = new ApiClient();
 
 // This will work fine - methods have tokens and propagate them
 await service.FetchWithTokenAsync(CancellationToken.None);
 await repo.GetUserByIdAsync(1, CancellationToken.None);
+await apiClient.GetUserDataAsync("user1", CancellationToken.None);
 
 Console.WriteLine("CancelCop Sample Complete");
 
@@ -90,5 +93,35 @@ public class AppDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.UseInMemoryDatabase("SampleDb");
+    }
+}
+
+// HttpClient Examples
+public class ApiClient
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    // ✅ Good: Has CancellationToken and propagates it to HttpClient
+    public async Task<string> GetUserDataAsync(string userId, CancellationToken cancellationToken)
+    {
+        return await _httpClient.GetStringAsync($"https://api.example.com/users/{userId}", cancellationToken);
+    }
+
+    // ❌ CC004: Missing CancellationToken propagation to HttpClient
+    public async Task<string> FetchDataWithoutTokenAsync(CancellationToken cancellationToken)
+    {
+        return await _httpClient.GetStringAsync("https://api.example.com/data");  // Should pass cancellationToken
+    }
+
+    // ❌ CC004: Missing CancellationToken propagation to PostAsync
+    public async Task<HttpResponseMessage> PostDataWithoutTokenAsync(StringContent content, CancellationToken cancellationToken)
+    {
+        return await _httpClient.PostAsync("https://api.example.com/data", content);  // Should pass cancellationToken
+    }
+
+    // ✅ Good: Proper token propagation with POST
+    public async Task<HttpResponseMessage> PostDataAsync(StringContent content, CancellationToken cancellationToken)
+    {
+        return await _httpClient.PostAsync("https://api.example.com/data", content, cancellationToken);
     }
 }
