@@ -10,8 +10,8 @@
 
         <!-- NuGet Package Info -->
         <PackageId>CancelCop.Analyzer</PackageId>
-        <Version>1.1.1</Version>
-        <Authors>CancelCop Contributors</Authors>
+        <Version>1.1.2</Version>
+        <Authors>George Wall</Authors>
         <Description>A surgical Roslyn analyzer focused on CancellationToken propagation and honoring across public APIs, handlers, EF Core, HTTP calls, and Minimal APIs, with comprehensive code fixes.</Description>
         <PackageTags>roslyn;analyzer;cancellationtoken;async;code-fix</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -19,6 +19,7 @@
         <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
         <DevelopmentDependency>true</DevelopmentDependency>
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -27,6 +28,7 @@
     <ItemGroup>
         <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
         <None Include="README.md" Pack="true" PackagePath="\" />
+        <None Include="icon.png" Pack="true" PackagePath="\" />
     </ItemGroup>
 
     <ItemGroup>

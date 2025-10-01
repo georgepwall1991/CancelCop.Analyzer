@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="#512BD4"/>
+
+  <!-- Shield outline (cop badge theme) -->
+  <path d="M128 40 L170 60 L170 110 Q170 140 128 180 Q86 140 86 110 L86 60 Z"
+        fill="#6B46C1"
+        stroke="#8B5CF6"
+        stroke-width="2"/>
+
+  <!-- Inner shield -->
+  <path d="M128 52 L162 68 L162 105 Q162 130 128 165 Q94 130 94 105 L94 68 Z"
+        fill="#7C3AED"/>
+
+  <!-- Checkmark (validation) -->
+  <path d="M108 110 L118 125 L148 85"
+        fill="none"
+        stroke="#10B981"
+        stroke-width="10"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Cancellation token symbol (CT letters stylized) -->
+  <g transform="translate(128, 200)">
+    <!-- C -->
+    <path d="M-35 -10 Q-45 -10 -45 0 Q-45 10 -35 10"
+          fill="none"
+          stroke="white"
+          stroke-width="6"
+          stroke-linecap="round"/>
+    <!-- T -->
+    <path d="M-15 -10 L15 -10 M0 -10 L0 10"
+          fill="none"
+          stroke="white"
+          stroke-width="6"
+          stroke-linecap="round"/>
+  </g>
+
+  <!-- Accent dots (represent tokens) -->
+  <circle cx="60" cy="128" r="8" fill="#10B981" opacity="0.6"/>
+  <circle cx="196" cy="128" r="8" fill="#10B981" opacity="0.6"/>
+
+  <!-- Subtle glow effect -->
+  <circle cx="128" cy="128" r="120" fill="none" stroke="#8B5CF6" stroke-width="4" opacity="0.3"/>
+</svg>
