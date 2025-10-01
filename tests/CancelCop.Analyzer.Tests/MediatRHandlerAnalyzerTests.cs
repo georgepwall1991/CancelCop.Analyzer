@@ -1,27 +1,27 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
-using Microsoft.CodeAnalysis.Testing.Verifiers;
 using Xunit;
 
 namespace CancelCop.Analyzer.Tests;
 
 public class MediatRHandlerAnalyzerTests
 {
-    private static CSharpAnalyzerTest<MediatRHandlerAnalyzer, XUnitVerifier> CreateTest(string testCode, params DiagnosticResult[] expected)
+    private static CSharpAnalyzerTest<MediatRHandlerAnalyzer, DefaultVerifier> CreateTest(string testCode, params DiagnosticResult[] expected)
     {
-        var test = new CSharpAnalyzerTest<MediatRHandlerAnalyzer, XUnitVerifier>
+        var test = new CSharpAnalyzerTest<MediatRHandlerAnalyzer, DefaultVerifier>
         {
             TestCode = testCode,
             ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
-                .AddPackages(ImmutableArray.Create(new PackageIdentity("MediatR.Contracts", "2.0.1"))),
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("MediatR", "13.0.0"))),
+            CompilerDiagnostics = CompilerDiagnostics.None,
         };
 
         test.ExpectedDiagnostics.AddRange(expected);
         return test;
     }
 
-    [Fact(Skip = "XUnit verifier version incompatibility - analyzer works, test framework issue")]
+    [Fact]
     public async Task RequestHandler_WithoutCancellationToken_ShouldReportDiagnostic()
     {
         var test = @"
@@ -47,7 +47,7 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
         await CreateTest(test, expected).RunAsync();
     }
 
-    [Fact(Skip = "XUnit verifier version incompatibility - analyzer works, test framework issue")]
+    [Fact]
     public async Task RequestHandler_WithCancellationToken_ShouldNotReportDiagnostic()
     {
         var test = @"
@@ -69,7 +69,7 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
         await CreateTest(test).RunAsync();
     }
 
-    [Fact(Skip = "XUnit verifier version incompatibility - analyzer works, test framework issue")]
+    [Fact]
     public async Task RequestHandler_SyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
@@ -90,7 +90,7 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
         await CreateTest(test).RunAsync();
     }
 
-    [Fact(Skip = "XUnit verifier version incompatibility - analyzer works, test framework issue")]
+    [Fact]
     public async Task RequestHandler_VoidReturn_WithoutCancellationToken_ShouldReportDiagnostic()
     {
         var test = @"

@@ -1,219 +1,58 @@
 # CancelCop - Next Steps & Roadmap
 
-## ✅ Completed (v1.0.0)
+## ✅ Completed (v1.1.0)
 
 - [x] **CC001**: Public/protected async methods must have CancellationToken parameter
   - Analyzer implementation
   - Code fix provider with smart using directive handling
   - Comprehensive test coverage (10/10 passing)
+- [x] **CC002**: CancellationToken Propagation Detection
+  - Detects missing tokens in Task.Delay, Task.Run, custom async calls
+  - Code fix provider auto-adds token parameter (21 tests passing)
+- [x] **CC003**: EF Core Query Detection
+  - Detects missing tokens in ToListAsync, FirstOrDefaultAsync, SaveChangesAsync, etc.
+  - Code fix provider for EF Core methods (11 tests passing)
+- [x] **CC004**: HttpClient Methods
+  - Detects missing tokens in GetAsync, PostAsync, SendAsync, etc.
+  - Code fix provider for HttpClient calls (13 tests passing)
+- [x] **CC005A**: MediatR Handler Detection
+  - Detects missing CancellationToken in IRequestHandler.Handle methods
+  - Code fix provider adds token parameter
+- [x] **CC005B**: Controller Action Detection
+  - Detects missing tokens in ASP.NET Core controller actions with HTTP attributes
+  - Code fix provider adds token parameter (8 tests passing)
+- [x] **CC005C**: Minimal API Detection
+  - Detects missing tokens in MapGet, MapPost, MapPut, MapDelete, MapPatch lambdas
+  - Code fix provider for lambda expressions (11 tests passing)
+- [x] **CC006**: Parameter Position Convention
+  - Detects when CancellationToken is not the last parameter (Info severity)
+  - Analyzer-only (no code fix for parameter reordering yet) (7 tests passing)
 - [x] Project structure with src/tests/samples folders
-- [x] TDD infrastructure with XUnit and Roslyn testing framework
+- [x] TDD infrastructure with XUnit and Roslyn testing framework (82 tests passing)
 - [x] NuGet package configuration
 - [x] GitHub Actions CI/CD workflows
-- [x] Documentation (README, .editorconfig, Directory.Build.props)
+- [x] Documentation (README, .editorconfig, Directory.Build.props, AnalyzerReleases)
+- [x] Release tracking files (AnalyzerReleases.Shipped.md, .Unshipped.md)
 
 ---
 
-## 🎯 Immediate Next Steps (v1.1.0)
+## 🎯 Next Steps (v1.2.0+)
 
-### CC002: CancellationToken Propagation Detection
-**Priority: HIGH** | **Effort: Medium**
+### CC006 Code Fix: Parameter Reordering
+**Priority: MEDIUM** | **Effort: HIGH**
 
-Detect when async methods have a CancellationToken parameter but fail to pass it to inner async calls.
+Add code fix provider for CC006 to automatically reorder parameters so CancellationToken is last.
 
-#### Examples to Detect:
-```csharp
-// ❌ Has token but doesn't propagate
-public async Task ProcessAsync(CancellationToken cancellationToken)
-{
-    await Task.Delay(100);  // Should pass cancellationToken
-    await DoWorkAsync();    // Should pass cancellationToken
-}
+#### Challenges:
+- Must update all call sites when reordering parameters
+- Requires semantic analysis to find all references
+- May affect many files in large codebases
 
-// ✅ Correct
-public async Task ProcessAsync(CancellationToken cancellationToken)
-{
-    await Task.Delay(100, cancellationToken);
-    await DoWorkAsync(cancellationToken);
-}
-```
-
-#### Implementation Steps (TDD):
-1. Write tests for missing token in `Task.Delay`, `Task.Run`, etc.
-2. Write tests for missing token in custom async method calls
-3. Implement analyzer using `InvocationExpressionSyntax` analysis
-4. Write code fix tests
-5. Implement code fix to auto-add token parameter to invocations
-6. Build and verify
-
----
-
-### CC003: EF Core Query Detection
-**Priority: HIGH** | **Effort: Medium**
-
-Ensure EF Core query methods receive CancellationToken.
-
-#### Examples to Detect:
-```csharp
-// ❌ Missing token
-public async Task<User> GetUserAsync(int id, CancellationToken cancellationToken)
-{
-    return await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
-}
-
-// ✅ Correct
-public async Task<User> GetUserAsync(int id, CancellationToken cancellationToken)
-{
-    return await _context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
-}
-```
-
-#### Key Methods to Monitor:
-- `ToListAsync`, `ToArrayAsync`, `ToDictionaryAsync`
-- `FirstAsync`, `FirstOrDefaultAsync`
-- `SingleAsync`, `SingleOrDefaultAsync`
-- `AnyAsync`, `AllAsync`, `CountAsync`
-- `ForEachAsync`, `SumAsync`, `AverageAsync`
-- `SaveChangesAsync`
-
-#### Implementation Steps (TDD):
-1. Write tests for each EF Core async extension method
-2. Implement analyzer detecting `DbContext` and `IQueryable` operations
-3. Write code fix tests
-4. Implement code fix provider
-5. Build and verify
-
----
-
-### CC004: HttpClient Methods
-**Priority: HIGH** | **Effort: Low-Medium**
-
-Detect missing CancellationToken in HttpClient method calls.
-
-#### Examples to Detect:
-```csharp
-// ❌ Missing token
-public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
-{
-    return await _httpClient.GetStringAsync("https://api.example.com");
-}
-
-// ✅ Correct
-public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
-{
-    return await _httpClient.GetStringAsync("https://api.example.com", cancellationToken);
-}
-```
-
-#### Key Methods to Monitor:
-- `GetAsync`, `GetStringAsync`, `GetByteArrayAsync`, `GetStreamAsync`
-- `PostAsync`, `PutAsync`, `DeleteAsync`, `PatchAsync`
-- `SendAsync`
-
-#### Implementation Steps (TDD):
-1. Write tests for each HttpClient async method
-2. Implement analyzer detecting HttpClient invocations
-3. Write code fix tests
-4. Implement code fix provider
-5. Build and verify
-
----
-
-### CC005: Handler Pattern Detection
-**Priority: MEDIUM** | **Effort: Medium-High**
-
-Detect missing CancellationToken in common handler patterns.
-
-#### Patterns to Support:
-
-**MediatR Handlers:**
-```csharp
-// ❌ Missing token
-public class MyHandler : IRequestHandler<MyRequest, MyResponse>
-{
-    public async Task<MyResponse> Handle(MyRequest request)
-    {
-        // ...
-    }
-}
-
-// ✅ Correct
-public class MyHandler : IRequestHandler<MyRequest, MyResponse>
-{
-    public async Task<MyResponse> Handle(MyRequest request, CancellationToken cancellationToken)
-    {
-        // ...
-    }
-}
-```
-
-**ASP.NET Core Controllers:**
-```csharp
-// ❌ Missing token
-[HttpGet]
-public async Task<IActionResult> GetUsers()
-{
-    var users = await _service.GetUsersAsync();
-    return Ok(users);
-}
-
-// ✅ Correct
-[HttpGet]
-public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
-{
-    var users = await _service.GetUsersAsync(cancellationToken);
-    return Ok(users);
-}
-```
-
-**Minimal APIs:**
-```csharp
-// ❌ Missing token
-app.MapGet("/users", async () => await GetUsersAsync());
-
-// ✅ Correct
-app.MapGet("/users", async (CancellationToken ct) => await GetUsersAsync(ct));
-```
-
-#### Implementation Steps (TDD):
-1. Write tests for MediatR `IRequestHandler` implementations
-2. Write tests for Controller action methods with HTTP attributes
-3. Write tests for Minimal API endpoints
-4. Implement pattern-specific analyzers
-5. Write code fix tests
-6. Implement code fix providers
-7. Build and verify
-
----
-
-### CC006: Parameter Position Convention
-**Priority: LOW** | **Effort: Low**
-
-Suggest CancellationToken should be the last parameter (convention).
-
-#### Example:
-```csharp
-// ⚠️ Not conventional
-public async Task ProcessAsync(CancellationToken cancellationToken, string name)
-{
-    // ...
-}
-
-// ✅ Conventional
-public async Task ProcessAsync(string name, CancellationToken cancellationToken)
-{
-    // ...
-}
-```
-
-#### Implementation Steps (TDD):
-1. Write tests detecting token not in last position
-2. Implement analyzer checking parameter order
-3. Write code fix tests (parameter reordering)
-4. Implement code fix provider
-5. Build and verify
-
-**Note:** This should be configurable via severity (Info/Warning)
+#### Implementation Steps:
+1. Write tests for parameter reordering code fix
+2. Implement code fix provider using Roslyn rename/refactoring APIs
+3. Handle edge cases (overloads, virtual methods, interface implementations)
+4. Build and verify
 
 ---
 
@@ -356,5 +195,5 @@ For each new rule:
 ---
 
 **Last Updated**: 2025-10-01
-**Current Version**: v1.0.0
-**Next Planned Release**: v1.1.0 (CC002-CC004)
+**Current Version**: v1.1.0
+**Next Planned Release**: v1.2.0 (Enhancements and additional rules)

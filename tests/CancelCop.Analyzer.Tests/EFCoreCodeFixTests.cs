@@ -1,19 +1,18 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
-using Microsoft.CodeAnalysis.Testing.Verifiers;
 using Xunit;
 
 namespace CancelCop.Analyzer.Tests;
 
 public class EFCoreCodeFixTests
 {
-    private static CSharpCodeFixTest<EFCoreAnalyzer, EFCoreCodeFixProvider, XUnitVerifier> CreateTest(
+    private static CSharpCodeFixTest<EFCoreAnalyzer, EFCoreCodeFixProvider, DefaultVerifier> CreateTest(
         string testCode,
         string fixedCode,
         params DiagnosticResult[] expected)
     {
-        var test = new CSharpCodeFixTest<EFCoreAnalyzer, EFCoreCodeFixProvider, XUnitVerifier>
+        var test = new CSharpCodeFixTest<EFCoreAnalyzer, EFCoreCodeFixProvider, DefaultVerifier>
         {
             TestCode = testCode,
             FixedCode = fixedCode,

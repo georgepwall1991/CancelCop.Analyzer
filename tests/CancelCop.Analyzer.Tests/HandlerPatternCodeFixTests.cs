@@ -1,14 +1,13 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
-using Microsoft.CodeAnalysis.Testing.Verifiers;
 using Xunit;
 
 namespace CancelCop.Analyzer.Tests;
 
 public class HandlerPatternCodeFixTests
 {
-    [Fact(Skip = "XUnit verifier version incompatibility - analyzer works, test framework issue")]
+    [Fact]
     public async Task MediatRHandler_WithoutToken_AddsTokenParameter()
     {
         var test = @"
@@ -47,12 +46,13 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
             .WithLocation(0)
             .WithArguments("Handle");
 
-        var test2 = new CSharpCodeFixTest<MediatRHandlerAnalyzer, HandlerPatternCodeFixProvider, XUnitVerifier>
+        var test2 = new CSharpCodeFixTest<MediatRHandlerAnalyzer, HandlerPatternCodeFixProvider, DefaultVerifier>
         {
             TestCode = test,
             FixedCode = fixedCode,
             ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
-                .AddPackages(ImmutableArray.Create(new PackageIdentity("MediatR.Contracts", "2.0.1"))),
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("MediatR", "13.0.0"))),
+            CompilerDiagnostics = CompilerDiagnostics.None,
         };
 
         test2.ExpectedDiagnostics.Add(expected);
@@ -96,7 +96,7 @@ public class UsersController : ControllerBase
             .WithLocation(0)
             .WithArguments("GetUsers");
 
-        var test2 = new CSharpCodeFixTest<ControllerAnalyzer, HandlerPatternCodeFixProvider, XUnitVerifier>
+        var test2 = new CSharpCodeFixTest<ControllerAnalyzer, HandlerPatternCodeFixProvider, DefaultVerifier>
         {
             TestCode = test,
             FixedCode = fixedCode,
@@ -145,7 +145,7 @@ public class UsersController : ControllerBase
             .WithLocation(0)
             .WithArguments("CreateUser");
 
-        var test2 = new CSharpCodeFixTest<ControllerAnalyzer, HandlerPatternCodeFixProvider, XUnitVerifier>
+        var test2 = new CSharpCodeFixTest<ControllerAnalyzer, HandlerPatternCodeFixProvider, DefaultVerifier>
         {
             TestCode = test,
             FixedCode = fixedCode,

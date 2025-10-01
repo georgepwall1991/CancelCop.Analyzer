@@ -4,10 +4,26 @@ A surgical Roslyn analyzer focused on **CancellationToken** propagation and hono
 
 ## Features
 
-- **CC001**: Detects public and protected async methods missing `CancellationToken` parameters
-- **Code Fix Provider**: Automatically adds `CancellationToken` parameters with default values
-- **Smart Ordering**: Maintains alphabetical using directive ordering
-- **TDD Approach**: Comprehensive test coverage using XUnit and Roslyn testing framework
+### Analyzers
+- **CC001**: Public async methods must have CancellationToken parameter
+- **CC002**: CancellationToken must be propagated to async calls (Task.Delay, Task.Run, custom async methods)
+- **CC003**: EF Core queries must pass CancellationToken (ToListAsync, FirstOrDefaultAsync, SaveChangesAsync, etc.)
+- **CC004**: HttpClient methods must pass CancellationToken (GetAsync, PostAsync, etc.)
+- **CC005A**: MediatR handlers must accept CancellationToken parameter
+- **CC005B**: Controller action methods must accept CancellationToken parameter
+- **CC005C**: Minimal API endpoint handlers must accept CancellationToken parameter
+- **CC006**: CancellationToken should be the last parameter (convention, Info severity)
+
+### Code Fix Providers
+- Automatically adds `CancellationToken` parameters with default values
+- Propagates tokens to inner async calls
+- Smart using directive handling
+- Works with lambdas and method declarations
+
+### Quality
+- **TDD Approach**: Comprehensive test coverage (82 tests passing)
+- **Built on Roslyn**: Uses official Microsoft Roslyn APIs
+- **Well Tested**: Full integration with XUnit and Roslyn testing framework
 
 ## Installation
 
@@ -43,13 +59,57 @@ public async Task ProcessDataAsync(CancellationToken cancellationToken = default
 
 **Code Fix**: Adds `CancellationToken cancellationToken = default` as the last parameter.
 
-## Future Rules (Planned)
+## Examples
 
-- **CC002**: CancellationToken must be propagated to async calls
-- **CC003**: EF Core queries must pass CancellationToken
-- **CC004**: HttpClient methods must pass CancellationToken
-- **CC005**: Handler methods (MediatR, Controllers) must accept and honor CancellationToken
-- **CC006**: CancellationToken should be last parameter (convention)
+```csharp
+// CC001: Missing CancellationToken parameter
+public async Task ProcessDataAsync() // ❌ Warning
+{
+    await Task.Delay(100);
+}
+
+// ✅ Fixed
+public async Task ProcessDataAsync(CancellationToken cancellationToken = default)
+{
+    await Task.Delay(100, cancellationToken);
+}
+
+// CC002: Not propagating CancellationToken
+public async Task ProcessAsync(CancellationToken cancellationToken)
+{
+    await Task.Delay(100); // ❌ Warning: Should pass cancellationToken
+    await DoWorkAsync(); // ❌ Warning: Should pass cancellationToken
+}
+
+// CC003: EF Core without CancellationToken
+public async Task<User> GetUserAsync(int id, CancellationToken cancellationToken)
+{
+    return await _context.Users.FirstOrDefaultAsync(u => u.Id == id); // ❌ Warning
+}
+
+// CC004: HttpClient without CancellationToken
+public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
+{
+    return await _httpClient.GetStringAsync("https://api.example.com"); // ❌ Warning
+}
+
+// CC005B: Controller action without CancellationToken
+[HttpGet]
+public async Task<IActionResult> GetUsers() // ❌ Warning
+{
+    var users = await _service.GetUsersAsync();
+    return Ok(users);
+}
+
+// CC005C: Minimal API without CancellationToken
+app.MapGet("/users", async () => await GetUsersAsync()); // ❌ Warning
+
+// CC006: CancellationToken not last parameter
+public async Task ProcessAsync(CancellationToken cancellationToken, string name) // ℹ️ Info
+{
+    // Convention suggests CancellationToken should be last
+}
+```
 
 ## Building from Source
 

@@ -1,16 +1,15 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
-using Microsoft.CodeAnalysis.Testing.Verifiers;
 using Xunit;
 
 namespace CancelCop.Analyzer.Tests;
 
 public class ControllerAnalyzerTests
 {
-    private static CSharpAnalyzerTest<ControllerAnalyzer, XUnitVerifier> CreateTest(string testCode, params DiagnosticResult[] expected)
+    private static CSharpAnalyzerTest<ControllerAnalyzer, DefaultVerifier> CreateTest(string testCode, params DiagnosticResult[] expected)
     {
-        var test = new CSharpAnalyzerTest<ControllerAnalyzer, XUnitVerifier>
+        var test = new CSharpAnalyzerTest<ControllerAnalyzer, DefaultVerifier>
         {
             TestCode = testCode,
             ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
