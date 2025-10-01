@@ -1,9 +1,13 @@
 ﻿// CancelCop Sample - Demonstrates the analyzer detecting missing CancellationToken parameters
 
+using Microsoft.EntityFrameworkCore;
+
 var service = new DataService();
+var repo = new UserRepository();
 
 // This will work fine
 await service.FetchWithTokenAsync(CancellationToken.None);
+await repo.GetUserByIdAsync(1, CancellationToken.None);
 
 // But this will trigger CC001 diagnostic (uncomment to see)
 // await service.FetchWithoutTokenAsync();
@@ -48,5 +52,46 @@ public class DataService
     private async Task HelperAsync(CancellationToken cancellationToken = default)
     {
         await Task.Delay(10, cancellationToken);
+    }
+}
+
+// EF Core Examples
+public class UserRepository
+{
+    private readonly AppDbContext _context = new AppDbContext();
+
+    // Good: Passes CancellationToken to EF Core methods
+    public async Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken)
+    {
+        return await _context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+    }
+
+    // Bad: Missing CancellationToken propagation - CC003 diagnostic
+    public async Task<List<User>> GetAllUsersAsync(CancellationToken cancellationToken)
+    {
+        return await _context.Users.ToListAsync();  // Should pass cancellationToken
+    }
+
+    // Bad: Missing CancellationToken propagation - CC003 diagnostic
+    public async Task SaveUserAsync(User user, CancellationToken cancellationToken)
+    {
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();  // Should pass cancellationToken
+    }
+}
+
+public class User
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class AppDbContext : DbContext
+{
+    public DbSet<User> Users { get; set; }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseInMemoryDatabase("SampleDb");
     }
 }
