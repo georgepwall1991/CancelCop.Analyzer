@@ -1,1 +1,0 @@
-﻿// Placeholder - analyzers will be added via TDD

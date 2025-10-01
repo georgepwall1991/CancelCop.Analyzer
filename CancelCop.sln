@@ -9,6 +9,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{8BC9CEB8
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC944}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC945}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+		NEXT_STEPS.md = NEXT_STEPS.md
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+	EndProjectSection
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CancelCop.Analyzer", "src/CancelCop.Analyzer/CancelCop.Analyzer.csproj", "{DC843354-43DC-4120-8A14-8D75E26E8DFB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CancelCop.Analyzer.Package", "src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj", "{5DABFA5C-709B-4053-83B7-20804C7EB235}"
