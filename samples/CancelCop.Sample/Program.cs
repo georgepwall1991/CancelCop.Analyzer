@@ -5,25 +5,22 @@ using Microsoft.EntityFrameworkCore;
 var service = new DataService();
 var repo = new UserRepository();
 
-// This will work fine
+// This will work fine - methods have tokens and propagate them
 await service.FetchWithTokenAsync(CancellationToken.None);
 await repo.GetUserByIdAsync(1, CancellationToken.None);
-
-// But this will trigger CC001 diagnostic (uncomment to see)
-// await service.FetchWithoutTokenAsync();
 
 Console.WriteLine("CancelCop Sample Complete");
 
 public class DataService
 {
-    // Good: Has CancellationToken and propagates it
+    // ✅ Good: Has CancellationToken and propagates it
     public async Task FetchWithTokenAsync(CancellationToken cancellationToken)
     {
         await Task.Delay(100, cancellationToken);
         Console.WriteLine("Fetched with token");
     }
 
-    // Bad: Missing CancellationToken - CC001 diagnostic
+    // ❌ CC001: Public async method missing CancellationToken parameter
     public async Task FetchWithoutTokenAsync()
     {
         await Task.Delay(100);
