@@ -125,3 +125,10 @@ public class ApiClient
         return await _httpClient.PostAsync("https://api.example.com/data", content, cancellationToken);
     }
 }
+
+// NOTE: CC005A/CC005B (Handler patterns) require ASP.NET Core or MediatR references
+// These examples demonstrate the patterns but won't trigger diagnostics in a console app
+//
+// Example patterns that would be detected:
+// - ASP.NET Core Controller actions without CancellationToken
+// - MediatR IRequestHandler.Handle methods without CancellationToken
