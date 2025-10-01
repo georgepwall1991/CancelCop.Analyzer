@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore CancelCop.sln
+
+    - name: Build
+      run: dotnet build CancelCop.sln --configuration Release --no-restore
+
+    - name: Test
+      run: dotnet test CancelCop.sln --configuration Release --no-build --verbosity normal
+
+    - name: Pack
+      run: dotnet pack src/CancelCop.Analyzer/CancelCop.Analyzer.csproj --configuration Release --no-build --output ./artifacts
+
+    - name: Upload NuGet Package
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-package
+        path: ./artifacts/*.nupkg
