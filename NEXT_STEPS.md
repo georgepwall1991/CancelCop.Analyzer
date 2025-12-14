@@ -28,7 +28,7 @@
   - Detects when CancellationToken is not the last parameter (Info severity)
   - Analyzer-only (no code fix for parameter reordering yet) (7 tests passing)
 - [x] Project structure with src/tests/samples folders
-- [x] TDD infrastructure with XUnit and Roslyn testing framework (82 tests passing)
+- [x] TDD infrastructure with XUnit and Roslyn testing framework (92 tests passing)
 - [x] NuGet package configuration
 - [x] GitHub Actions CI/CD workflows
 - [x] Documentation (README, .editorconfig, Directory.Build.props, AnalyzerReleases)
@@ -86,15 +86,15 @@ Add code fix provider for CC006 to automatically reorder parameters so Cancellat
 ## 📦 Infrastructure Improvements
 
 ### Release Management
-- [ ] Add `AnalyzerReleases.Shipped.md` for released versions
-- [ ] Add `AnalyzerReleases.Unshipped.md` for upcoming changes
-- [ ] Fix RS2008 warning by adding release tracking files
+- [x] Add `AnalyzerReleases.Shipped.md` for released versions
+- [x] Add `AnalyzerReleases.Unshipped.md` for upcoming changes
+- [x] Fix RS2008 warning by adding release tracking files
 - [ ] Add CHANGELOG.md for user-facing changes
 - [ ] Semantic versioning documentation
 
 ### NuGet Package Enhancement
-- [ ] Add package icon (icon.png)
-- [ ] Add package README.md (displayed on NuGet.org)
+- [x] Add package icon (icon.png)
+- [x] Add package README.md (displayed on NuGet.org)
 - [ ] Add repository tags for better discoverability
 - [ ] Add package release notes
 - [ ] Fix RS1038 warning (separate analyzer/code fix assemblies)
@@ -107,7 +107,7 @@ Add code fix provider for CC006 to automatically reorder parameters so Cancellat
 - [ ] Create video walkthrough/demo
 
 ### Community & Contribution
-- [ ] Add CONTRIBUTING.md with development guidelines
+- [x] Add CONTRIBUTING.md with development guidelines
 - [ ] Add CODE_OF_CONDUCT.md
 - [ ] Add issue templates for bug reports and feature requests
 - [ ] Add PR template
@@ -194,6 +194,16 @@ For each new rule:
 
 ---
 
-**Last Updated**: 2025-10-01
-**Current Version**: v1.1.0
-**Next Planned Release**: v1.2.0 (Enhancements and additional rules)
+## ✅ Completed (v1.2.0)
+
+- [x] **ValueTask Support**: CC001 and CC005B now detect `ValueTask` and `ValueTask<T>` return types
+- [x] **Local Function Support**: CC002 now detects token propagation issues in local functions
+- [x] **ControllerBase Namespace Verification**: CC005B only triggers for `Microsoft.AspNetCore.Mvc.ControllerBase`
+- [x] **Code Quality**: Extracted shared `CancellationTokenHelpers` class to reduce duplication
+- [x] **Test Coverage**: Increased from 82 to 92 tests
+
+---
+
+**Last Updated**: 2025-12-14
+**Current Version**: v1.2.0
+**Next Planned Release**: v1.3.0 (Additional rules and enhancements)

@@ -191,4 +191,86 @@ public class UsersController : ControllerBase
 
         await CreateTest(test).RunAsync();
     }
+
+    [Fact]
+    public async Task CustomControllerBase_ShouldNotReportDiagnostic()
+    {
+        // Custom ControllerBase class in user's namespace should not trigger the analyzer
+        var test = @"
+using System.Threading.Tasks;
+
+namespace MyApp
+{
+    // Custom ControllerBase - not from Microsoft.AspNetCore.Mvc
+    public abstract class ControllerBase
+    {
+        protected object Ok() => new object();
+    }
+
+    // Attribute that looks like HttpGet but isn't from ASP.NET Core
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public class HttpGetAttribute : System.Attribute { }
+}
+
+namespace MyApp.Controllers
+{
+    public class UsersController : MyApp.ControllerBase
+    {
+        [MyApp.HttpGet]
+        public async Task<object> GetUsers()
+        {
+            await Task.Delay(100);
+            return Ok();
+        }
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_ReturnsValueTask_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public async ValueTask<IActionResult> {|#0:GetUsers|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetUsers");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_ReturnsValueTask_WithCancellationToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public async ValueTask<IActionResult> GetUsers(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100, cancellationToken);
+        return Ok();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
 }

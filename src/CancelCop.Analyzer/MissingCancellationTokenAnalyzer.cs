@@ -50,21 +50,16 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         if (!isPublicOrProtected)
             return;
 
-        // Check if method returns Task or Task<T>
+        // Check if method returns Task, Task<T>, ValueTask, or ValueTask<T>
         var methodSymbol = context.SemanticModel.GetDeclaredSymbol(methodDeclaration);
         if (methodSymbol == null)
             return;
 
-        var returnType = methodSymbol.ReturnType;
-        if (returnType.Name != "Task")
+        if (!CancellationTokenHelpers.IsAsyncReturnType(methodSymbol.ReturnType))
             return;
 
         // Check if method already has CancellationToken parameter
-        var hasCancellationToken = methodSymbol.Parameters.Any(p =>
-            p.Type.Name == "CancellationToken" &&
-            p.Type.ContainingNamespace?.ToString() == "System.Threading");
-
-        if (hasCancellationToken)
+        if (CancellationTokenHelpers.HasCancellationTokenParameter(methodSymbol))
             return;
 
         // Report diagnostic

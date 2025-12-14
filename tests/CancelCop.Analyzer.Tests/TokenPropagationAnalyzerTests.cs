@@ -171,4 +171,114 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected1, expected2);
     }
+
+    [Fact]
+    public async Task LocalFunction_WithToken_TaskDelayWithoutToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync()
+    {
+        async Task LocalAsync(CancellationToken ct)
+        {
+            await Task.{|#0:Delay|}(100);
+        }
+
+        await LocalAsync(CancellationToken.None);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "ct");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task LocalFunction_WithToken_TaskDelayWithToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync()
+    {
+        async Task LocalAsync(CancellationToken ct)
+        {
+            await Task.Delay(100, ct);
+        }
+
+        await LocalAsync(CancellationToken.None);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task LocalFunction_NoToken_ButOuterMethodHasToken_ShouldReportDiagnostic()
+    {
+        // The local function doesn't have a token, so we should look at the outer method
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        async Task LocalAsync()
+        {
+            await Task.{|#0:Delay|}(100);
+        }
+
+        await LocalAsync();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NestedLocalFunction_WithToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync()
+    {
+        async Task OuterLocalAsync()
+        {
+            async Task InnerLocalAsync(CancellationToken ct)
+            {
+                await Task.{|#0:Delay|}(100);
+            }
+
+            await InnerLocalAsync(CancellationToken.None);
+        }
+
+        await OuterLocalAsync();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "ct");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }

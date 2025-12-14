@@ -58,7 +58,7 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
 
         for (int i = 0; i < parameters.Length; i++)
         {
-            if (IsCancellationToken(parameters[i].Type))
+            if (CancellationTokenHelpers.IsCancellationToken(parameters[i].Type))
             {
                 cancellationTokenIndex = i;
                 break;
@@ -81,11 +81,5 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
 
             context.ReportDiagnostic(diagnostic);
         }
-    }
-
-    private static bool IsCancellationToken(ITypeSymbol type)
-    {
-        return type.Name == "CancellationToken" &&
-               type.ContainingNamespace?.ToString() == "System.Threading";
     }
 }

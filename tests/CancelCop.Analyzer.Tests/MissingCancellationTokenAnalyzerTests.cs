@@ -125,4 +125,65 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task PublicAsyncMethodReturningValueTask_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async ValueTask {|#0:ProcessDataAsync|}()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC001")
+            .WithLocation(0)
+            .WithArguments("ProcessDataAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task PublicAsyncMethodReturningValueTaskOfT_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async ValueTask<int> {|#0:GetDataAsync|}()
+    {
+        await Task.Delay(100);
+        return 42;
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC001")
+            .WithLocation(0)
+            .WithArguments("GetDataAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task PublicAsyncMethodReturningValueTask_WithCancellationToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async ValueTask ProcessDataAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100, cancellationToken);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

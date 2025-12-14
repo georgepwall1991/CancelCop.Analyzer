@@ -62,14 +62,7 @@ public class HttpClientAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if a CancellationToken was already passed in the invocation
-        var cancellationTokenPassed = invocation.ArgumentList.Arguments.Any(arg =>
-        {
-            var argType = context.SemanticModel.GetTypeInfo(arg.Expression).Type;
-            return argType?.Name == "CancellationToken" &&
-                   argType.ContainingNamespace?.ToString() == "System.Threading";
-        });
-
-        if (cancellationTokenPassed)
+        if (CancellationTokenHelpers.HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
         // Find the containing method
@@ -82,21 +75,12 @@ public class HttpClientAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if the containing method has a CancellationToken parameter
-        var tokenParameter = containingMethodSymbol.Parameters.FirstOrDefault(p =>
-            p.Type.Name == "CancellationToken" &&
-            p.Type.ContainingNamespace?.ToString() == "System.Threading");
-
+        var tokenParameter = CancellationTokenHelpers.FindCancellationTokenParameter(containingMethodSymbol);
         if (tokenParameter == null)
             return;
 
         // Check if there's an overload that accepts a CancellationToken
-        var overloads = containingType.GetMembers(methodSymbol.Name)
-            .OfType<IMethodSymbol>()
-            .Where(m => m.Parameters.Any(p =>
-                p.Type.Name == "CancellationToken" &&
-                p.Type.ContainingNamespace?.ToString() == "System.Threading"));
-
-        if (!overloads.Any())
+        if (!CancellationTokenHelpers.HasOverloadWithCancellationToken(methodSymbol))
             return;
 
         // Report diagnostic

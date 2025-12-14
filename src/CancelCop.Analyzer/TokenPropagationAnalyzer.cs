@@ -45,45 +45,16 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if a CancellationToken was already passed in the invocation
-        var cancellationTokenPassed = invocation.ArgumentList.Arguments.Any(arg =>
-        {
-            var argType = context.SemanticModel.GetTypeInfo(arg.Expression).Type;
-            return argType?.Name == "CancellationToken" &&
-                   argType.ContainingNamespace?.ToString() == "System.Threading";
-        });
-
-        if (cancellationTokenPassed)
+        if (CancellationTokenHelpers.HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
-        // Find the containing method
-        var containingMethod = invocation.FirstAncestorOrSelf<MethodDeclarationSyntax>();
-        if (containingMethod == null)
-            return;
-
-        var containingMethodSymbol = context.SemanticModel.GetDeclaredSymbol(containingMethod);
-        if (containingMethodSymbol == null)
-            return;
-
-        // Check if the containing method has a CancellationToken parameter
-        var tokenParameter = containingMethodSymbol.Parameters.FirstOrDefault(p =>
-            p.Type.Name == "CancellationToken" &&
-            p.Type.ContainingNamespace?.ToString() == "System.Threading");
-
+        // Try to find CancellationToken parameter from containing local function first, then containing method
+        var tokenParameter = FindContainingCancellationTokenParameter(invocation, context.SemanticModel);
         if (tokenParameter == null)
             return;
 
         // Check if there's an overload that accepts a CancellationToken
-        var containingType = methodSymbol.ContainingType;
-        if (containingType == null)
-            return;
-
-        var overloads = containingType.GetMembers(methodSymbol.Name)
-            .OfType<IMethodSymbol>()
-            .Where(m => m.Parameters.Any(p =>
-                p.Type.Name == "CancellationToken" &&
-                p.Type.ContainingNamespace?.ToString() == "System.Threading"));
-
-        if (!overloads.Any())
+        if (!CancellationTokenHelpers.HasOverloadWithCancellationToken(methodSymbol))
             return;
 
         // Report diagnostic
@@ -101,5 +72,38 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
             tokenParameter.Name);
 
         context.ReportDiagnostic(diagnostic);
+    }
+
+    /// <summary>
+    /// Finds a CancellationToken parameter from the nearest containing local function or method.
+    /// Checks local functions first (innermost to outermost), then the containing method.
+    /// </summary>
+    private static IParameterSymbol? FindContainingCancellationTokenParameter(
+        SyntaxNode node,
+        SemanticModel semanticModel)
+    {
+        // Walk up the syntax tree looking for local functions and methods
+        var current = node.Parent;
+        while (current != null)
+        {
+            // Check local function first
+            if (current is LocalFunctionStatementSyntax localFunction)
+            {
+                var localFunctionSymbol = semanticModel.GetDeclaredSymbol(localFunction);
+                var tokenParam = CancellationTokenHelpers.FindCancellationTokenParameter(localFunctionSymbol);
+                if (tokenParam != null)
+                    return tokenParam;
+            }
+            // Check method declaration
+            else if (current is MethodDeclarationSyntax methodDeclaration)
+            {
+                var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration);
+                return CancellationTokenHelpers.FindCancellationTokenParameter(methodSymbol);
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 }

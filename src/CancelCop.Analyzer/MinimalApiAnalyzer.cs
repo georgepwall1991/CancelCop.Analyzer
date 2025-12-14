@@ -77,7 +77,7 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
             isAsync = simpleLambda.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword);
             // For simple lambda, we need to check if it has CancellationToken parameter
             var parameterSymbol = context.SemanticModel.GetDeclaredSymbol(simpleLambda.Parameter);
-            if (parameterSymbol != null && IsCancellationToken(parameterSymbol.Type))
+            if (parameterSymbol != null && CancellationTokenHelpers.IsCancellationToken(parameterSymbol.Type))
                 return; // Already has CancellationToken
         }
 
@@ -90,7 +90,7 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
             foreach (var parameter in parameterList.Parameters)
             {
                 var parameterSymbol = context.SemanticModel.GetDeclaredSymbol(parameter);
-                if (parameterSymbol != null && IsCancellationToken(parameterSymbol.Type))
+                if (parameterSymbol != null && CancellationTokenHelpers.IsCancellationToken(parameterSymbol.Type))
                     return; // Already has CancellationToken
             }
         }
@@ -102,11 +102,5 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
             methodName);
 
         context.ReportDiagnostic(diagnostic);
-    }
-
-    private static bool IsCancellationToken(ITypeSymbol type)
-    {
-        return type.Name == "CancellationToken" &&
-               type.ContainingNamespace?.ToString() == "System.Threading";
     }
 }

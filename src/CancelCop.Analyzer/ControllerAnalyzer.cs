@@ -48,8 +48,8 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
         if (methodSymbol == null)
             return;
 
-        // Check if method is async
-        if (!methodSymbol.IsAsync && !IsTaskReturnType(methodSymbol.ReturnType))
+        // Check if method is async or returns Task/ValueTask
+        if (!methodSymbol.IsAsync && !CancellationTokenHelpers.IsAsyncReturnType(methodSymbol.ReturnType))
             return;
 
         // Check if this is a controller action method
@@ -57,11 +57,7 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if method already has CancellationToken parameter
-        var hasCancellationToken = methodSymbol.Parameters.Any(p =>
-            p.Type.Name == "CancellationToken" &&
-            p.Type.ContainingNamespace?.ToString() == "System.Threading");
-
-        if (hasCancellationToken)
+        if (CancellationTokenHelpers.HasCancellationTokenParameter(methodSymbol))
             return;
 
         // Report diagnostic
@@ -103,26 +99,13 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
         var baseType = typeSymbol.BaseType;
         while (baseType != null)
         {
-            if (baseType.Name == "ControllerBase" || baseType.Name == "Controller")
+            // Check both name and namespace to avoid false positives with custom ControllerBase classes
+            if ((baseType.Name == "ControllerBase" || baseType.Name == "Controller") &&
+                baseType.ContainingNamespace?.ToDisplayString() == "Microsoft.AspNetCore.Mvc")
                 return true;
 
             baseType = baseType.BaseType;
         }
-
-        return false;
-    }
-
-    private static bool IsTaskReturnType(ITypeSymbol returnType)
-    {
-        if (returnType.Name == "Task" && returnType.ContainingNamespace?.ToString() == "System.Threading.Tasks")
-            return true;
-
-        // Check for Task<T>
-        if (returnType is INamedTypeSymbol namedType &&
-            namedType.IsGenericType &&
-            namedType.Name == "Task" &&
-            namedType.ContainingNamespace?.ToString() == "System.Threading.Tasks")
-            return true;
 
         return false;
     }
