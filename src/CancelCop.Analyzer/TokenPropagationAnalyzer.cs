@@ -7,9 +7,53 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
+/// <summary>
+/// Analyzer that detects async method invocations that don't propagate an available CancellationToken.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC002
+/// </para>
+/// <para>
+/// <b>Why this matters:</b>
+/// Having a CancellationToken parameter is useless if you don't pass it to inner async calls.
+/// When a method accepts a token but doesn't propagate it, cancellation requests are silently
+/// ignored, operations continue despite cancellation, and resources are wasted.
+/// </para>
+/// <para>
+/// <b>What it detects:</b>
+/// <list type="bullet">
+/// <item>Task.Delay() calls without token when one is available</item>
+/// <item>Task.Run() calls without token when one is available</item>
+/// <item>Custom async methods that have overloads accepting CancellationToken</item>
+/// </list>
+/// </para>
+/// <para>
+/// <b>Scope:</b>
+/// Checks method bodies, local functions, and lambda expressions for token availability.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// // Violation:
+/// public async Task ProcessAsync(CancellationToken ct)
+/// {
+///     await Task.Delay(1000);  // CC002: Should pass ct
+/// }
+///
+/// // Fixed:
+/// public async Task ProcessAsync(CancellationToken ct)
+/// {
+///     await Task.Delay(1000, ct);
+/// }
+/// </code>
+/// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class TokenPropagationAnalyzer : DiagnosticAnalyzer
 {
+    /// <summary>
+    /// The diagnostic ID for this analyzer rule.
+    /// </summary>
     public const string DiagnosticId = "CC002";
     private const string Category = "Usage";
 

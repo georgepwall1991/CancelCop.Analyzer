@@ -28,7 +28,7 @@
   - Detects when CancellationToken is not the last parameter (Info severity)
   - Analyzer-only (no code fix for parameter reordering yet) (7 tests passing)
 - [x] Project structure with src/tests/samples folders
-- [x] TDD infrastructure with XUnit and Roslyn testing framework (92 tests passing)
+- [x] TDD infrastructure with XUnit and Roslyn testing framework (111 tests passing)
 - [x] NuGet package configuration
 - [x] GitHub Actions CI/CD workflows
 - [x] Documentation (README, .editorconfig, Directory.Build.props, AnalyzerReleases)
@@ -72,7 +72,6 @@ Add code fix provider for CC006 to automatically reorder parameters so Cancellat
 ### Additional Rules
 - **CC007**: Detect `CancellationToken.None` usage (suggest passing actual token)
 - **CC008**: Detect unused CancellationToken parameters
-- **CC009**: Suggest `ThrowIfCancellationRequested()` in long-running loops
 - **CC010**: Detect async void methods (should return Task)
 
 ### Performance & Quality
@@ -204,6 +203,27 @@ For each new rule:
 
 ---
 
+## ✅ Completed (v1.3.0)
+
+- [x] **CC009**: Loop Cancellation Check Analyzer
+  - Detects `for`, `foreach`, `while`, and `do-while` loops without cancellation checks
+  - Only triggers in methods with a CancellationToken parameter
+  - Code fix adds `{tokenName}.ThrowIfCancellationRequested();` as first statement in loop
+  - Supports local functions with CancellationToken parameters
+  - 19 new tests (13 analyzer + 6 code fix)
+- [x] **Improved Samples**: Reorganized sample project with separate files per rule
+  - CC001_PublicAsyncMethods.cs - CC009_LoopCancellation.cs
+  - Detailed comments explaining why each rule matters
+  - Both violation examples and correct patterns
+- [x] **Documentation Improvements**
+  - Comprehensive README with all 9 rules documented
+  - Updated CONTRIBUTING.md with detailed guidelines
+  - XML documentation on key analyzers
+  - NuGet README updated with CC009
+- [x] **Test Coverage**: Increased from 92 to 111 tests
+
+---
+
 **Last Updated**: 2025-12-14
-**Current Version**: v1.2.0
-**Next Planned Release**: v1.3.0 (Additional rules and enhancements)
+**Current Version**: v1.3.0
+**Next Planned Release**: v1.4.0 (Additional rules and enhancements)

@@ -7,9 +7,50 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
+/// <summary>
+/// Analyzer that detects public and protected async methods missing a CancellationToken parameter.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC001
+/// </para>
+/// <para>
+/// <b>Why this matters:</b>
+/// Public async methods are entry points that callers use. Without a CancellationToken parameter,
+/// callers cannot cancel long-running operations, leading to wasted resources, poor user experience,
+/// and blocked graceful shutdowns.
+/// </para>
+/// <para>
+/// <b>What it detects:</b>
+/// <list type="bullet">
+/// <item>Public async methods returning Task, Task&lt;T&gt;, ValueTask, or ValueTask&lt;T&gt;</item>
+/// <item>Protected async methods (for derived class usage)</item>
+/// </list>
+/// </para>
+/// <para>
+/// <b>What it ignores:</b>
+/// <list type="bullet">
+/// <item>Private and internal methods (implementation details)</item>
+/// <item>Methods that already have a CancellationToken parameter</item>
+/// <item>Non-async methods</item>
+/// </list>
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// // Violation:
+/// public async Task ProcessAsync() { }
+///
+/// // Fixed:
+/// public async Task ProcessAsync(CancellationToken cancellationToken = default) { }
+/// </code>
+/// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
 {
+    /// <summary>
+    /// The diagnostic ID for this analyzer rule.
+    /// </summary>
     public const string DiagnosticId = "CC001";
     private const string Category = "Usage";
 

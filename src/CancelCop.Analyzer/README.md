@@ -1,14 +1,14 @@
 # CancelCop Analyzer
 
-A surgical Roslyn analyzer focused on **CancellationToken** propagation and honoring across public APIs, handlers, EF Core, HTTP calls, and Minimal APIs, with comprehensive automatic code fixes.
+A surgical Roslyn analyzer focused on **CancellationToken** best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes.
 
 ## Why CancelCop?
 
-CancelCop helps you build responsive, cancellable .NET applications by ensuring CancellationToken is properly used throughout your codebase. It detects missing tokens and provides automatic fixes with a single click.
+CancelCop helps you build responsive, cancellable .NET applications by ensuring CancellationToken is properly used throughout your codebase. It catches issues at compile time and provides automatic fixes.
 
 ## Features
 
-### 8 Comprehensive Analyzers
+### 9 Comprehensive Analyzers
 
 | Rule | Description | Severity |
 |------|-------------|----------|
@@ -20,11 +20,13 @@ CancelCop helps you build responsive, cancellable .NET applications by ensuring 
 | **CC005B** | Controller actions must accept CancellationToken | Warning |
 | **CC005C** | Minimal API endpoints must accept CancellationToken | Warning |
 | **CC006** | CancellationToken should be the last parameter | Info |
+| **CC009** | Loops should check for cancellation | Warning |
 
 ### Automatic Code Fixes
 
 - ✅ Adds CancellationToken parameters to method signatures
 - ✅ Propagates tokens to inner async calls
+- ✅ Adds cancellation checks to loops
 - ✅ Handles lambda expressions (Minimal APIs)
 - ✅ Smart using directive management
 - ✅ Preserves code formatting
@@ -65,7 +67,6 @@ public async Task ProcessDataAsync(CancellationToken cancellationToken = default
 
 ### Entity Framework Core
 ```csharp
-// Detects missing tokens in:
 await _context.Users.ToListAsync(cancellationToken);
 await _context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 await _context.SaveChangesAsync(cancellationToken);
@@ -73,7 +74,6 @@ await _context.SaveChangesAsync(cancellationToken);
 
 ### HttpClient
 ```csharp
-// Detects missing tokens in:
 await httpClient.GetAsync(url, cancellationToken);
 await httpClient.PostAsync(url, content, cancellationToken);
 await httpClient.SendAsync(request, cancellationToken);
@@ -108,6 +108,18 @@ public class MyHandler : IRequestHandler<MyRequest, MyResponse>
 }
 ```
 
+### Loop Cancellation (New in v1.3.0)
+```csharp
+public async Task ProcessItemsAsync(List<Item> items, CancellationToken ct)
+{
+    foreach (var item in items)
+    {
+        ct.ThrowIfCancellationRequested();  // Analyzer ensures this is present
+        await ProcessAsync(item, ct);
+    }
+}
+```
+
 ## Benefits
 
 - 🎯 **Responsive Applications**: Properly cancel long-running operations
@@ -118,18 +130,28 @@ public class MyHandler : IRequestHandler<MyRequest, MyResponse>
 
 ## Configuration
 
-All rules are enabled by default with appropriate severity levels. You can configure them in `.editorconfig`:
+All rules are enabled by default with appropriate severity levels. Configure in `.editorconfig`:
 
 ```ini
 [*.cs]
 # Adjust severity (none, suggestion, warning, error)
 dotnet_diagnostic.CC001.severity = warning
 dotnet_diagnostic.CC006.severity = suggestion
+dotnet_diagnostic.CC009.severity = warning
 ```
+
+## Supported Frameworks
+
+- **.NET 6.0+** (including .NET 8, .NET 9, .NET 10)
+- **ASP.NET Core** (Controllers and Minimal APIs)
+- **Entity Framework Core** (all async methods)
+- **HttpClient** (all async methods)
+- **MediatR** (IRequestHandler implementations)
+- **ValueTask** and **ValueTask<T>** return types
 
 ## Test Coverage
 
-- **82 tests** ensuring reliability
+- **111 tests** ensuring reliability
 - All analyzers and code fixes thoroughly tested
 - Covers edge cases and complex scenarios
 
@@ -137,6 +159,7 @@ dotnet_diagnostic.CC006.severity = suggestion
 
 - [GitHub Repository](https://github.com/georgepwall1991/CancelCop.Analyzer)
 - [Report Issues](https://github.com/georgepwall1991/CancelCop.Analyzer/issues)
+- [Sample Project](https://github.com/georgepwall1991/CancelCop.Analyzer/tree/main/samples/CancelCop.Sample)
 
 ---
 

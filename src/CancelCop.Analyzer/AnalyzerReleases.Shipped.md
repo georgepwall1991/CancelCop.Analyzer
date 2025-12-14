@@ -1,3 +1,11 @@
+## Release 1.3.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC009 | Usage | Warning | Loops should check for cancellation
+
 ## Release 1.1.0
 
 ### New Rules

@@ -1,29 +1,19 @@
 # CancelCop Analyzer
 
-A surgical Roslyn analyzer focused on **CancellationToken** propagation and honoring across public APIs, handlers, EF Core, and HTTP calls, with automatic code fixes.
+[![NuGet](https://img.shields.io/nuget/v/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Features
+A surgical Roslyn analyzer focused on **CancellationToken** best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes.
 
-### Analyzers
-- **CC001**: Public async methods must have CancellationToken parameter
-- **CC002**: CancellationToken must be propagated to async calls (Task.Delay, Task.Run, custom async methods)
-- **CC003**: EF Core queries must pass CancellationToken (ToListAsync, FirstOrDefaultAsync, SaveChangesAsync, etc.)
-- **CC004**: HttpClient methods must pass CancellationToken (GetAsync, PostAsync, etc.)
-- **CC005A**: MediatR handlers must accept CancellationToken parameter
-- **CC005B**: Controller action methods must accept CancellationToken parameter
-- **CC005C**: Minimal API endpoint handlers must accept CancellationToken parameter
-- **CC006**: CancellationToken should be the last parameter (convention, Info severity)
+## Why CancelCop?
 
-### Code Fix Providers
-- Automatically adds `CancellationToken` parameters with default values
-- Propagates tokens to inner async calls
-- Smart using directive handling
-- Works with lambdas and method declarations
+CancellationToken is essential for building responsive .NET applications, but it's easy to forget:
+- Adding tokens to public async methods
+- Propagating tokens to inner async calls
+- Checking for cancellation in loops
+- Following parameter ordering conventions
 
-### Quality
-- **TDD Approach**: Comprehensive test coverage (82 tests passing)
-- **Built on Roslyn**: Uses official Microsoft Roslyn APIs
-- **Well Tested**: Full integration with XUnit and Roslyn testing framework
+CancelCop catches these issues at compile time and offers one-click fixes.
 
 ## Installation
 
@@ -31,39 +21,32 @@ A surgical Roslyn analyzer focused on **CancellationToken** propagation and hono
 dotnet add package CancelCop.Analyzer
 ```
 
-## Usage
-
-Once installed, the analyzer will automatically detect violations in your code:
-
-```csharp
-// ❌ Warning CC001: Missing CancellationToken
-public async Task ProcessDataAsync()
-{
-    await Task.Delay(100);
-}
-
-// ✅ Correct: Has CancellationToken
-public async Task ProcessDataAsync(CancellationToken cancellationToken = default)
-{
-    await Task.Delay(100, cancellationToken);
-}
+Or via Package Manager:
+```powershell
+Install-Package CancelCop.Analyzer
 ```
 
 ## Analyzer Rules
 
-### CC001: Public async methods must have CancellationToken parameter
+| Rule | Description | Severity | Code Fix |
+|------|-------------|----------|----------|
+| **CC001** | Public async methods must have CancellationToken parameter | Warning | ✅ |
+| **CC002** | CancellationToken must be propagated to async calls | Warning | ✅ |
+| **CC003** | EF Core queries must pass CancellationToken | Warning | ✅ |
+| **CC004** | HttpClient methods must pass CancellationToken | Warning | ✅ |
+| **CC005A** | MediatR handlers must accept CancellationToken | Warning | ✅ |
+| **CC005B** | Controller actions must accept CancellationToken | Warning | ✅ |
+| **CC005C** | Minimal API endpoints must accept CancellationToken | Warning | ✅ |
+| **CC006** | CancellationToken should be the last parameter | Info | ❌ |
+| **CC009** | Loops should check for cancellation | Warning | ✅ |
 
-**Severity**: Warning
+## Quick Examples
 
-**Description**: Public and protected async methods should accept a `CancellationToken` parameter to allow cancellation of async operations.
-
-**Code Fix**: Adds `CancellationToken cancellationToken = default` as the last parameter.
-
-## Examples
+### CC001: Missing CancellationToken Parameter
 
 ```csharp
-// CC001: Missing CancellationToken parameter
-public async Task ProcessDataAsync() // ❌ Warning
+// ❌ Warning CC001
+public async Task ProcessDataAsync()
 {
     await Task.Delay(100);
 }
@@ -73,51 +56,166 @@ public async Task ProcessDataAsync(CancellationToken cancellationToken = default
 {
     await Task.Delay(100, cancellationToken);
 }
+```
 
-// CC002: Not propagating CancellationToken
+### CC002: Token Not Propagated
+
+```csharp
+// ❌ Warning CC002 - token available but not passed
 public async Task ProcessAsync(CancellationToken cancellationToken)
 {
-    await Task.Delay(100); // ❌ Warning: Should pass cancellationToken
-    await DoWorkAsync(); // ❌ Warning: Should pass cancellationToken
+    await Task.Delay(100);           // Should pass cancellationToken
+    await DoWorkAsync();              // Should pass cancellationToken
 }
 
-// CC003: EF Core without CancellationToken
-public async Task<User> GetUserAsync(int id, CancellationToken cancellationToken)
+// ✅ Fixed
+public async Task ProcessAsync(CancellationToken cancellationToken)
 {
-    return await _context.Users.FirstOrDefaultAsync(u => u.Id == id); // ❌ Warning
+    await Task.Delay(100, cancellationToken);
+    await DoWorkAsync(cancellationToken);
+}
+```
+
+### CC003: EF Core Without Token
+
+```csharp
+// ❌ Warning CC003
+public async Task<User?> GetUserAsync(int id, CancellationToken cancellationToken)
+{
+    return await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
 }
 
-// CC004: HttpClient without CancellationToken
+// ✅ Fixed
+public async Task<User?> GetUserAsync(int id, CancellationToken cancellationToken)
+{
+    return await _context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+}
+```
+
+### CC004: HttpClient Without Token
+
+```csharp
+// ❌ Warning CC004
 public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
 {
-    return await _httpClient.GetStringAsync("https://api.example.com"); // ❌ Warning
+    return await _httpClient.GetStringAsync("https://api.example.com");
 }
 
-// CC005B: Controller action without CancellationToken
+// ✅ Fixed
+public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
+{
+    return await _httpClient.GetStringAsync("https://api.example.com", cancellationToken);
+}
+```
+
+### CC005B: Controller Action Without Token
+
+```csharp
+// ❌ Warning CC005B
 [HttpGet]
-public async Task<IActionResult> GetUsers() // ❌ Warning
+public async Task<IActionResult> GetUsers()
 {
     var users = await _service.GetUsersAsync();
     return Ok(users);
 }
 
-// CC005C: Minimal API without CancellationToken
-app.MapGet("/users", async () => await GetUsersAsync()); // ❌ Warning
-
-// CC006: CancellationToken not last parameter
-public async Task ProcessAsync(CancellationToken cancellationToken, string name) // ℹ️ Info
+// ✅ Fixed - ASP.NET Core injects the token automatically
+[HttpGet]
+public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
 {
-    // Convention suggests CancellationToken should be last
+    var users = await _service.GetUsersAsync(cancellationToken);
+    return Ok(users);
 }
 ```
+
+### CC005C: Minimal API Without Token
+
+```csharp
+// ❌ Warning CC005C
+app.MapGet("/users", async () => await GetUsersAsync());
+
+// ✅ Fixed
+app.MapGet("/users", async (CancellationToken ct) => await GetUsersAsync(ct));
+```
+
+### CC006: Token Not Last Parameter
+
+```csharp
+// ℹ️ Info CC006 - convention suggests token should be last
+public async Task ProcessAsync(CancellationToken cancellationToken, string name)
+{
+}
+
+// ✅ Better - follows .NET conventions
+public async Task ProcessAsync(string name, CancellationToken cancellationToken)
+{
+}
+```
+
+### CC009: Loop Without Cancellation Check
+
+```csharp
+// ❌ Warning CC009 - loop doesn't check for cancellation
+public async Task ProcessItemsAsync(List<Item> items, CancellationToken cancellationToken)
+{
+    foreach (var item in items)  // Could process 1M items without checking!
+    {
+        await ProcessAsync(item);
+    }
+}
+
+// ✅ Fixed
+public async Task ProcessItemsAsync(List<Item> items, CancellationToken cancellationToken)
+{
+    foreach (var item in items)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await ProcessAsync(item);
+    }
+}
+```
+
+## Configuration
+
+All rules are enabled by default. Configure severity in `.editorconfig`:
+
+```ini
+[*.cs]
+# Disable a rule
+dotnet_diagnostic.CC001.severity = none
+
+# Make a rule an error (fails build)
+dotnet_diagnostic.CC002.severity = error
+
+# Make CC006 more prominent
+dotnet_diagnostic.CC006.severity = warning
+```
+
+## Supported Frameworks
+
+- **.NET 6.0+** (including .NET 8, .NET 9, .NET 10)
+- **ASP.NET Core** (Controllers and Minimal APIs)
+- **Entity Framework Core** (all async methods)
+- **HttpClient** (all async methods)
+- **MediatR** (IRequestHandler implementations)
+- **ValueTask** and **ValueTask<T>** return types
+
+## Project Quality
+
+- **111 unit tests** with comprehensive coverage
+- **Test-Driven Development** approach
+- Built on official **Microsoft Roslyn APIs**
+- Follows **.NET Analyzer best practices**
 
 ## Building from Source
 
 ```bash
-# Restore dependencies
-dotnet restore
+# Clone the repository
+git clone https://github.com/georgepwall1991/CancelCop.Analyzer.git
+cd CancelCop.Analyzer
 
-# Build solution
+# Restore and build
+dotnet restore
 dotnet build
 
 # Run tests
@@ -130,28 +228,56 @@ dotnet pack src/CancelCop.Analyzer/CancelCop.Analyzer.csproj -c Release
 ## Project Structure
 
 ```
-CancelCop/
+CancelCop.Analyzer/
 ├── src/
-│   ├── CancelCop.Analyzer/          # Main analyzer and code fix provider
-│   └── CancelCop.Analyzer.Package/  # NuGet packaging project
+│   ├── CancelCop.Analyzer/           # Analyzers and code fix providers
+│   └── CancelCop.Analyzer.Package/   # NuGet packaging
 ├── tests/
-│   └── CancelCop.Analyzer.Tests/    # XUnit tests using Roslyn testing framework
+│   └── CancelCop.Analyzer.Tests/     # XUnit tests (111 tests)
 ├── samples/
-│   └── CancelCop.Sample/            # Example project demonstrating the analyzer
-├── .github/workflows/               # CI/CD workflows
-├── CancelCop.sln                    # Solution file with folder structure
-├── Directory.Build.props            # Shared MSBuild properties
-├── .editorconfig                    # Code style configuration
-└── NEXT_STEPS.md                    # Development roadmap
+│   └── CancelCop.Sample/             # Example project with all rules
+├── .github/workflows/                # CI/CD (build, test, publish)
+└── docs/                             # Additional documentation
+```
+
+## Sample Project
+
+The `samples/CancelCop.Sample` project demonstrates all analyzer rules with:
+- Separate files for each rule (CC001, CC002, etc.)
+- Both violation examples (triggering warnings) and correct patterns
+- Detailed comments explaining why each rule matters
+
+Build the sample to see the analyzers in action:
+```bash
+dotnet build samples/CancelCop.Sample
 ```
 
 ## Contributing
 
-Contributions are welcome! Please ensure:
-- All tests pass
-- Follow TDD approach for new rules
-- Add tests for both analyzer and code fix provider
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Key points:
+- Follow TDD approach (tests first)
+- Ensure all tests pass
+- Update documentation for new features
+- One feature per pull request
+
+## Roadmap
+
+See [NEXT_STEPS.md](NEXT_STEPS.md) for planned features:
+- CC007: Detect `CancellationToken.None` usage
+- CC008: Detect unused CancellationToken parameters
+- CC010: Detect async void methods
+- CC006 code fix for parameter reordering
 
 ## License
 
-MIT
+[MIT License](LICENSE)
+
+## Author
+
+**George Wall** - [GitHub](https://github.com/georgepwall1991)
+
+---
+
+⭐ If CancelCop helps you write better async code, consider giving it a star!

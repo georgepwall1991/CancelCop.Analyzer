@@ -10,10 +10,10 @@
 
         <!-- NuGet Package Info -->
         <PackageId>CancelCop.Analyzer</PackageId>
-        <Version>1.1.2</Version>
+        <Version>1.3.0</Version>
         <Authors>George Wall</Authors>
-        <Description>A surgical Roslyn analyzer focused on CancellationToken propagation and honoring across public APIs, handlers, EF Core, HTTP calls, and Minimal APIs, with comprehensive code fixes.</Description>
-        <PackageTags>roslyn;analyzer;cancellationtoken;async;code-fix</PackageTags>
+        <Description>A surgical Roslyn analyzer focused on CancellationToken best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes for public APIs, handlers, EF Core, HTTP calls, and Minimal APIs.</Description>
+        <PackageTags>roslyn;analyzer;cancellationtoken;async;code-fix;loops;efcore;httpclient</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
         <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
