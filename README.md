@@ -37,8 +37,13 @@ Install-Package CancelCop.Analyzer
 | **CC005A** | MediatR handlers must accept CancellationToken | Warning | ✅ |
 | **CC005B** | Controller actions must accept CancellationToken | Warning | ✅ |
 | **CC005C** | Minimal API endpoints must accept CancellationToken | Warning | ✅ |
-| **CC006** | CancellationToken should be the last parameter | Info | ❌ |
+| **CC006** | CancellationToken should be the last parameter | Info | ✅ |
+| **CC007** | Avoid CancellationToken.None when token is available | Warning | ✅ |
+| **CC008** | CancellationToken parameter is not used | Warning | ❌ |
 | **CC009** | Loops should check for cancellation | Warning | ✅ |
+| **CC010** | Avoid async void methods | Warning | ✅ |
+| **CC011** | Avoid blocking on async code (.Wait(), .Result) | Warning | ❌ |
+| **CC012** | ConfigureAwait should be used (library code) | Info | ✅ |
 
 ## Quick Examples
 
@@ -152,6 +157,38 @@ public async Task ProcessAsync(string name, CancellationToken cancellationToken)
 }
 ```
 
+### CC007: Using CancellationToken.None When Token Available
+
+```csharp
+// ❌ Warning CC007 - token available but using None
+public async Task ProcessAsync(CancellationToken ct)
+{
+    await Task.Delay(1000, CancellationToken.None);  // Should use ct!
+}
+
+// ✅ Fixed
+public async Task ProcessAsync(CancellationToken ct)
+{
+    await Task.Delay(1000, ct);
+}
+```
+
+### CC008: Unused CancellationToken Parameter
+
+```csharp
+// ❌ Warning CC008 - token accepted but never used
+public async Task ProcessAsync(CancellationToken ct)
+{
+    await Task.Delay(1000);  // ct is not used anywhere!
+}
+
+// ✅ Fixed
+public async Task ProcessAsync(CancellationToken ct)
+{
+    await Task.Delay(1000, ct);
+}
+```
+
 ### CC009: Loop Without Cancellation Check
 
 ```csharp
@@ -175,9 +212,59 @@ public async Task ProcessItemsAsync(List<Item> items, CancellationToken cancella
 }
 ```
 
+### CC010: Async Void Methods
+
+```csharp
+// ❌ Warning CC010 - async void is dangerous
+public async void ProcessAsync()  // Exceptions here crash the app!
+{
+    await Task.Delay(1000);
+}
+
+// ✅ Fixed
+public async Task ProcessAsync()
+{
+    await Task.Delay(1000);
+}
+```
+
+### CC011: Blocking on Async Code
+
+```csharp
+// ❌ Warning CC011 - can cause deadlocks
+public void Process()
+{
+    var result = GetDataAsync().Result;  // Blocking!
+    GetDataAsync().Wait();               // Blocking!
+    GetDataAsync().GetAwaiter().GetResult();  // Still blocking!
+}
+
+// ✅ Fixed - use async all the way
+public async Task ProcessAsync()
+{
+    var result = await GetDataAsync();
+}
+```
+
+### CC012: Missing ConfigureAwait (Library Code)
+
+```csharp
+// ℹ️ Info CC012 - enable in library projects
+public async Task ProcessAsync()
+{
+    await Task.Delay(1000);  // May capture sync context
+}
+
+// ✅ Fixed - for library code
+public async Task ProcessAsync()
+{
+    await Task.Delay(1000).ConfigureAwait(false);
+}
+```
+
 ## Configuration
 
-All rules are enabled by default. Configure severity in `.editorconfig`:
+All rules are enabled by default (except CC012 which is opt-in for library projects). Configure severity in `.editorconfig`:
 
 ```ini
 [*.cs]
@@ -189,6 +276,9 @@ dotnet_diagnostic.CC002.severity = error
 
 # Make CC006 more prominent
 dotnet_diagnostic.CC006.severity = warning
+
+# Enable ConfigureAwait check for library code
+dotnet_diagnostic.CC012.severity = warning
 ```
 
 ## Supported Frameworks
@@ -202,7 +292,7 @@ dotnet_diagnostic.CC006.severity = warning
 
 ## Project Quality
 
-- **111 unit tests** with comprehensive coverage
+- **150+ unit tests** with comprehensive coverage
 - **Test-Driven Development** approach
 - Built on official **Microsoft Roslyn APIs**
 - Follows **.NET Analyzer best practices**
@@ -265,10 +355,10 @@ Key points:
 ## Roadmap
 
 See [NEXT_STEPS.md](NEXT_STEPS.md) for planned features:
-- CC007: Detect `CancellationToken.None` usage
-- CC008: Detect unused CancellationToken parameters
-- CC010: Detect async void methods
-- CC006 code fix for parameter reordering
+- Enhanced code fix suggestions
+- Additional framework support (Dapper, Polly, gRPC)
+- Performance benchmarking
+- Integration with .NET Aspire
 
 ## License
 
