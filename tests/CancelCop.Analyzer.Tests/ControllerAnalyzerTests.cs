@@ -273,4 +273,131 @@ public class UsersController : ControllerBase
 
         await CreateTest(test).RunAsync();
     }
+
+    [Fact]
+    public async Task ControllerAction_NonAction_ShouldNotReportDiagnostic()
+    {
+        // [NonAction] methods are not routed, so they need no CancellationToken.
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [NonAction]
+    [HttpGet]
+    public async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_InheritsNonActionFromBaseOverride_ShouldNotReportDiagnostic()
+    {
+        // NonActionAttribute is inheritable; an override that inherits [NonAction] from a base
+        // virtual action is still not routed, so CC005B must not fire on the override.
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class BaseController : ControllerBase
+{
+    [NonAction]
+    [HttpGet]
+    public virtual async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}
+
+public class UsersController : BaseController
+{
+    [HttpGet]
+    public override async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_UserDefinedNonActionAttribute_StillReportsDiagnostic()
+    {
+        // A user-defined NonActionAttribute (not Microsoft.AspNetCore.Mvc's) does not stop MVC
+        // routing, so CC005B must still fire.
+        var test = @"
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public sealed class NonActionAttribute : Attribute { }
+
+public class UsersController : ControllerBase
+{
+    [NonAction]
+    [HttpGet]
+    public async Task<IActionResult> {|#0:GetUsers|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetUsers");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_PrivateMethod_ShouldNotReportDiagnostic()
+    {
+        // Private methods are never routed as actions.
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    private async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_StaticMethod_ShouldNotReportDiagnostic()
+    {
+        // Static methods are never routed as actions.
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public static async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return new OkResult();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
 }

@@ -71,6 +71,12 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
 
     private static bool IsControllerActionMethod(IMethodSymbol methodSymbol)
     {
+        // Only public instance methods are routed as actions; private/protected/static
+        // methods (and [NonAction] methods) are never invoked by the routing system, so they
+        // do not need a CancellationToken.
+        if (methodSymbol.DeclaredAccessibility != Accessibility.Public || methodSymbol.IsStatic)
+            return false;
+
         // Check if the containing type inherits from ControllerBase or Controller
         var containingType = methodSymbol.ContainingType;
         if (containingType == null)
@@ -78,6 +84,9 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
 
         var inheritsFromController = InheritsFromControllerBase(containingType);
         if (!inheritsFromController)
+            return false;
+
+        if (HasAttribute(methodSymbol, "NonActionAttribute", "Microsoft.AspNetCore.Mvc"))
             return false;
 
         // Check if method has an HTTP method attribute
@@ -92,6 +101,36 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
         });
 
         return hasHttpAttribute;
+    }
+
+    private static bool HasAttribute(IMethodSymbol methodSymbol, string attributeTypeName, string containingNamespace)
+    {
+        var shortName = attributeTypeName.Replace("Attribute", "");
+
+        // [NonAction] is inheritable, so an override that inherits it from a base virtual action
+        // is still non-routed even though the attribute is not declared on the override itself.
+        for (IMethodSymbol? current = methodSymbol; current != null; current = current.OverriddenMethod)
+        {
+            var found = current.GetAttributes().Any(attr =>
+            {
+                var attributeClass = attr.AttributeClass;
+                if (attributeClass == null)
+                    return false;
+
+                var name = attributeClass.Name;
+                if (name != attributeTypeName && name != shortName)
+                    return false;
+
+                // Match by namespace so a user-defined attribute of the same name is not treated
+                // as the framework attribute.
+                return attributeClass.ContainingNamespace?.ToDisplayString() == containingNamespace;
+            });
+
+            if (found)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool InheritsFromControllerBase(INamedTypeSymbol typeSymbol)
