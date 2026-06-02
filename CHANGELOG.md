@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Reproducible builds:** enabled `Deterministic`, `ContinuousIntegrationBuild` (on CI),
+  `PublishRepositoryUrl`, `EmbedUntrackedSources`, and `Microsoft.SourceLink.GitHub` so the
+  published package is deterministic and source-debuggable.
 - **Analyzer release tracking:** `AnalyzerReleases.Shipped.md` / `AnalyzerReleases.Unshipped.md`
   are now `AdditionalFiles`, re-enabling RS2008, and the analyzer/code-fix projects treat the
   analyzer-authoring rules (RS1038, RS2008, RS1036, RS1041) as errors so packaging/release-tracking
