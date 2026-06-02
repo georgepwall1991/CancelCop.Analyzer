@@ -68,7 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `extern` methods. The previously offered fixes broke compilation (CS0115/CS0535) on these,
   so this removes the highest-noise false-positive category (mirrors CA1068's exceptions).
 - **CC005B** (controller actions) no longer fires on methods that are not routable actions:
-  non-public methods, `static` methods, and `[NonAction]` methods.
+  non-public methods, `static` methods, and `[NonAction]` methods. HTTP-method attributes are
+  now matched by `Microsoft.AspNetCore.Mvc` identity (including subclasses), so a user-defined
+  `HttpGetAttribute` no longer triggers a false positive and a subclass of a framework attribute
+  is now correctly recognized.
 - **CC006** no longer fires when the token cannot legally be moved last: when it sits
   immediately before a trailing `params` parameter, or when it is the `this` receiver of an
   extension method.
