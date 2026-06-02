@@ -59,12 +59,55 @@ internal static class CancellationTokenFixHelpers
     }
 
     /// <summary>
+    /// Returns the index at which <see cref="InsertTokenParameter"/> will place the token
+    /// (before any trailing <c>params</c> parameter, otherwise the end).
+    /// </summary>
+    private static int GetTokenInsertIndex(ParameterListSyntax parameterList)
+    {
+        var parameters = parameterList.Parameters;
+        if (parameters.Count > 0 &&
+            parameters[parameters.Count - 1].Modifiers.Any(SyntaxKind.ParamsKeyword))
+        {
+            return parameters.Count - 1;
+        }
+
+        return parameters.Count;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when an inserted required token would follow an optional parameter,
+    /// which the compiler rejects (CS1737). In that case the token must be given a default value.
+    /// </summary>
+    public static bool RequiresDefaultToAppend(ParameterListSyntax parameterList)
+    {
+        var insertIndex = GetTokenInsertIndex(parameterList);
+        return parameterList.Parameters.Take(insertIndex).Any(p => p.Default != null);
+    }
+
+    /// <summary>
+    /// Builds an <c>= default</c> clause for a <c>CancellationToken</c> parameter.
+    /// </summary>
+    public static EqualsValueClauseSyntax DefaultValueClause() =>
+        SyntaxFactory.EqualsValueClause(
+            SyntaxFactory.LiteralExpression(
+                SyntaxKind.DefaultLiteralExpression,
+                SyntaxFactory.Token(SyntaxKind.DefaultKeyword)));
+
+    /// <summary>
     /// Adds <c>using System.Threading;</c> in alphabetical order if it is not already present,
     /// preserving the file's leading trivia and avoiding spurious blank lines between usings.
     /// </summary>
     public static CompilationUnitSyntax AddSystemThreadingUsing(CompilationUnitSyntax compilationUnit)
     {
-        if (compilationUnit.Usings.Any(u => u.Name?.ToString() == SystemThreadingNamespace))
+        // Only a plain 'using System.Threading;' makes the unqualified CancellationToken
+        // resolve. An alias ('using X = System.Threading;') or static using does not, so
+        // those must NOT short-circuit insertion (otherwise the fixed code is CS0246).
+        var alreadyImported = compilationUnit.Usings.Any(u =>
+            u.Alias == null &&
+            !u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword) &&
+            u.Name?.ToString() == SystemThreadingNamespace);
+
+        if (alreadyImported)
             return compilationUnit;
 
         var usings = compilationUnit.Usings.ToList();
@@ -78,9 +121,18 @@ internal static class CancellationTokenFixHelpers
             return compilationUnit.WithUsings(SyntaxFactory.List(usings));
         }
 
-        // Alphabetical (ordinal) insert position.
+        // Global usings must precede all non-global usings in a file (CS8915), so the
+        // directive can only be inserted at or after the end of the global-using block.
+        var firstNonGlobal = 0;
+        while (firstNonGlobal < usings.Count &&
+               usings[firstNonGlobal].GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))
+        {
+            firstNonGlobal++;
+        }
+
+        // Alphabetical (ordinal) insert position among the non-global usings.
         var insertIndex = usings.Count;
-        for (var i = 0; i < usings.Count; i++)
+        for (var i = firstNonGlobal; i < usings.Count; i++)
         {
             if (string.CompareOrdinal(SystemThreadingNamespace, usings[i].Name?.ToString()) < 0)
             {

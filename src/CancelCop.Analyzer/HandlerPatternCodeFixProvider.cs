@@ -58,16 +58,27 @@ public class HandlerPatternCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Create the CancellationToken parameter
+        // Choose a non-colliding name (CS0100 guard).
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(methodDeclaration.ParameterList);
+
         var tokenParameter = SyntaxFactory.Parameter(
-                SyntaxFactory.Identifier("cancellationToken"))
+                SyntaxFactory.Identifier(tokenName))
             .WithType(SyntaxFactory.ParseTypeName("CancellationToken"));
 
-        // Add the parameter to the method
-        var newParameterList = methodDeclaration.ParameterList.AddParameters(tokenParameter);
+        // A required token after an optional parameter is CS1737 — give it a default in that case.
+        if (CancellationTokenFixHelpers.RequiresDefaultToAppend(methodDeclaration.ParameterList))
+            tokenParameter = tokenParameter.WithDefault(CancellationTokenFixHelpers.DefaultValueClause());
+
+        // Insert before any trailing 'params' parameter (CS0231 guard); otherwise append.
+        var newParameterList = CancellationTokenFixHelpers.InsertTokenParameter(
+            methodDeclaration.ParameterList, tokenParameter);
         var newMethodDeclaration = methodDeclaration.WithParameterList(newParameterList);
 
         var newRoot = root.ReplaceNode(methodDeclaration, newMethodDeclaration);
+
+        // Add 'using System.Threading;' when missing (CS0246 guard).
+        if (newRoot is CompilationUnitSyntax compilationUnit)
+            newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
 
         return document.WithSyntaxRoot(newRoot);
     }

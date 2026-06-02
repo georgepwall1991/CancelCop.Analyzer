@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CC005A/CC005B code fix** (`HandlerPatternCodeFixProvider`) now produces compilable
+  output for MediatR handlers and controller actions:
+  - adds `using System.Threading;` when it is missing (was emitting CS0246);
+  - gives the token `= default` when it would otherwise follow an optional parameter
+    (was emitting CS1737);
+  - picks a non-colliding parameter name and inserts before a trailing `params`.
+  These cases are covered by new tests that compile the fixed output (no
+  `CompilerDiagnostics.None`).
+- **Using insertion** (shared by the CC001 and CC005 code fixes) now inserts
+  `using System.Threading;` after any `global using` block instead of before it
+  (which would otherwise produce CS8915), and no longer treats an alias or static
+  using of `System.Threading` as satisfying the namespace import (which would have
+  left the unqualified `CancellationToken` unresolved, CS0246).
 - **CC001 code fix** now produces compilable, clean output in three previously broken cases:
   - inserts the `CancellationToken` parameter *before* a trailing `params` parameter
     instead of after it (was emitting CS0231);
