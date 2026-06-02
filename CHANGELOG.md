@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CI code coverage:** the test step now collects Cobertura coverage (`coverlet.collector`)
+  and uploads it as a build artifact.
+- **Dependabot:** weekly update checks for NuGet (grouped `Microsoft.CodeAnalysis.*` and test
+  packages) and GitHub Actions.
 - **CI `.nupkg` consumer smoke test:** CI now packs the package, asserts its layout
   (`analyzers/dotnet/cs/*.dll` present, no `<dependencies>`), builds a throwaway consumer
   against it, and fails if a known diagnostic (CC001) does not fire — catching packaging

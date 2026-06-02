@@ -27,7 +27,13 @@ jobs:
       run: dotnet build CancelCop.sln --configuration Release --no-restore
 
     - name: Test
-      run: dotnet test CancelCop.sln --configuration Release --no-build --verbosity normal
+      run: dotnet test CancelCop.sln --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+    - name: Upload coverage
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage
+        path: ./coverage/**/coverage.cobertura.xml
 
     - name: Pack
       run: dotnet pack src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj --configuration Release --no-build --output ./artifacts
