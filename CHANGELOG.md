@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-02
+
 ### Fixed
 
 - **CC005C code fix** (`MinimalApiCodeFixProvider`) now produces compilable output:
