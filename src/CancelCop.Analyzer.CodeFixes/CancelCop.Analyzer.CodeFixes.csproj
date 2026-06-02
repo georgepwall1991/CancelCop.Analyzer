@@ -10,6 +10,7 @@
         <!-- Code-fix assembly: references Workspaces (available at IDE time). Packaged alongside
              the analyzer by the CancelCop.Analyzer.Package host project. -->
         <IsPackable>false</IsPackable>
+        <WarningsAsErrors>$(WarningsAsErrors);RS1038</WarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>

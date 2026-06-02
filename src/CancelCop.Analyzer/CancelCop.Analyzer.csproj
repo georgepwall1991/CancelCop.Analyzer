@@ -10,6 +10,8 @@
         <!-- Analyzer-only assembly: must NOT reference Microsoft.CodeAnalysis.Workspaces (RS1038).
              Packaging is handled by the CancelCop.Analyzer.Package host project. -->
         <IsPackable>false</IsPackable>
+        <!-- Fail the build on analyzer-authoring regressions (assembly layout, release tracking). -->
+        <WarningsAsErrors>$(WarningsAsErrors);RS1038;RS2008;RS1036;RS1041</WarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
@@ -17,6 +19,12 @@
              widen compatibility (4.8.0 = VS 17.8 / .NET 8 SDK). -->
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <!-- Re-enable RS2008 release tracking by feeding the release files to the analyzer. -->
+    <ItemGroup>
+        <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+        <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
     </ItemGroup>
 
 </Project>

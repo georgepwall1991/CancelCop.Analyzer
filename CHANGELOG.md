@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Analyzer release tracking:** `AnalyzerReleases.Shipped.md` / `AnalyzerReleases.Unshipped.md`
+  are now `AdditionalFiles`, re-enabling RS2008, and the analyzer/code-fix projects treat the
+  analyzer-authoring rules (RS1038, RS2008, RS1036, RS1041) as errors so packaging/release-tracking
+  regressions fail the build.
 - **Roslyn compatibility:** lowered the compile-time floor from `Microsoft.CodeAnalysis.*`
   4.14.0 to **4.8.0** (VS 17.8 / .NET 8 SDK) for both the analyzer and code-fix assemblies,
   widening the range of hosts the package loads in. Consumers on newer Roslyn are unaffected.
