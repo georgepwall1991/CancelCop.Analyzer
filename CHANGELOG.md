@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CC009** now decides whether a loop is cancellation-checked by resolving the receiver
+  symbol through the semantic model and comparing it to the in-scope token, instead of
+  substring-matching its name. A look-alike named `…token` no longer satisfies the check (was
+  a false negative), a real `CancellationToken` with a plain name now does (was a false
+  positive), and a check on a *different* token no longer suppresses the diagnostic for the
+  reported token. The `IsCancellationTokenExpression` heuristic is removed.
 - **CC001** and **CC006** no longer fire on methods whose signature is dictated by a base
   type or interface — `override` methods, explicit/implicit interface implementations, and
   `extern` methods. The previously offered fixes broke compilation (CS0115/CS0535) on these,

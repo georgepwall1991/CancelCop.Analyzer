@@ -329,6 +329,87 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Loop_WithCheckOnNonTokenNamedLikeToken_ShouldReportDiagnostic()
+    {
+        // 'myToken' is NOT a CancellationToken; the old substring heuristic accepted it
+        // because the name contains 'token', silently disabling the rule (false negative).
+        var test = @"
+using System.Threading;
+
+public struct FakeToken
+{
+    public bool IsCancellationRequested => false;
+}
+
+public class TestClass
+{
+    public void Process(int count, CancellationToken cancellationToken)
+    {
+        FakeToken myToken = default;
+        {|#0:for|} (int i = 0; i < count; i++)
+        {
+            if (myToken.IsCancellationRequested)
+                break;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Loop_WithCheckOnRealTokenWithPlainName_ShouldNotReportDiagnostic()
+    {
+        // 'other' is the in-scope CancellationToken; its name lacks any token substring, so the
+        // old heuristic wrongly flagged this loop (false positive). Symbol resolution accepts it.
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(int count, CancellationToken other)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            other.ThrowIfCancellationRequested();
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Loop_WithCheckOnDifferentToken_ShouldReportDiagnostic()
+    {
+        // The loop's in-scope token is 'cancellationToken' (the first token parameter); checking
+        // a different token does not satisfy the rule for the reported token.
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(int count, CancellationToken cancellationToken, CancellationToken timeoutToken)
+    {
+        {|#0:for|} (int i = 0; i < count; i++)
+        {
+            timeoutToken.ThrowIfCancellationRequested();
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task SyncMethod_WithToken_LoopWithoutCheck_ShouldReportDiagnostic()
     {
         var test = @"

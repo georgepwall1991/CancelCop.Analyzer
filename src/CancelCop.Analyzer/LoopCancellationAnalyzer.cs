@@ -135,8 +135,8 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
         if (tokenParameter == null)
             return;
 
-        // Check if the loop body contains a cancellation check
-        if (HasCancellationCheck(loopBody, tokenParameter.Name))
+        // Check if the loop body contains a cancellation check on the in-scope token
+        if (HasCancellationCheck(loopBody, tokenParameter, context.SemanticModel))
             return;
 
         // Report diagnostic
@@ -183,42 +183,34 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Checks if the loop body contains a cancellation check (ThrowIfCancellationRequested or IsCancellationRequested).
+    /// Checks if the loop body contains a cancellation check (ThrowIfCancellationRequested or
+    /// IsCancellationRequested) on the specific in-scope token. The receiver is resolved through
+    /// the semantic model and compared to <paramref name="tokenParameter"/> by symbol identity,
+    /// so a look-alike named "...token" is rejected, a real token with a plain name is accepted,
+    /// and a check on a different token does not satisfy the rule for the reported token.
     /// </summary>
-    private static bool HasCancellationCheck(StatementSyntax loopBody, string tokenName)
+    private static bool HasCancellationCheck(StatementSyntax loopBody, IParameterSymbol tokenParameter, SemanticModel semanticModel)
     {
         if (loopBody == null)
             return false;
 
-        // Look for ThrowIfCancellationRequested() calls or IsCancellationRequested property access
-        var descendants = loopBody.DescendantNodesAndSelf();
-
-        foreach (var node in descendants)
+        foreach (var node in loopBody.DescendantNodesAndSelf())
         {
-            // Check for ThrowIfCancellationRequested() call
-            if (node is InvocationExpressionSyntax invocation)
+            // ThrowIfCancellationRequested() invocation on the in-scope token.
+            if (node is InvocationExpressionSyntax invocation &&
+                invocation.Expression is MemberAccessExpressionSyntax call &&
+                call.Name.Identifier.Text == "ThrowIfCancellationRequested" &&
+                IsTokenReceiver(call.Expression, tokenParameter, semanticModel))
             {
-                if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-                {
-                    if (memberAccess.Name.Identifier.Text == "ThrowIfCancellationRequested")
-                    {
-                        // Verify it's on the correct token (or any CancellationToken)
-                        var expressionText = memberAccess.Expression.ToString();
-                        if (expressionText == tokenName || IsCancellationTokenExpression(expressionText))
-                            return true;
-                    }
-                }
+                return true;
             }
 
-            // Check for IsCancellationRequested property access
-            if (node is MemberAccessExpressionSyntax propAccess)
+            // IsCancellationRequested property access on the in-scope token.
+            if (node is MemberAccessExpressionSyntax propAccess &&
+                propAccess.Name.Identifier.Text == "IsCancellationRequested" &&
+                IsTokenReceiver(propAccess.Expression, tokenParameter, semanticModel))
             {
-                if (propAccess.Name.Identifier.Text == "IsCancellationRequested")
-                {
-                    var expressionText = propAccess.Expression.ToString();
-                    if (expressionText == tokenName || IsCancellationTokenExpression(expressionText))
-                        return true;
-                }
+                return true;
             }
         }
 
@@ -226,14 +218,11 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Checks if the expression looks like a CancellationToken (common naming patterns).
+    /// Returns true when the expression resolves to the supplied token parameter symbol.
     /// </summary>
-    private static bool IsCancellationTokenExpression(string expression)
+    private static bool IsTokenReceiver(ExpressionSyntax expression, IParameterSymbol tokenParameter, SemanticModel semanticModel)
     {
-        // Common token naming patterns
-        var lowerExpression = expression.ToLowerInvariant();
-        return lowerExpression.Contains("cancellation") ||
-               lowerExpression.Contains("token") ||
-               lowerExpression == "ct";
+        var symbol = semanticModel.GetSymbolInfo(expression).Symbol;
+        return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, tokenParameter);
     }
 }
