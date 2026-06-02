@@ -18,17 +18,24 @@ jobs:
           9.0.x
           10.0.x
 
+    # Derive the package version from the release tag (e.g. v1.4.0 -> 1.4.0) so the published
+    # package matches the tag instead of a hardcoded <Version>.
+    - name: Resolve version from tag
+      run: echo "PKG_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
     - name: Restore dependencies
       run: dotnet restore CancelCop.sln
 
     - name: Build
-      run: dotnet build CancelCop.sln --configuration Release --no-restore
+      run: dotnet build CancelCop.sln --configuration Release --no-restore -p:Version=${{ env.PKG_VERSION }}
 
     - name: Test
       run: dotnet test CancelCop.sln --configuration Release --no-build --verbosity normal
 
     - name: Pack
-      run: dotnet pack src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj --configuration Release --no-build --output ./artifacts
+      run: dotnet pack src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj --configuration Release --no-build -p:Version=${{ env.PKG_VERSION }} --output ./artifacts
 
+    # No --skip-duplicate: publishing a version that already exists must FAIL the release
+    # rather than silently no-op.
     - name: Publish to NuGet
-      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
