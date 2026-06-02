@@ -57,11 +57,13 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
         if (!methodSymbol.Parameters.Any())
             return;
 
-        // Find CancellationToken parameter
+        // The 'this' receiver of an extension method must be first and cannot be moved, so it is
+        // exempt; start the search after it (any further token parameter can still be moved last).
         var parameters = methodSymbol.Parameters;
+        var startIndex = methodSymbol.IsExtensionMethod ? 1 : 0;
         var cancellationTokenIndex = -1;
 
-        for (int i = 0; i < parameters.Length; i++)
+        for (int i = startIndex; i < parameters.Length; i++)
         {
             if (CancellationTokenHelpers.IsCancellationToken(parameters[i].Type))
             {
@@ -70,8 +72,13 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        // If no CancellationToken parameter, nothing to check
+        // If no movable CancellationToken parameter, nothing to check
         if (cancellationTokenIndex == -1)
+            return;
+
+        // A trailing 'params' parameter must stay last, so a token immediately before it is
+        // already in its best possible position and cannot be moved further right.
+        if (cancellationTokenIndex == parameters.Length - 2 && parameters[parameters.Length - 1].IsParams)
             return;
 
         // If CancellationToken is not the last parameter, report diagnostic
