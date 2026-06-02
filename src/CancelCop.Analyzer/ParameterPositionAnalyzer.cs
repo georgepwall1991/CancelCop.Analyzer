@@ -33,27 +33,73 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
         context.RegisterSyntaxNodeAction(AnalyzeMethodDeclaration, SyntaxKind.MethodDeclaration);
+        context.RegisterSyntaxNodeAction(AnalyzeConstructorDeclaration, SyntaxKind.ConstructorDeclaration);
+        context.RegisterSyntaxNodeAction(AnalyzeLocalFunction, SyntaxKind.LocalFunctionStatement);
+        // Primary constructors (C# 12) put their parameters on the type declaration.
+        context.RegisterSyntaxNodeAction(
+            AnalyzePrimaryConstructor,
+            SyntaxKind.ClassDeclaration,
+            SyntaxKind.StructDeclaration,
+            SyntaxKind.RecordDeclaration,
+            SyntaxKind.RecordStructDeclaration);
     }
 
     private static void AnalyzeMethodDeclaration(SyntaxNodeAnalysisContext context)
     {
-        var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-        var methodSymbol = context.SemanticModel.GetDeclaredSymbol(methodDeclaration);
+        var declaration = (MethodDeclarationSyntax)context.Node;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(declaration);
+        // Public-surface convention: only public/protected methods are checked.
+        Analyze(context, symbol, declaration.ParameterList, requireAccessibleSurface: true);
+    }
 
+    private static void AnalyzeConstructorDeclaration(SyntaxNodeAnalysisContext context)
+    {
+        var declaration = (ConstructorDeclarationSyntax)context.Node;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(declaration);
+        Analyze(context, symbol, declaration.ParameterList, requireAccessibleSurface: true);
+    }
+
+    private static void AnalyzeLocalFunction(SyntaxNodeAnalysisContext context)
+    {
+        var declaration = (LocalFunctionStatementSyntax)context.Node;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(declaration) as IMethodSymbol;
+        // Local functions have no public surface, but the convention still applies.
+        Analyze(context, symbol, declaration.ParameterList, requireAccessibleSurface: false);
+    }
+
+    private static void AnalyzePrimaryConstructor(SyntaxNodeAnalysisContext context)
+    {
+        var typeDeclaration = (TypeDeclarationSyntax)context.Node;
+        if (typeDeclaration.ParameterList == null)
+            return;
+
+        var typeSymbol = context.SemanticModel.GetDeclaredSymbol(typeDeclaration);
+        var primaryConstructor = typeSymbol?.InstanceConstructors.FirstOrDefault(c =>
+            c.DeclaringSyntaxReferences.Any(r => r.Span == typeDeclaration.Span));
+
+        Analyze(context, primaryConstructor, typeDeclaration.ParameterList, requireAccessibleSurface: true);
+    }
+
+    private static void Analyze(
+        SyntaxNodeAnalysisContext context,
+        IMethodSymbol? methodSymbol,
+        ParameterListSyntax parameterListSyntax,
+        bool requireAccessibleSurface)
+    {
         if (methodSymbol == null)
             return;
 
-        // Only check public and protected methods
-        if (methodSymbol.DeclaredAccessibility != Accessibility.Public &&
+        // Only check public and protected members (where applicable to the surface).
+        if (requireAccessibleSurface &&
+            methodSymbol.DeclaredAccessibility != Accessibility.Public &&
             methodSymbol.DeclaredAccessibility != Accessibility.Protected)
             return;
 
-        // Don't flag methods whose parameter order is fixed by a base type or interface — the
+        // Don't flag members whose parameter order is fixed by a base type or interface — the
         // override/implementation cannot reorder its parameters (CA1068 makes the same exception).
         if (CancellationTokenHelpers.IsSignatureExternallyControlled(methodSymbol))
             return;
 
-        // Check if method has parameters
         if (!methodSymbol.Parameters.Any())
             return;
 
@@ -84,7 +130,7 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
         // If CancellationToken is not the last parameter, report diagnostic
         if (cancellationTokenIndex != parameters.Length - 1)
         {
-            var cancellationTokenParameter = methodDeclaration.ParameterList.Parameters[cancellationTokenIndex];
+            var cancellationTokenParameter = parameterListSyntax.Parameters[cancellationTokenIndex];
 
             var diagnostic = Diagnostic.Create(
                 Rule,

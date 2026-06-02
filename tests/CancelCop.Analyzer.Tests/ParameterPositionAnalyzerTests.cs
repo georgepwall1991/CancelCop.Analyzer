@@ -161,6 +161,98 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Constructor_TokenNotLast_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class Worker
+{
+    public Worker({|#0:CancellationToken cancellationToken|}, string name)
+    {
+    }
+}";
+
+        var expected = new DiagnosticResult("CC006", Microsoft.CodeAnalysis.DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments(".ctor");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task Constructor_TokenLast_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class Worker
+{
+    public Worker(string name, CancellationToken cancellationToken)
+    {
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task PrimaryConstructor_TokenNotLast_ShouldReportDiagnostic()
+    {
+        // C# 12 primary-constructor parameters live on the type declaration.
+        var test = @"
+using System.Threading;
+
+public class Worker({|#0:CancellationToken cancellationToken|}, string name)
+{
+}";
+
+        var expected = new DiagnosticResult("CC006", Microsoft.CodeAnalysis.DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments(".ctor");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task PrimaryConstructor_TokenLast_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class Worker(string name, CancellationToken cancellationToken)
+{
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task LocalFunction_TokenNotLast_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        void Inner({|#0:CancellationToken cancellationToken|}, string name)
+        {
+        }
+
+        Inner(default, ""x"");
+    }
+}";
+
+        var expected = new DiagnosticResult("CC006", Microsoft.CodeAnalysis.DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments("Inner");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task TokenImmediatelyBeforeTrailingParams_ShouldNotReportDiagnostic()
     {
         // A 'params' parameter must stay last, so a token directly before it is already in its

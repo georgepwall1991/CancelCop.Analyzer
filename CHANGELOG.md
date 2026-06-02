@@ -85,7 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is now correctly recognized.
 - **CC006** no longer fires when the token cannot legally be moved last: when it sits
   immediately before a trailing `params` parameter, or when it is the `this` receiver of an
-  extension method.
+  extension method. It now also checks **constructors** and **local functions** (previously a
+  false negative — only methods were analyzed).
 - CI now installs both the .NET 9 and .NET 10 SDKs and `global.json` is pinned to
   `10.0.300`, so the `net10.0` projects build deterministically in CI (was failing
   with NETSDK1045).
