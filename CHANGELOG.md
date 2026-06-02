@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Roslyn compatibility:** lowered the compile-time floor from `Microsoft.CodeAnalysis.*`
+  4.14.0 to **4.8.0** (VS 17.8 / .NET 8 SDK) for both the analyzer and code-fix assemblies,
+  widening the range of hosts the package loads in. Consumers on newer Roslyn are unaffected.
 - **Packaging:** split into an analyzer assembly (`CancelCop.Analyzer`, no
   `Microsoft.CodeAnalysis.Workspaces` reference) and a code-fix assembly
   (`CancelCop.Analyzer.CodeFixes`), packed together into `analyzers/dotnet/cs/` by a

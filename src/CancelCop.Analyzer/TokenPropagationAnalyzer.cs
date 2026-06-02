@@ -133,7 +133,9 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
             // Check local function first
             if (current is LocalFunctionStatementSyntax localFunction)
             {
-                var localFunctionSymbol = semanticModel.GetDeclaredSymbol(localFunction);
+                // GetDeclaredSymbol(LocalFunctionStatementSyntax) returns ISymbol on the 4.8.0
+                // compile-time floor, so narrow it explicitly.
+                var localFunctionSymbol = semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol;
                 var tokenParam = CancellationTokenHelpers.FindCancellationTokenParameter(localFunctionSymbol);
                 if (tokenParam != null)
                     return tokenParam;
