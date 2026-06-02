@@ -8,16 +8,17 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
 
 namespace CancelCop.Analyzer;
 
-[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(HandlerPatternCodeFixProvider)), Shared]
-public class HandlerPatternCodeFixProvider : CodeFixProvider
+[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MissingCancellationTokenCodeFixProvider)), Shared]
+public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
 {
     private const string Title = "Add CancellationToken parameter";
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
-        ImmutableArray.Create("CC005A", "CC005B");
+        ImmutableArray.Create(MissingCancellationTokenAnalyzer.DiagnosticId);
 
     public sealed override FixAllProvider GetFixAllProvider() =>
         WellKnownFixAllProviders.BatchFixer;
@@ -35,7 +36,7 @@ public class HandlerPatternCodeFixProvider : CodeFixProvider
             .Parent?
             .AncestorsAndSelf()
             .OfType<MethodDeclarationSyntax>()
-            .First();
+            .FirstOrDefault();
 
         if (methodDeclaration == null)
             return;
@@ -43,8 +44,7 @@ public class HandlerPatternCodeFixProvider : CodeFixProvider
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => AddCancellationTokenParameterAsync(
-                    context.Document, methodDeclaration, c),
+                createChangedDocument: c => AddCancellationTokenParameterAsync(context.Document, methodDeclaration, c),
                 equivalenceKey: Title),
             diagnostic);
     }
@@ -58,16 +58,31 @@ public class HandlerPatternCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Create the CancellationToken parameter
-        var tokenParameter = SyntaxFactory.Parameter(
-                SyntaxFactory.Identifier("cancellationToken"))
-            .WithType(SyntaxFactory.ParseTypeName("CancellationToken"));
+        // Choose a parameter name that does not collide with an existing parameter (CS0100) or
+        // a local declared in the body (CS0136).
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(
+            methodDeclaration.ParameterList,
+            methodDeclaration.Body ?? (SyntaxNode?)methodDeclaration.ExpressionBody);
 
-        // Add the parameter to the method
-        var newParameterList = methodDeclaration.ParameterList.AddParameters(tokenParameter);
-        var newMethodDeclaration = methodDeclaration.WithParameterList(newParameterList);
+        var cancellationTokenParameter = SyntaxFactory.Parameter(
+                SyntaxFactory.Identifier(tokenName))
+            .WithType(SyntaxFactory.ParseTypeName("CancellationToken"))
+            .WithDefault(SyntaxFactory.EqualsValueClause(
+                SyntaxFactory.LiteralExpression(SyntaxKind.DefaultLiteralExpression,
+                    SyntaxFactory.Token(SyntaxKind.DefaultKeyword))));
+
+        // Insert before any trailing 'params' parameter (CS0231 guard); otherwise append last.
+        var newParameterList = CancellationTokenFixHelpers.InsertTokenParameter(
+            methodDeclaration.ParameterList, cancellationTokenParameter);
+        var newMethodDeclaration = methodDeclaration.WithParameterList(newParameterList)
+            .WithAdditionalAnnotations(Formatter.Annotation);
 
         var newRoot = root.ReplaceNode(methodDeclaration, newMethodDeclaration);
+
+        if (newRoot is CompilationUnitSyntax compilationUnit)
+        {
+            newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
+        }
 
         return document.WithSyntaxRoot(newRoot);
     }

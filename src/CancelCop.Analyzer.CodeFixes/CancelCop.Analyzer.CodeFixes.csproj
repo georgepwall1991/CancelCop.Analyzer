@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <!-- Code-fix assembly: references Workspaces (available at IDE time). Packaged alongside
+             the analyzer by the CancelCop.Analyzer.Package host project. -->
+        <IsPackable>false</IsPackable>
+        <WarningsAsErrors>$(WarningsAsErrors);RS1038</WarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Compile-time floor; consumers on a newer Roslyn host still work (4.8.0 = VS 17.8). -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\CancelCop.Analyzer\CancelCop.Analyzer.csproj" />
+    </ItemGroup>
+
+</Project>

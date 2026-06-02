@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
@@ -7,34 +7,24 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IsRoslynComponent>true</IsRoslynComponent>
-
-        <!-- NuGet Package Info -->
-        <PackageId>CancelCop.Analyzer</PackageId>
-        <Version>1.3.0</Version>
-        <Authors>George Wall</Authors>
-        <Description>A surgical Roslyn analyzer focused on CancellationToken best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes for public APIs, handlers, EF Core, HTTP calls, and Minimal APIs.</Description>
-        <PackageTags>roslyn;analyzer;cancellationtoken;async;code-fix;loops;efcore;httpclient</PackageTags>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageIcon>icon.png</PackageIcon>
-        <DevelopmentDependency>true</DevelopmentDependency>
-        <IncludeBuildOutput>false</IncludeBuildOutput>
-        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <!-- Analyzer-only assembly: must NOT reference Microsoft.CodeAnalysis.Workspaces (RS1038).
+             Packaging is handled by the CancelCop.Analyzer.Package host project. -->
+        <IsPackable>false</IsPackable>
+        <!-- Fail the build on analyzer-authoring regressions (assembly layout, release tracking). -->
+        <WarningsAsErrors>$(WarningsAsErrors);RS1038;RS2008;RS1036;RS1041</WarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
-        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-        <None Include="README.md" Pack="true" PackagePath="\" />
-        <None Include="icon.png" Pack="true" PackagePath="\" />
+        <!-- Compile-time floor; consumers on a newer Roslyn host still work. Keep this low to
+             widen compatibility (4.8.0 = VS 17.8 / .NET 8 SDK). -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
     </ItemGroup>
 
+    <!-- Re-enable RS2008 release tracking by feeding the release files to the analyzer. -->
     <ItemGroup>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
-        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+        <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+        <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
     </ItemGroup>
 
 </Project>

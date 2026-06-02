@@ -71,6 +71,12 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
 
     private static bool IsControllerActionMethod(IMethodSymbol methodSymbol)
     {
+        // Only public instance methods are routed as actions; private/protected/static
+        // methods (and [NonAction] methods) are never invoked by the routing system, so they
+        // do not need a CancellationToken.
+        if (methodSymbol.DeclaredAccessibility != Accessibility.Public || methodSymbol.IsStatic)
+            return false;
+
         // Check if the containing type inherits from ControllerBase or Controller
         var containingType = methodSymbol.ContainingType;
         if (containingType == null)
@@ -80,18 +86,61 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
         if (!inheritsFromController)
             return false;
 
-        // Check if method has an HTTP method attribute
-        var hasHttpAttribute = methodSymbol.GetAttributes().Any(attr =>
+        if (HasAttribute(methodSymbol, "NonActionAttribute", "Microsoft.AspNetCore.Mvc"))
+            return false;
+
+        // Check if the method has a real MVC HTTP method attribute (resolved by namespace
+        // identity, including subclasses of the framework attributes).
+        return methodSymbol.GetAttributes().Any(attr => IsMvcHttpMethodAttribute(attr.AttributeClass));
+    }
+
+    private static bool IsMvcHttpMethodAttribute(INamedTypeSymbol? attributeClass)
+    {
+        for (var type = attributeClass; type != null; type = type.BaseType)
         {
-            var attributeName = attr.AttributeClass?.Name;
-            if (attributeName == null)
-                return false;
+            var name = type.Name;
+            var shortName = name.EndsWith("Attribute")
+                ? name.Substring(0, name.Length - "Attribute".Length)
+                : name;
 
-            return HttpMethodAttributes.Contains(attributeName) ||
-                   HttpMethodAttributes.Contains(attributeName.Replace("Attribute", ""));
-        });
+            if (HttpMethodAttributes.Contains(shortName) &&
+                type.ContainingNamespace?.ToDisplayString() == "Microsoft.AspNetCore.Mvc")
+            {
+                return true;
+            }
+        }
 
-        return hasHttpAttribute;
+        return false;
+    }
+
+    private static bool HasAttribute(IMethodSymbol methodSymbol, string attributeTypeName, string containingNamespace)
+    {
+        var shortName = attributeTypeName.Replace("Attribute", "");
+
+        // [NonAction] is inheritable, so an override that inherits it from a base virtual action
+        // is still non-routed even though the attribute is not declared on the override itself.
+        for (IMethodSymbol? current = methodSymbol; current != null; current = current.OverriddenMethod)
+        {
+            var found = current.GetAttributes().Any(attr =>
+            {
+                var attributeClass = attr.AttributeClass;
+                if (attributeClass == null)
+                    return false;
+
+                var name = attributeClass.Name;
+                if (name != attributeTypeName && name != shortName)
+                    return false;
+
+                // Match by namespace so a user-defined attribute of the same name is not treated
+                // as the framework attribute.
+                return attributeClass.ContainingNamespace?.ToDisplayString() == containingNamespace;
+            });
+
+            if (found)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool InheritsFromControllerBase(INamedTypeSymbol typeSymbol)
