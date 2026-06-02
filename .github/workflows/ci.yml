@@ -32,6 +32,60 @@ jobs:
     - name: Pack
       run: dotnet pack src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj --configuration Release --no-build --output ./artifacts
 
+    # Consumer smoke test: pack a uniquely-versioned copy, assert the package layout, then build a
+    # throwaway consumer against it and assert a known diagnostic (CC001) actually fires.
+    - name: Package consumer smoke test
+      shell: bash
+      run: |
+        set -euo pipefail
+        FEED="$(mktemp -d)"
+        dotnet pack src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj \
+          --configuration Release --no-build -p:Version=0.0.0-smoke -o "$FEED"
+        PKG="$FEED/CancelCop.Analyzer.0.0.0-smoke.nupkg"
+
+        echo "Asserting package layout..."
+        # Capture first, then match with 'case' — piping unzip into 'grep -q' can SIGPIPE unzip
+        # (exit 141) under 'set -o pipefail' when grep closes the pipe early.
+        LISTING="$(unzip -l "$PKG")"
+        case "$LISTING" in
+          *"analyzers/dotnet/cs/CancelCop.Analyzer.dll"*) ;;
+          *) echo "::error::analyzer assembly missing from package"; exit 1 ;;
+        esac
+        case "$LISTING" in
+          *"analyzers/dotnet/cs/CancelCop.Analyzer.CodeFixes.dll"*) ;;
+          *) echo "::error::code-fix assembly missing from package"; exit 1 ;;
+        esac
+        NUSPEC="$(unzip -p "$PKG" '*.nuspec')"
+        case "$NUSPEC" in
+          *"<dependency"*) echo "::error::package must not declare runtime dependencies"; exit 1 ;;
+        esac
+
+        CONSUMER="$(mktemp -d)"
+        cat > "$CONSUMER/consumer.csproj" <<EOF
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFramework>net10.0</TargetFramework>
+            <RestoreSources>$FEED;https://api.nuget.org/v3/index.json</RestoreSources>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="CancelCop.Analyzer" Version="0.0.0-smoke">
+              <PrivateAssets>all</PrivateAssets>
+            </PackageReference>
+          </ItemGroup>
+        </Project>
+        EOF
+        cat > "$CONSUMER/Violation.cs" <<EOF
+        using System.Threading.Tasks;
+        public class Demo { public async Task DoWorkAsync() { await Task.Delay(10); } }
+        EOF
+
+        echo "Building consumer; expecting CC001..."
+        dotnet build "$CONSUMER/consumer.csproj" --configuration Release 2>&1 | tee "$CONSUMER/build.log"
+        if ! grep -q 'warning CC001' "$CONSUMER/build.log"; then
+          echo "::error::CC001 did not fire in the consumer build — packaging regression"; exit 1
+        fi
+        echo "Smoke test passed."
+
     - name: Upload NuGet Package
       uses: actions/upload-artifact@v4
       with:

@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - inserts `using System.Threading;` without leaving a spurious blank line between
     using directives (the malformed output was previously baked into the tests).
 
+### Added
+
+- **CI `.nupkg` consumer smoke test:** CI now packs the package, asserts its layout
+  (`analyzers/dotnet/cs/*.dll` present, no `<dependencies>`), builds a throwaway consumer
+  against it, and fails if a known diagnostic (CC001) does not fire — catching packaging
+  regressions before release.
+
 ### Changed
 
 - **Reproducible builds:** enabled `Deterministic`, `ContinuousIntegrationBuild` (on CI),
