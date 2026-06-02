@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CC005C code fix** (`MinimalApiCodeFixProvider`) now produces compilable output:
+  - adds `using System.Threading;` when missing (was emitting CS0246);
+  - picks a non-colliding parameter name (was emitting CS0100);
+  - no longer rewrites a simple (untyped) lambda into a typed/untyped mix (CS0748) —
+    such a lambda is not a bindable minimal-API handler, so no fix is offered instead.
+- **Token name selection** (shared by the CC001 and CC005 code fixes) now avoids names
+  declared as locals in the target method/lambda body, not just parameter names, so the
+  injected token cannot shadow a body local (CS0136).
 - **CC005A/CC005B code fix** (`HandlerPatternCodeFixProvider`) now produces compilable
   output for MediatR handlers and controller actions:
   - adds `using System.Threading;` when it is missing (was emitting CS0246);

@@ -31,12 +31,10 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-        // Find the lambda expression at the diagnostic location
         var node = root.FindToken(diagnosticSpan.Start).Parent;
         if (node == null)
             return;
 
-        // Check for ParenthesizedLambdaExpressionSyntax
         var parenthesizedLambda = node.AncestorsAndSelf()
             .OfType<ParenthesizedLambdaExpressionSyntax>()
             .FirstOrDefault();
@@ -53,21 +51,10 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
             return;
         }
 
-        // Check for SimpleLambdaExpressionSyntax
-        var simpleLambda = node.AncestorsAndSelf()
-            .OfType<SimpleLambdaExpressionSyntax>()
-            .FirstOrDefault();
-
-        if (simpleLambda != null)
-        {
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: Title,
-                    createChangedDocument: c => AddCancellationTokenToSimpleLambdaAsync(
-                        context.Document, simpleLambda, c),
-                    equivalenceKey: Title),
-                diagnostic);
-        }
+        // A simple lambda has a single UNTYPED parameter (e.g. `async id => ...`). Adding a
+        // typed CancellationToken would mix typed/untyped parameters (CS0748), and an untyped
+        // token is not recognized as a CancellationToken (the fix would re-fire). Such a lambda
+        // is not a bindable minimal-API handler anyway, so no safe fix can be offered — skip it.
     }
 
     private static async Task<Document> AddCancellationTokenToParenthesizedLambdaAsync(
@@ -79,44 +66,19 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Create the CancellationToken parameter
-        var tokenParameter = SyntaxFactory.Parameter(
-                SyntaxFactory.Identifier("cancellationToken"))
+        // Avoid colliding with a parameter (CS0100) or a local declared in the lambda body (CS0136).
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(lambda.ParameterList, lambda.Body);
+
+        var tokenParameter = SyntaxFactory.Parameter(SyntaxFactory.Identifier(tokenName))
             .WithType(SyntaxFactory.ParseTypeName("CancellationToken"));
 
-        // Add the parameter to the lambda
         var newParameterList = lambda.ParameterList.AddParameters(tokenParameter);
         var newLambda = lambda.WithParameterList(newParameterList);
 
         var newRoot = root.ReplaceNode(lambda, newLambda);
 
-        return document.WithSyntaxRoot(newRoot);
-    }
-
-    private static async Task<Document> AddCancellationTokenToSimpleLambdaAsync(
-        Document document,
-        SimpleLambdaExpressionSyntax lambda,
-        CancellationToken cancellationToken)
-    {
-        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        if (root == null)
-            return document;
-
-        // Convert simple lambda to parenthesized lambda to add multiple parameters
-        var tokenParameter = SyntaxFactory.Parameter(
-                SyntaxFactory.Identifier("cancellationToken"))
-            .WithType(SyntaxFactory.ParseTypeName("CancellationToken"));
-
-        var parameters = SyntaxFactory.ParameterList(
-            SyntaxFactory.SeparatedList(new[] { lambda.Parameter, tokenParameter }));
-
-        var newLambda = SyntaxFactory.ParenthesizedLambdaExpression(
-            lambda.AsyncKeyword,
-            parameters,
-            lambda.ArrowToken,
-            lambda.Body);
-
-        var newRoot = root.ReplaceNode(lambda, newLambda);
+        if (newRoot is CompilationUnitSyntax compilationUnit)
+            newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
 
         return document.WithSyntaxRoot(newRoot);
     }

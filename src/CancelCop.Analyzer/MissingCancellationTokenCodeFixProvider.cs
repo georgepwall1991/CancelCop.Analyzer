@@ -58,8 +58,11 @@ public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Choose a parameter name that does not collide with an existing parameter (CS0100 guard).
-        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(methodDeclaration.ParameterList);
+        // Choose a parameter name that does not collide with an existing parameter (CS0100) or
+        // a local declared in the body (CS0136).
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(
+            methodDeclaration.ParameterList,
+            methodDeclaration.Body ?? (SyntaxNode?)methodDeclaration.ExpressionBody);
 
         var cancellationTokenParameter = SyntaxFactory.Parameter(
                 SyntaxFactory.Identifier(tokenName))

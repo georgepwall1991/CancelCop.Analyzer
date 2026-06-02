@@ -58,8 +58,10 @@ public class HandlerPatternCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Choose a non-colliding name (CS0100 guard).
-        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(methodDeclaration.ParameterList);
+        // Choose a non-colliding name (CS0100), also avoiding locals in the body (CS0136).
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(
+            methodDeclaration.ParameterList,
+            methodDeclaration.Body ?? (SyntaxNode?)methodDeclaration.ExpressionBody);
 
         var tokenParameter = SyntaxFactory.Parameter(
                 SyntaxFactory.Identifier(tokenName))

@@ -16,23 +16,36 @@ internal static class CancellationTokenFixHelpers
     private const string SystemThreadingNamespace = "System.Threading";
 
     /// <summary>
-    /// Returns a parameter name for the injected token that does not collide with an
-    /// existing parameter name (guards against CS0100 duplicate-parameter errors).
+    /// Returns a parameter name for the injected token that does not collide with an existing
+    /// parameter name (CS0100) nor with any identifier declared in the supplied body scope
+    /// (CS0136 — a parameter may not share a name with a local in the same method/lambda).
     /// </summary>
-    public static string GetUniqueTokenParameterName(ParameterListSyntax parameterList)
+    public static string GetUniqueTokenParameterName(ParameterListSyntax parameterList, SyntaxNode? bodyScope = null)
     {
-        var existing = parameterList.Parameters
-            .Select(p => p.Identifier.Text)
-            .ToImmutableHashSet();
+        var reserved = new HashSet<string>(StringComparer.Ordinal);
 
-        if (!existing.Contains(DefaultTokenName))
+        foreach (var parameter in parameterList.Parameters)
+            reserved.Add(parameter.Identifier.Text);
+
+        if (bodyScope != null)
+        {
+            // Conservatively reserve every identifier that textually appears in the body so the
+            // injected parameter cannot shadow a local/range-variable/etc. declared there.
+            foreach (var token in bodyScope.DescendantTokens())
+            {
+                if (token.IsKind(SyntaxKind.IdentifierToken))
+                    reserved.Add(token.Text);
+            }
+        }
+
+        if (!reserved.Contains(DefaultTokenName))
             return DefaultTokenName;
 
-        if (!existing.Contains("ct"))
+        if (!reserved.Contains("ct"))
             return "ct";
 
         var suffix = 2;
-        while (existing.Contains(DefaultTokenName + suffix))
+        while (reserved.Contains(DefaultTokenName + suffix))
             suffix++;
 
         return DefaultTokenName + suffix;
