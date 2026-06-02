@@ -36,7 +36,7 @@ public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
             .Parent?
             .AncestorsAndSelf()
             .OfType<MethodDeclarationSyntax>()
-            .First();
+            .FirstOrDefault();
 
         if (methodDeclaration == null)
             return;
@@ -58,54 +58,27 @@ public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Create the CancellationToken parameter with default value
+        // Choose a parameter name that does not collide with an existing parameter (CS0100 guard).
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(methodDeclaration.ParameterList);
+
         var cancellationTokenParameter = SyntaxFactory.Parameter(
-                SyntaxFactory.Identifier("cancellationToken"))
+                SyntaxFactory.Identifier(tokenName))
             .WithType(SyntaxFactory.ParseTypeName("CancellationToken"))
             .WithDefault(SyntaxFactory.EqualsValueClause(
                 SyntaxFactory.LiteralExpression(SyntaxKind.DefaultLiteralExpression,
                     SyntaxFactory.Token(SyntaxKind.DefaultKeyword))));
 
-        // Add the parameter to the method
-        var newParameterList = methodDeclaration.ParameterList.AddParameters(cancellationTokenParameter);
+        // Insert before any trailing 'params' parameter (CS0231 guard); otherwise append last.
+        var newParameterList = CancellationTokenFixHelpers.InsertTokenParameter(
+            methodDeclaration.ParameterList, cancellationTokenParameter);
         var newMethodDeclaration = methodDeclaration.WithParameterList(newParameterList)
             .WithAdditionalAnnotations(Formatter.Annotation);
 
         var newRoot = root.ReplaceNode(methodDeclaration, newMethodDeclaration);
 
-        // Add using directive if needed, maintaining alphabetical order
-        var compilationUnit = newRoot as CompilationUnitSyntax;
-        if (compilationUnit != null)
+        if (newRoot is CompilationUnitSyntax compilationUnit)
         {
-            var hasSystemThreadingUsing = compilationUnit.Usings
-                .Any(u => u.Name?.ToString() == "System.Threading");
-
-            if (!hasSystemThreadingUsing)
-            {
-                // Get the existing trailing trivia from the last using (if any) to preserve line endings
-                var existingTrivia = compilationUnit.Usings.LastOrDefault()?.GetTrailingTrivia()
-                    ?? SyntaxFactory.TriviaList(SyntaxFactory.LineFeed);
-
-                var systemThreadingUsing = SyntaxFactory.UsingDirective(
-                    SyntaxFactory.ParseName("System.Threading"))
-                    .WithTrailingTrivia(existingTrivia);
-
-                // Find the correct position to insert (alphabetically)
-                var usings = compilationUnit.Usings.ToList();
-                var insertIndex = 0;
-                for (int i = 0; i < usings.Count; i++)
-                {
-                    if (string.CompareOrdinal("System.Threading", usings[i].Name?.ToString()) < 0)
-                    {
-                        insertIndex = i;
-                        break;
-                    }
-                    insertIndex = i + 1;
-                }
-
-                usings.Insert(insertIndex, systemThreadingUsing);
-                newRoot = compilationUnit.WithUsings(SyntaxFactory.List(usings));
-            }
+            newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
         }
 
         return document.WithSyntaxRoot(newRoot);

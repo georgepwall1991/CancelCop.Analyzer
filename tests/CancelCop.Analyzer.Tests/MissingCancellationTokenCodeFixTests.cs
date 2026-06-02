@@ -23,8 +23,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"using System.Threading;
-
+        var fixedCode = @"
+using System.Threading;
 using System.Threading.Tasks;
 
 public class TestClass
@@ -56,8 +56,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"using System.Threading;
-
+        var fixedCode = @"
+using System.Threading;
 using System.Threading.Tasks;
 
 public class TestClass
@@ -90,8 +90,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"using System.Threading;
-
+        var fixedCode = @"
+using System.Threading;
 using System.Threading.Tasks;
 
 public class TestClass
@@ -140,6 +140,76 @@ public class TestClass
         var expected = VerifyCS.Diagnostic("CC001")
             .WithLocation(0)
             .WithArguments("ProcessDataAsync");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task PublicAsyncMethod_WithTrailingParamsParameter_InsertsTokenBeforeParams()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task {|#0:ProcessAsync|}(params int[] values)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        // The token must be inserted BEFORE the params parameter, otherwise the
+        // fixed code does not compile (CS0231: a params parameter must be last).
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken = default, params int[] values)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC001")
+            .WithLocation(0)
+            .WithArguments("ProcessAsync");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task PublicAsyncMethod_WithCollidingParameterName_UsesNonCollidingName()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task {|#0:ProcessAsync|}(string cancellationToken)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        // A parameter already named 'cancellationToken' (of a different type) means
+        // the fix must pick a non-colliding name, otherwise CS0100 (duplicate name).
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(string cancellationToken, CancellationToken ct = default)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC001")
+            .WithLocation(0)
+            .WithArguments("ProcessAsync");
 
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
