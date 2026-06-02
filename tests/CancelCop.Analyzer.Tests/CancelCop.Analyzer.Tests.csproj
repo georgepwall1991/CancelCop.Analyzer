@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CancelCop.Analyzer\CancelCop.Analyzer.csproj" />
+    <ProjectReference Include="..\..\src\CancelCop.Analyzer.CodeFixes\CancelCop.Analyzer.CodeFixes.csproj" />
   </ItemGroup>
 
 </Project>

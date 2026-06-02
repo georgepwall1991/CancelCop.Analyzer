@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Packaging:** split into an analyzer assembly (`CancelCop.Analyzer`, no
+  `Microsoft.CodeAnalysis.Workspaces` reference) and a code-fix assembly
+  (`CancelCop.Analyzer.CodeFixes`), packed together into `analyzers/dotnet/cs/` by a
+  dedicated `CancelCop.Analyzer.Package` host. This clears the **RS1038** warning on all
+  nine analyzers and removes the fragile `$(OutputPath)` packaging in favour of
+  `TargetsForTfmSpecificContentInPackage`. The published package id, layout, and empty
+  dependency set are unchanged.
 - **CC009** now decides whether a loop is cancellation-checked by resolving the receiver
   symbol through the semantic model and comparing it to the in-scope token, instead of
   substring-matching its name. A look-alike named `…token` no longer satisfies the check (was

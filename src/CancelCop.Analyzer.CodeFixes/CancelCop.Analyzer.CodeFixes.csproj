@@ -7,14 +7,18 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IsRoslynComponent>true</IsRoslynComponent>
-        <!-- Analyzer-only assembly: must NOT reference Microsoft.CodeAnalysis.Workspaces (RS1038).
-             Packaging is handled by the CancelCop.Analyzer.Package host project. -->
+        <!-- Code-fix assembly: references Workspaces (available at IDE time). Packaged alongside
+             the analyzer by the CancelCop.Analyzer.Package host project. -->
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\CancelCop.Analyzer\CancelCop.Analyzer.csproj" />
     </ItemGroup>
 
 </Project>
