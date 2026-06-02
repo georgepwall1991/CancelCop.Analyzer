@@ -186,4 +186,72 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task OverrideAsyncMethod_WithoutCancellationToken_ShouldNotReportDiagnostic()
+    {
+        // The signature is fixed by the base type; adding a token would break the override (CS0115).
+        var test = @"
+using System.Threading.Tasks;
+
+public abstract class BaseProcessor
+{
+    public abstract Task ProcessAsync();
+}
+
+public class Processor : BaseProcessor
+{
+    public override async Task ProcessAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ImplicitInterfaceImplementation_WithoutCancellationToken_ShouldNotReportDiagnostic()
+    {
+        // The signature is fixed by the interface; adding a token would break the impl (CS0535).
+        var test = @"
+using System.Threading.Tasks;
+
+public interface IProcessor
+{
+    Task ProcessAsync();
+}
+
+public class Processor : IProcessor
+{
+    public async Task ProcessAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ExplicitInterfaceImplementation_WithoutCancellationToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public interface IProcessor
+{
+    Task ProcessAsync();
+}
+
+public class Processor : IProcessor
+{
+    async Task IProcessor.ProcessAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

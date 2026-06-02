@@ -48,6 +48,11 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
             methodSymbol.DeclaredAccessibility != Accessibility.Protected)
             return;
 
+        // Don't flag methods whose parameter order is fixed by a base type or interface — the
+        // override/implementation cannot reorder its parameters (CA1068 makes the same exception).
+        if (CancellationTokenHelpers.IsSignatureExternallyControlled(methodSymbol))
+            return;
+
         // Check if method has parameters
         if (!methodSymbol.Parameters.Any())
             return;

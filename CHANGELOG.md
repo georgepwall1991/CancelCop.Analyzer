@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CC001** and **CC006** no longer fire on methods whose signature is dictated by a base
+  type or interface — `override` methods, explicit/implicit interface implementations, and
+  `extern` methods. The previously offered fixes broke compilation (CS0115/CS0535) on these,
+  so this removes the highest-noise false-positive category (mirrors CA1068's exceptions).
 - CI now installs both the .NET 9 and .NET 10 SDKs and `global.json` is pinned to
   `10.0.300`, so the `net10.0` projects build deterministically in CI (was failing
   with NETSDK1045).

@@ -99,6 +99,11 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsAsyncReturnType(methodSymbol.ReturnType))
             return;
 
+        // Don't flag methods whose signature is fixed by a base type or interface — the fix
+        // would break the override/implementation (CS0115/CS0535).
+        if (CancellationTokenHelpers.IsSignatureExternallyControlled(methodSymbol))
+            return;
+
         // Check if method already has CancellationToken parameter
         if (CancellationTokenHelpers.HasCancellationTokenParameter(methodSymbol))
             return;

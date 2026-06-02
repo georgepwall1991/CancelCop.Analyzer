@@ -76,6 +76,48 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns true when the method's signature is dictated by another declaration the developer
+    /// cannot freely change here — an <c>override</c>, an explicit or implicit interface
+    /// implementation, or an <c>extern</c> method. Adding or reordering a parameter on such a
+    /// method breaks compilation (CS0115/CS0535), so signature-shape rules must not fire on it.
+    /// </summary>
+    public static bool IsSignatureExternallyControlled(IMethodSymbol method)
+    {
+        if (method.IsOverride || method.IsExtern)
+            return true;
+
+        if (method.ExplicitInterfaceImplementations.Length > 0)
+            return true;
+
+        return ImplementsInterfaceMember(method);
+    }
+
+    private static bool ImplementsInterfaceMember(IMethodSymbol method)
+    {
+        var containingType = method.ContainingType;
+        if (containingType == null)
+            return false;
+
+        foreach (var @interface in containingType.AllInterfaces)
+        {
+            foreach (var member in @interface.GetMembers())
+            {
+                if (member is not IMethodSymbol)
+                    continue;
+
+                var implementation = containingType.FindImplementationForInterfaceMember(member);
+                if (implementation != null &&
+                    SymbolEqualityComparer.Default.Equals(implementation, method))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Checks if any overload of the method accepts a CancellationToken parameter.
     /// </summary>
     public static bool HasOverloadWithCancellationToken(IMethodSymbol methodSymbol)

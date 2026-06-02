@@ -159,4 +159,62 @@ public class TestClass
         // Private methods are not checked by convention
         await CreateTest(test).RunAsync();
     }
+
+    [Fact]
+    public async Task OverrideMethod_TokenNotLast_ShouldNotReportOnOverride()
+    {
+        // The override cannot reorder its parameters (must match the base), so CC006 must
+        // only fire on the base declaration, not the override.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public abstract class BaseProcessor
+{
+    public abstract Task ProcessAsync({|#0:CancellationToken cancellationToken|}, string name);
+}
+
+public class Processor : BaseProcessor
+{
+    public override async Task ProcessAsync(CancellationToken cancellationToken, string name)
+    {
+        await Task.Delay(100, cancellationToken);
+    }
+}";
+
+        var expected = new DiagnosticResult("CC006", Microsoft.CodeAnalysis.DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments("ProcessAsync");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ImplicitInterfaceImplementation_TokenNotLast_ShouldNotReportOnImplementation()
+    {
+        // The implementation cannot reorder its parameters (must match the interface), so
+        // CC006 must only fire on the interface declaration, not the implementing method.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public interface IProcessor
+{
+    Task ProcessAsync({|#0:CancellationToken cancellationToken|}, string name);
+}
+
+public class Processor : IProcessor
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken, string name)
+    {
+        await Task.Delay(100, cancellationToken);
+    }
+}";
+
+        var expected = new DiagnosticResult("CC006", Microsoft.CodeAnalysis.DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments("ProcessAsync");
+
+        await CreateTest(test, expected).RunAsync();
+    }
 }
