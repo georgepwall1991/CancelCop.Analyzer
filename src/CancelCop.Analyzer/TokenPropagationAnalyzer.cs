@@ -92,9 +92,16 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
         if (CancellationTokenHelpers.HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
-        // Try to find CancellationToken parameter from containing local function first, then containing method
-        var tokenParameter = FindContainingCancellationTokenParameter(invocation, context.SemanticModel);
+        // Find the nearest in-scope CancellationToken parameter — from a containing local function,
+        // lambda, or the containing method.
+        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+            invocation, context.SemanticModel);
         if (tokenParameter == null)
+            return;
+
+        // An invocation inside an expression tree (e.g. an EF/IQueryable predicate lambda) is data,
+        // not executable code: the token cannot be propagated into it and the fix would not compile.
+        if (CancellationTokenHelpers.IsWithinExpressionTree(invocation, context.SemanticModel))
             return;
 
         // Check if there's an overload that accepts a CancellationToken
@@ -116,40 +123,5 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
             tokenParameter.Name);
 
         context.ReportDiagnostic(diagnostic);
-    }
-
-    /// <summary>
-    /// Finds a CancellationToken parameter from the nearest containing local function or method.
-    /// Checks local functions first (innermost to outermost), then the containing method.
-    /// </summary>
-    private static IParameterSymbol? FindContainingCancellationTokenParameter(
-        SyntaxNode node,
-        SemanticModel semanticModel)
-    {
-        // Walk up the syntax tree looking for local functions and methods
-        var current = node.Parent;
-        while (current != null)
-        {
-            // Check local function first
-            if (current is LocalFunctionStatementSyntax localFunction)
-            {
-                // GetDeclaredSymbol(LocalFunctionStatementSyntax) returns ISymbol on the 4.8.0
-                // compile-time floor, so narrow it explicitly.
-                var localFunctionSymbol = semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol;
-                var tokenParam = CancellationTokenHelpers.FindCancellationTokenParameter(localFunctionSymbol);
-                if (tokenParam != null)
-                    return tokenParam;
-            }
-            // Check method declaration
-            else if (current is MethodDeclarationSyntax methodDeclaration)
-            {
-                var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration);
-                return CancellationTokenHelpers.FindCancellationTokenParameter(methodSymbol);
-            }
-
-            current = current.Parent;
-        }
-
-        return null;
     }
 }
