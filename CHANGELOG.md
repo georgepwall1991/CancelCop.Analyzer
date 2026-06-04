@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-06-04
+
+### Fixed
+
+- **CC002** (`TokenPropagationAnalyzer`) now detects missing token propagation inside **lambda
+  expressions**, not just methods and local functions — closing a false negative where the analyzer's
+  own documentation already promised lambda support. A `Task.Delay(…)`/custom async call inside an
+  async lambda that owns a `CancellationToken` parameter (or captures one from an enclosing scope) is
+  now flagged. Example now caught:
+  ```csharp
+  Func<CancellationToken, Task> handler = async (CancellationToken ct) =>
+  {
+      await Task.Delay(100); // CC002: should pass ct
+  };
+  ```
+
+### Changed
+
+- **Token-scope walk unified.** CC002 and CC009 previously each carried a near-identical private
+  "walk up to the nearest enclosing scope that declares a `CancellationToken`" routine; the
+  lambda-aware version is now a single shared `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter`.
+  This removed the duplication and is what gives CC002 its lambda support. CC009's behavior is
+  unchanged (its 19 tests still pass).
+
 ## [1.4.1] - 2026-06-04
 
 ### Changed

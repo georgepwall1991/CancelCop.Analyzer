@@ -130,8 +130,9 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
 
     private void AnalyzeLoop(SyntaxNodeAnalysisContext context, SyntaxNode loopNode, StatementSyntax loopBody, SyntaxToken loopKeyword)
     {
-        // Find the containing method or local function that has a CancellationToken parameter
-        var tokenParameter = FindContainingCancellationTokenParameter(loopNode, context.SemanticModel);
+        // Find the containing method, local function, or lambda that has a CancellationToken parameter
+        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+            loopNode, context.SemanticModel);
         if (tokenParameter == null)
             return;
 
@@ -143,43 +144,6 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
         var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, tokenParameter.Name);
         var diagnostic = Diagnostic.Create(Rule, loopKeyword.GetLocation(), properties, tokenParameter.Name);
         context.ReportDiagnostic(diagnostic);
-    }
-
-    /// <summary>
-    /// Finds the CancellationToken parameter from the containing method or local function.
-    /// Walks up the syntax tree to find the nearest scope with a CancellationToken parameter.
-    /// </summary>
-    private static IParameterSymbol? FindContainingCancellationTokenParameter(SyntaxNode node, SemanticModel semanticModel)
-    {
-        var current = node.Parent;
-        while (current != null)
-        {
-            if (current is LocalFunctionStatementSyntax localFunction)
-            {
-                var localFunctionSymbol = semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol;
-                var tokenParam = CancellationTokenHelpers.FindCancellationTokenParameter(localFunctionSymbol);
-                if (tokenParam != null)
-                    return tokenParam;
-                // Continue walking up to find outer scope's token if local function doesn't have one
-            }
-            else if (current is MethodDeclarationSyntax methodDeclaration)
-            {
-                var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
-                return CancellationTokenHelpers.FindCancellationTokenParameter(methodSymbol);
-            }
-            else if (current is LambdaExpressionSyntax lambda)
-            {
-                var lambdaSymbol = semanticModel.GetSymbolInfo(lambda).Symbol as IMethodSymbol;
-                var tokenParam = CancellationTokenHelpers.FindCancellationTokenParameter(lambdaSymbol);
-                if (tokenParam != null)
-                    return tokenParam;
-                // Continue walking up to find outer scope's token if lambda doesn't have one
-            }
-
-            current = current.Parent;
-        }
-
-        return null;
     }
 
     /// <summary>

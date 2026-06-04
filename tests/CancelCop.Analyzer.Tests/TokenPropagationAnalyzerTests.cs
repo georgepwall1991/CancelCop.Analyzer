@@ -281,4 +281,85 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task Lambda_WithToken_TaskDelayWithoutToken_ShouldReportDiagnostic()
+    {
+        // A token owned by the lambda itself must be propagated to inner async calls. The analyzer's
+        // docs have always promised lambda support; this pins it.
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure()
+    {
+        Func<CancellationToken, Task> handler = async (CancellationToken ct) =>
+        {
+            await Task.{|#0:Delay|}(100);
+        };
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "ct");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Lambda_NoToken_ButOuterMethodHasToken_ShouldReportDiagnostic()
+    {
+        // The lambda has no token, but it captures the outer method's token, which is usable inside
+        // the lambda body — so the walk continues outward and reports with the captured token.
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        Func<Task> handler = async () =>
+        {
+            await Task.{|#0:Delay|}(100);
+        };
+
+        await handler();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Lambda_WithToken_TaskDelayWithToken_ShouldNotReportDiagnostic()
+    {
+        // No false positive when the lambda already propagates its token.
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure()
+    {
+        Func<CancellationToken, Task> handler = async (CancellationToken ct) =>
+        {
+            await Task.Delay(100, ct);
+        };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

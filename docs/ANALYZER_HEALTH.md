@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-04 (post v1.4.0, during the v1.4.1 hardening loop)
+Reviewed: 2026-06-04 (refreshed through the v1.4.2 hardening loop)
 
 A deliberately harsh health audit for the nine implemented CancelCop rule IDs (CC001–CC006, CC009).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -31,7 +31,7 @@ Calibration notes:
 | Rule | Title | Category | Severity | Analyzer | False Positives | Fix Strategy | Tests | Docs/Samples | Importance | Priority | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | CC001 | Public async method missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Public/protected async returning Task/ValueTask, excludes override/interface/extern signatures (v1.4.0), compilable fixer (using insertion, name-collision, `params`). Solid entry-point guard. |
-| CC002 | CancellationToken not propagated | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 4 | **Medium** | Walks local functions + containing method, but **not lambdas** — yet the XML docs claim "checks … lambda expressions for token availability." Silent false negative + docs drift. CC009 already walks lambdas; CC002 should mirror it. |
+| CC002 | CancellationToken not propagated | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.2:** now walks lambdas in addition to local functions and the containing method, via the shared `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter` (also used by CC009). Closes the lambda false negative its docs already promised; docs now match behaviour. |
 | CC003 | EF Core async call missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 4 | Medium | Namespace-gated to `Microsoft.EntityFrameworkCore`, overload-checked. Resolves the containing method via `FirstAncestorOrSelf<MethodDeclarationSyntax>`, so a call inside a local function or lambda with its own token is missed (false negative) — inconsistent with CC002/CC009. No analyzer XML doc. |
 | CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 4 | Medium | Type-gated to `System.Net.Http.HttpClient`, overload-checked. Same containing-method-only scope gap as CC003. No analyzer XML doc. |
 | CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses an inline token check instead of the shared helper. |
@@ -45,8 +45,8 @@ Calibration notes:
 | Priority | Rules | Work |
 | --- | --- | --- |
 | High | None | No rule has a correctness defect severe enough to block a release. |
-| Medium | CC002, CC003, CC004 | Scope-walking gaps: CC002 ignores lambdas (and its docs claim otherwise); CC003/CC004 ignore local functions and lambdas. All three are silent false negatives that CC009's scope walk already solves. |
-| Low | CC001, CC005A, CC005B, CC005C, CC006, CC009 | Currently acceptable or low-impact. Improve opportunistically. |
+| Medium | CC003, CC004 | Scope-walking gap: both ignore local functions and lambdas (`FirstAncestorOrSelf<MethodDeclarationSyntax>`), a silent false negative that the shared `FindEnclosingCancellationTokenParameter` (now used by CC002/CC009) solves. |
+| Low | CC001, CC002, CC005A, CC005B, CC005C, CC006, CC009 | Currently acceptable or low-impact. Improve opportunistically. |
 
 ## Prioritized Fix Backlog
 
@@ -56,19 +56,20 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - _None._
 
 ### P1 — Next hardening loop
-- **CC002 lambda scope + docs drift.** `FindContainingCancellationTokenParameter` walks
-  `LocalFunctionStatementSyntax` and `MethodDeclarationSyntax` but not `LambdaExpressionSyntax`, so a
-  `Task.Delay(…)`/custom async call inside an async lambda that owns a `CancellationToken` parameter is
-  never flagged — even though the XML docs explicitly promise lambda support. Mirror CC009's walk and
-  add tests. _(Loop 2 target.)_
+- **CC003 / CC004 scope consistency.** Both resolve the containing scope with
+  `FirstAncestorOrSelf<MethodDeclarationSyntax>`, so an EF Core / HttpClient call inside a local function
+  or lambda with its own token is missed (false negative) — inconsistent with CC002/CC009. Adopt the
+  shared `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter` (added in v1.4.2) so all four
+  rules share one scope walk. _(Loop 3 target.)_
 
 ### P2 — Opportunistic
-- **CC003 / CC004 scope consistency.** Replace `FirstAncestorOrSelf<MethodDeclarationSyntax>` with the
-  shared local-function/lambda-aware walk so EF Core / HttpClient calls inside local functions and
-  lambdas are covered. Extract the walk into `CancellationTokenHelpers` so CC002/CC003/CC004/CC009 share
-  one implementation.
 - **CC005C method-group handlers.** Minimal APIs accept method groups (`app.MapGet("/", Handler)`), not
   just lambdas. Analyse the referenced method's signature for a token parameter.
+
+### Resolved
+- ~~**CC002 lambda scope + docs drift** (v1.4.2).~~ CC002 now walks lambdas via the shared
+  `FindEnclosingCancellationTokenParameter`; the docs' lambda-support promise is now true and pinned by
+  three new tests.
 
 ### P3 — Directional
 - **CC005A product value.** Document that CC005A mainly assists a handler that does not yet satisfy the
@@ -84,8 +85,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - Every analyzer calls `ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None)` and
   `EnableConcurrentExecution()` — correct and consistent.
 - Shared logic lives in `CancellationTokenHelpers` (`IsCancellationToken`, `IsAsyncReturnType`,
-  `HasOverloadWithCancellationToken`, `IsSignatureExternallyControlled`). CC005A is the one analyzer
-  still hand-rolling a token check; CC002/CC003/CC004/CC009 each hand-roll the containing-scope walk.
+  `HasOverloadWithCancellationToken`, `IsSignatureExternallyControlled`, and — as of v1.4.2 —
+  `FindEnclosingCancellationTokenParameter`, the scope walk now shared by CC002 and CC009). CC005A
+  still hand-rolls its token check; CC003/CC004 still use the shallower
+  `FirstAncestorOrSelf<MethodDeclarationSyntax>` walk (P1 backlog).
 - Diagnostic placement is good: CC001/CC005A/CC005B on the method identifier, CC002/CC003/CC004 on the
   invoked member name, CC006 on the offending parameter, CC009 on the loop keyword.
 - Release tracking (`AnalyzerReleases.Shipped.md` / `.Unshipped.md`) is wired as `AdditionalFiles` with
@@ -93,9 +96,12 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 149 passed, 0 failed after the CC005C hardening (147 pre-v1.4.1
-  baseline + 2 new negative tests + 1 new positive endpoint-module test, net of the unchanged total).
-- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 18 passed after the CC005C hardening
-  (15 prior + 2 negative tests for non-endpoint `MapGet` lookalikes + 1 positive test for the
-  `this IEndpointRouteBuilder` endpoint-module idiom).
+- `dotnet test CancelCop.sln` — 153 passed, 0 failed after the CC002 lambda-scope fix (150 after
+  v1.4.1 + 3 new CC002 lambda tests).
+- `dotnet test … --filter FullyQualifiedName~TokenPropagationAnalyzer` — 14 passed (11 prior + 3 new:
+  lambda-owns-token, lambda-captures-outer-token, lambda-already-propagates negative).
+- `dotnet test … --filter FullyQualifiedName~LoopCancellation` — unchanged and green after CC009 was
+  migrated to the shared scope walk (refactor, no behaviour change).
+- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 18 passed after the v1.4.1 CC005C hardening
+  (15 prior + 2 negative `MapGet`-lookalike tests + 1 positive `this IEndpointRouteBuilder` test).
 - Local SDK: .NET 10.0.300; `global.json` pins `10.0.300`. Tests target `net10.0`.

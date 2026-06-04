@@ -76,6 +76,51 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Walks up from <paramref name="node"/> through the scopes that can declare a
+    /// <c>CancellationToken</c> parameter — local functions, lambdas, and the containing method —
+    /// and returns the nearest in-scope token parameter, or <c>null</c> if none is available.
+    /// </summary>
+    /// <remarks>
+    /// A local function or lambda that has no token of its own does not stop the search: an outer
+    /// scope's token is captured and remains usable from the inner body. Reaching the containing
+    /// method declaration ends the search, because its parameter list is the outermost local scope
+    /// (class members are not parameters).
+    /// </remarks>
+    public static IParameterSymbol? FindEnclosingCancellationTokenParameter(
+        SyntaxNode node,
+        SemanticModel semanticModel)
+    {
+        var current = node.Parent;
+        while (current != null)
+        {
+            // Local function first (innermost), then lambda, then the containing method.
+            if (current is LocalFunctionStatementSyntax localFunction)
+            {
+                var token = FindCancellationTokenParameter(
+                    semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol);
+                if (token != null)
+                    return token;
+            }
+            else if (current is LambdaExpressionSyntax lambda)
+            {
+                var token = FindCancellationTokenParameter(
+                    semanticModel.GetSymbolInfo(lambda).Symbol as IMethodSymbol);
+                if (token != null)
+                    return token;
+            }
+            else if (current is MethodDeclarationSyntax method)
+            {
+                return FindCancellationTokenParameter(
+                    semanticModel.GetDeclaredSymbol(method) as IMethodSymbol);
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Returns true when the method's signature is dictated by another declaration the developer
     /// cannot freely change here — an <c>override</c>, an explicit or implicit interface
     /// implementation, or an <c>extern</c> method. Adding or reordering a parameter on such a
