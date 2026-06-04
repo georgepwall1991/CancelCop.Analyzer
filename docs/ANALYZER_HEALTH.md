@@ -31,7 +31,7 @@ Calibration notes:
 | Rule | Title | Category | Severity | Analyzer | False Positives | Fix Strategy | Tests | Docs/Samples | Importance | Priority | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | CC001 | Public async method missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Public/protected async returning Task/ValueTask, excludes override/interface/extern signatures (v1.4.0), compilable fixer (using insertion, name-collision, `params`). Solid entry-point guard. |
-| CC002 | CancellationToken not propagated | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.2:** now walks lambdas in addition to local functions and the containing method, via the shared `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter` (also used by CC009). Closes the lambda false negative its docs already promised; docs now match behaviour. |
+| CC002 | CancellationToken not propagated | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.2:** now walks lambdas in addition to local functions and the containing method, via the shared `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter` (also used by CC009). Closes the lambda false negative its docs already promised; docs now match behaviour. Expression-tree lambdas (`Expression<TDelegate>`) are deliberately excluded — code there is non-executable data. |
 | CC003 | EF Core async call missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 4 | Medium | Namespace-gated to `Microsoft.EntityFrameworkCore`, overload-checked. Resolves the containing method via `FirstAncestorOrSelf<MethodDeclarationSyntax>`, so a call inside a local function or lambda with its own token is missed (false negative) — inconsistent with CC002/CC009. No analyzer XML doc. |
 | CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 4 | Medium | Type-gated to `System.Net.Http.HttpClient`, overload-checked. Same containing-method-only scope gap as CC003. No analyzer XML doc. |
 | CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses an inline token check instead of the shared helper. |
@@ -96,10 +96,12 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 153 passed, 0 failed after the CC002 lambda-scope fix (150 after
-  v1.4.1 + 3 new CC002 lambda tests).
-- `dotnet test … --filter FullyQualifiedName~TokenPropagationAnalyzer` — 14 passed (11 prior + 3 new:
-  lambda-owns-token, lambda-captures-outer-token, lambda-already-propagates negative).
+- `dotnet test CancelCop.sln` — 154 passed, 0 failed after the CC002 lambda-scope fix (150 after
+  v1.4.1 + 4 new CC002 tests).
+- `dotnet test … --filter FullyQualifiedName~TokenPropagationAnalyzer` — 15 passed (11 prior + 4 new:
+  lambda-owns-token, lambda-captures-outer-token, lambda-already-propagates negative, and
+  lambda-inside-`Expression<>`-tree negative — the last guards against firing on non-executable
+  expression-tree code, surfaced during review).
 - `dotnet test … --filter FullyQualifiedName~LoopCancellation` — unchanged and green after CC009 was
   migrated to the shared scope walk (refactor, no behaviour change).
 - `dotnet test … --filter FullyQualifiedName~MinimalApi` — 18 passed after the v1.4.1 CC005C hardening

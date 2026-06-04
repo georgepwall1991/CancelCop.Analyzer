@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       await Task.Delay(100); // CC002: should pass ct
   };
   ```
+  The lambda walk deliberately excludes **expression-tree lambdas** (`Expression<TDelegate>`, e.g. an
+  `IQueryable`/EF predicate): code there is data, not executed, so a token cannot be propagated into it
+  (and an expression tree may not contain such a call anyway, CS0853/CS0854).
 
 ### Changed
 

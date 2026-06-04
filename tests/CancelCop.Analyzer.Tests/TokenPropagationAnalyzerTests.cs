@@ -362,4 +362,29 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task Lambda_InExpressionTree_ShouldNotReportDiagnostic()
+    {
+        // A call inside an Expression<> tree is data (e.g. an IQueryable predicate translated to SQL),
+        // not executable code, so the token cannot be propagated into it — CC002 must stay quiet even
+        // when the lambda declares its own CancellationToken parameter (the code fix would not compile).
+        var test = @"
+using System;
+using System.Linq.Expressions;
+using System.Threading;
+
+public class TestClass
+{
+    public void Configure()
+    {
+        Expression<Func<CancellationToken, bool>> predicate = ct => Helper();
+    }
+
+    private static bool Helper() => true;
+    private static bool Helper(CancellationToken ct) => true;
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

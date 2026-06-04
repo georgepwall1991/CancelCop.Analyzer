@@ -163,6 +163,42 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns true when <paramref name="node"/> is lexically inside a lambda that is converted to a
+    /// <c>System.Linq.Expressions.Expression&lt;T&gt;</c> expression tree. Code inside an expression
+    /// tree is data — e.g. translated to SQL by an <c>IQueryable</c> provider — not executed, so a
+    /// <c>CancellationToken</c> cannot be propagated into it (and an expression tree may not contain a
+    /// call that uses optional/extra arguments anyway, CS0853/CS0854). Such calls must not be flagged.
+    /// </summary>
+    public static bool IsWithinExpressionTree(SyntaxNode node, SemanticModel semanticModel)
+    {
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            if (current is LambdaExpressionSyntax lambda &&
+                IsExpressionTreeType(semanticModel.GetTypeInfo(lambda).ConvertedType))
+                return true;
+
+            // A method or local-function body is executable code and can never sit inside an
+            // expression tree, so reaching one means we have left any enclosing tree.
+            if (current is MethodDeclarationSyntax || current is LocalFunctionStatementSyntax)
+                break;
+        }
+
+        return false;
+    }
+
+    private static bool IsExpressionTreeType(ITypeSymbol? type)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (current.Name == "Expression" &&
+                current.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions")
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Checks if any overload of the method accepts a CancellationToken parameter.
     /// </summary>
     public static bool HasOverloadWithCancellationToken(IMethodSymbol methodSymbol)

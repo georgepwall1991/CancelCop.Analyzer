@@ -99,6 +99,11 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
         if (tokenParameter == null)
             return;
 
+        // An invocation inside an expression tree (e.g. an EF/IQueryable predicate lambda) is data,
+        // not executable code: the token cannot be propagated into it and the fix would not compile.
+        if (CancellationTokenHelpers.IsWithinExpressionTree(invocation, context.SemanticModel))
+            return;
+
         // Check if there's an overload that accepts a CancellationToken
         if (!CancellationTokenHelpers.HasOverloadWithCancellationToken(methodSymbol))
             return;
