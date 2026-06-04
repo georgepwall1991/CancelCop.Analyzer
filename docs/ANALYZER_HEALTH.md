@@ -36,7 +36,7 @@ Calibration notes:
 | CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 4 | Medium | Type-gated to `System.Net.Http.HttpClient`, overload-checked. Same containing-method-only scope gap as CC003. No analyzer XML doc. |
 | CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses an inline token check instead of the shared helper. |
 | CC005B | Controller action missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Heavily hardened in v1.4.0: public non-static, `ControllerBase`/`Controller` by namespace, inherited `[NonAction]`, MVC HTTP-method attribute by identity + subclass. Conservative and accurate. |
-| CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.1:** now gated on the receiver implementing `Microsoft.AspNetCore.Routing.IEndpointRouteBuilder`, so an unrelated `MapGet`-named method no longer false-positives (closes the last name-only match in the CC005 family). Remaining gap: method-group handlers (`app.MapGet("/", Handler)`) are not analysed (false negative). |
+| CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.1:** now gated on the receiver implementing `Microsoft.AspNetCore.Routing.IEndpointRouteBuilder`, so an unrelated `MapGet`-named method no longer false-positives (closes the last name-only match in the CC005 family). Remaining false negatives (both pre-existing, low value): method-group handlers (`app.MapGet("/", Handler)`) and the unreduced static-call form (`EndpointRouteBuilderExtensions.MapGet(app, …)`) are not analysed. |
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 
@@ -93,9 +93,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 147 passed, 0 failed (pre-v1.4.1 baseline).
-- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 17 passed after the CC005C hardening
-  (15 prior + 2 new negative tests for non-endpoint `MapGet` lookalikes).
+- `dotnet test CancelCop.sln` — 149 passed, 0 failed after the CC005C hardening (147 pre-v1.4.1
+  baseline + 2 new negative tests + 1 new positive endpoint-module test, net of the unchanged total).
+- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 18 passed after the CC005C hardening
+  (15 prior + 2 negative tests for non-endpoint `MapGet` lookalikes + 1 positive test for the
+  `this IEndpointRouteBuilder` endpoint-module idiom).
 - Local SDK: .NET 10.0.300; `global.json` pins `10.0.300`. Tests target `net10.0`.
-</content>
-</invoke>

@@ -123,19 +123,11 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
     /// <c>Microsoft.AspNetCore.Routing.IEndpointRouteBuilder</c> — the receiver contract of the
     /// minimal-API <c>MapGet</c>/<c>MapPost</c>/… extension methods.
     /// </summary>
-    private static bool ImplementsEndpointRouteBuilder(ITypeSymbol type)
-    {
-        if (IsEndpointRouteBuilder(type))
-            return true;
-
-        foreach (var @interface in type.AllInterfaces)
-        {
-            if (IsEndpointRouteBuilder(@interface))
-                return true;
-        }
-
-        return false;
-    }
+    private static bool ImplementsEndpointRouteBuilder(ITypeSymbol type) =>
+        // The self-check is required: AllInterfaces does not include the type itself, and the
+        // canonical endpoint-module idiom — `static void Map(this IEndpointRouteBuilder routes)` —
+        // calls MapGet on a receiver whose declared type *is* the interface.
+        IsEndpointRouteBuilder(type) || type.AllInterfaces.Any(IsEndpointRouteBuilder);
 
     private static bool IsEndpointRouteBuilder(ITypeSymbol type) =>
         type.Name == EndpointRouteBuilderInterfaceName &&
