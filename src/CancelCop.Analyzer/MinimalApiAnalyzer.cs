@@ -31,6 +31,9 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
         "MapGet", "MapPost", "MapPut", "MapDelete", "MapPatch"
     );
 
+    private const string EndpointRouteBuilderInterfaceName = "IEndpointRouteBuilder";
+    private const string AspNetCoreRoutingNamespace = "Microsoft.AspNetCore.Routing";
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
@@ -50,6 +53,17 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
 
         var methodName = memberAccess.Name.Identifier.Text;
         if (!MapMethods.Contains(methodName))
+            return;
+
+        // Confirm the call targets an ASP.NET Core endpoint route builder, not an unrelated method
+        // that merely shares the name (e.g. a user-defined MapGet on some other type). The
+        // framework's MapGet/MapPost/… are extension methods on
+        // Microsoft.AspNetCore.Routing.IEndpointRouteBuilder, so checking the receiver's type is the
+        // reliable contract — and it resolves even when an untyped handler lambda leaves the MapXxx
+        // overload itself unbound. Doing the cheap syntactic name match first keeps the semantic
+        // lookup off the hot path.
+        var receiverType = context.SemanticModel.GetTypeInfo(memberAccess.Expression).Type;
+        if (receiverType == null || !ImplementsEndpointRouteBuilder(receiverType))
             return;
 
         // Get the second argument (the handler lambda/delegate)
@@ -103,4 +117,19 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
 
         context.ReportDiagnostic(diagnostic);
     }
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is, or implements,
+    /// <c>Microsoft.AspNetCore.Routing.IEndpointRouteBuilder</c> — the receiver contract of the
+    /// minimal-API <c>MapGet</c>/<c>MapPost</c>/… extension methods.
+    /// </summary>
+    private static bool ImplementsEndpointRouteBuilder(ITypeSymbol type) =>
+        // The self-check is required: AllInterfaces does not include the type itself, and the
+        // canonical endpoint-module idiom — `static void Map(this IEndpointRouteBuilder routes)` —
+        // calls MapGet on a receiver whose declared type *is* the interface.
+        IsEndpointRouteBuilder(type) || type.AllInterfaces.Any(IsEndpointRouteBuilder);
+
+    private static bool IsEndpointRouteBuilder(ITypeSymbol type) =>
+        type.Name == EndpointRouteBuilderInterfaceName &&
+        type.ContainingNamespace?.ToDisplayString() == AspNetCoreRoutingNamespace;
 }
