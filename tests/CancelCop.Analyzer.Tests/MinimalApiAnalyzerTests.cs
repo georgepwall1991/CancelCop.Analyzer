@@ -240,4 +240,69 @@ public class Program
 
         await CreateTest(test, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task MapGet_OnNonEndpointBuilderExtension_ShouldNotReportDiagnostic()
+    {
+        // A user-defined extension method that merely shares the name "MapGet" but whose receiver
+        // does not implement Microsoft.AspNetCore.Routing.IEndpointRouteBuilder is not a minimal-API
+        // endpoint mapping and must not trigger CC005C.
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class CustomRouteTable { }
+
+public static class CustomRouteExtensions
+{
+    public static void MapGet(this CustomRouteTable table, string pattern, Func<Task> handler) { }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var table = new CustomRouteTable();
+        table.MapGet(""/users"", async () => await DoWorkAsync());
+    }
+
+    private static async Task DoWorkAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task MapGet_OnNonEndpointBuilderInstanceMethod_ShouldNotReportDiagnostic()
+    {
+        // An instance method named "MapGet" on an unrelated type is not the framework extension
+        // method and must not trigger CC005C.
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class CustomRouteTable
+{
+    public void MapGet(string pattern, Func<Task> handler) { }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var table = new CustomRouteTable();
+        table.MapGet(""/users"", async () => await DoWorkAsync());
+    }
+
+    private static async Task DoWorkAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
 }

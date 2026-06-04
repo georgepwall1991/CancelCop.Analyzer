@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-06-04
+
+### Changed
+
+- **CC005C** (`MinimalApiAnalyzer`) now confirms the call targets an ASP.NET Core endpoint route
+  builder before firing: it checks that the receiver implements
+  `Microsoft.AspNetCore.Routing.IEndpointRouteBuilder` instead of matching the method name
+  (`MapGet`/`MapPost`/`MapPut`/`MapDelete`/`MapPatch`) alone. A user-defined method or extension that
+  merely shares one of those names — e.g. `customRouteTable.MapGet(pattern, async () => …)` — no longer
+  produces a false positive. This closes the last name-only match in the CC005 family (CC005B was given
+  framework-identity gating in v1.4.0). The receiver type is resolved from the invocation's receiver
+  expression, so the check still fires when an untyped handler lambda leaves the `MapXxx` overload
+  itself unbound. New negative tests cover both extension-method and instance-method `MapGet`
+  lookalikes.
+
+### Added
+
+- **`docs/ANALYZER_HEALTH.md`:** a rule-by-rule health scorecard (analyzer depth, false positives, fix
+  strategy, tests, docs, importance) and a prioritized hardening backlog, refreshed each hardening loop.
+
 ## [1.4.0] - 2026-06-02
 
 ### Fixed
