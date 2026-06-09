@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-06-09
+
+### Added
+
+- **CC005C** (`MinimalApiAnalyzer`) now analyses **method-group handlers**, not just lambdas:
+  `app.MapGet("/users", GetUsersAsync)`, `app.MapGet("/users", UserHandlers.Get)`, and local-function
+  method groups are resolved to the referenced method, which is flagged when it is async-shaped
+  (`async` or Task/ValueTask-returning) without a `CancellationToken` parameter. Synchronous
+  handlers, delegate-typed variables, ambiguous method groups, and externally-controlled signatures
+  (override/interface/extern) stay quiet.
+- The CC005C **code fix** follows: for a method-group diagnostic it adds
+  `CancellationToken cancellationToken = default` to the referenced method or local function
+  (`= default` keeps any other call sites compiling). Only same-document declarations are rewritten;
+  a handler defined in another file keeps the diagnostic but gets no automatic fix.
+
+### Fixed
+
+- The CC005C lambda code fix now matches the diagnostic span exactly, so a CC005C diagnostic can
+  never be "fixed" by adding a token parameter to an unrelated enclosing lambda (e.g. a registration
+  lambda wrapping the `MapGet` call).
+
+### Review hardening (caught before release)
+
+- `handler.Invoke` member access resolves to the delegate type's `Invoke` method and is never
+  flagged — the developer cannot change that signature.
+- Handlers defined in another assembly (metadata) are never flagged — no editable signature exists
+  in the solution.
+- Parenthesized method groups (`(Handler)`) and generic method groups (`Handler<T>`) no longer
+  evade analysis.
+- The fix is withheld for **virtual/abstract** handlers (rewriting the base would orphan overrides,
+  CS0115) and **partial** methods (both parts must keep matching signatures, CS8795); the
+  diagnostic still reports for manual action.
+- Fix All on two routes sharing one handler adds the token parameter exactly once (pinned by test).
+- The rewritten declaration now carries the formatter annotation, matching the CC001 fix.
+
 ## [1.4.3] - 2026-06-09
 
 ### Fixed

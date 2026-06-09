@@ -8,6 +8,7 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
 
 namespace CancelCop.Analyzer;
 
@@ -35,9 +36,23 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
         if (node == null)
             return;
 
+        // A method-group diagnostic spans the handler reference (`Handler` / `Handlers.Get`).
+        // The fix targets the referenced method's declaration, not anything at the call site.
+        var handlerExpression = node.AncestorsAndSelf()
+            .OfType<ExpressionSyntax>()
+            .FirstOrDefault(e => e.Span == diagnosticSpan);
+
+        if (handlerExpression is SimpleNameSyntax or MemberAccessExpressionSyntax)
+        {
+            await RegisterMethodGroupFixAsync(context, root, handlerExpression, diagnostic).ConfigureAwait(false);
+            return;
+        }
+
+        // Lambda diagnostics span the whole lambda; matching on the exact span keeps a
+        // diagnostic reported elsewhere from being "fixed" on an enclosing lambda.
         var parenthesizedLambda = node.AncestorsAndSelf()
             .OfType<ParenthesizedLambdaExpressionSyntax>()
-            .FirstOrDefault();
+            .FirstOrDefault(l => l.Span == diagnosticSpan);
 
         if (parenthesizedLambda != null)
         {
@@ -55,6 +70,100 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
         // typed CancellationToken would mix typed/untyped parameters (CS0748), and an untyped
         // token is not recognized as a CancellationToken (the fix would re-fire). Such a lambda
         // is not a bindable minimal-API handler anyway, so no safe fix can be offered — skip it.
+    }
+
+    private static async Task RegisterMethodGroupFixAsync(
+        CodeFixContext context,
+        SyntaxNode root,
+        ExpressionSyntax handlerExpression,
+        Diagnostic diagnostic)
+    {
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
+        var symbolInfo = semanticModel.GetSymbolInfo(handlerExpression, context.CancellationToken);
+        var handlerMethod = symbolInfo.Symbol as IMethodSymbol;
+        if (handlerMethod == null && symbolInfo.CandidateSymbols.Length == 1)
+            handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
+        if (handlerMethod == null)
+            return;
+
+        // A partial method has two declaration parts that must keep matching signatures
+        // (CS8795/CS0759); rewriting only one part would not compile. A virtual or abstract
+        // method's signature is mirrored by its overrides, which a single-declaration rewrite
+        // would orphan (CS0115). Both keep the diagnostic but get no automatic fix.
+        if (handlerMethod.PartialDefinitionPart != null ||
+            handlerMethod.PartialImplementationPart != null ||
+            handlerMethod.IsVirtual ||
+            handlerMethod.IsAbstract)
+        {
+            return;
+        }
+
+        var declaration = handlerMethod.DeclaringSyntaxReferences.FirstOrDefault()
+            ?.GetSyntax(context.CancellationToken);
+
+        // Only same-document declarations are rewritten; a handler defined in another file keeps
+        // the diagnostic but gets no automatic fix (the fix-all scope would otherwise surprise).
+        if (declaration?.SyntaxTree != root.SyntaxTree)
+            return;
+
+        // The handler can be a method or a local function — both carry a parameter list.
+        if (declaration is not MethodDeclarationSyntax and not LocalFunctionStatementSyntax)
+            return;
+
+        context.RegisterCodeFix(
+            CodeAction.Create(
+                title: Title,
+                createChangedDocument: c => AddCancellationTokenToHandlerDeclarationAsync(
+                    context.Document, declaration, c),
+                equivalenceKey: Title),
+            diagnostic);
+    }
+
+    private static async Task<Document> AddCancellationTokenToHandlerDeclarationAsync(
+        Document document,
+        SyntaxNode declaration,
+        CancellationToken cancellationToken)
+    {
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        if (root == null)
+            return document;
+
+        var (parameterList, body) = declaration switch
+        {
+            MethodDeclarationSyntax m => (m.ParameterList, m.Body ?? (SyntaxNode?)m.ExpressionBody),
+            LocalFunctionStatementSyntax f => (f.ParameterList, f.Body ?? (SyntaxNode?)f.ExpressionBody),
+            _ => (null, null),
+        };
+        if (parameterList == null)
+            return document;
+
+        var tokenName = CancellationTokenFixHelpers.GetUniqueTokenParameterName(parameterList, body);
+
+        // `= default` keeps any other existing call sites of the handler compiling; ASP.NET Core
+        // binds the parameter regardless of the default.
+        var tokenParameter = SyntaxFactory.Parameter(SyntaxFactory.Identifier(tokenName))
+            .WithType(SyntaxFactory.ParseTypeName("CancellationToken"))
+            .WithDefault(CancellationTokenFixHelpers.DefaultValueClause());
+
+        var newParameterList = CancellationTokenFixHelpers.InsertTokenParameter(parameterList, tokenParameter);
+
+        var newDeclaration = declaration switch
+        {
+            MethodDeclarationSyntax m => (SyntaxNode)m.WithParameterList(newParameterList),
+            LocalFunctionStatementSyntax f => f.WithParameterList(newParameterList),
+            _ => declaration,
+        };
+        newDeclaration = newDeclaration.WithAdditionalAnnotations(Formatter.Annotation);
+
+        var newRoot = root.ReplaceNode(declaration, newDeclaration);
+
+        if (newRoot is CompilationUnitSyntax compilationUnit)
+            newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
+
+        return document.WithSyntaxRoot(newRoot);
     }
 
     private static async Task<Document> AddCancellationTokenToParenthesizedLambdaAsync(

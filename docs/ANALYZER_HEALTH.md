@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-09 (refreshed through the v1.4.3 hardening loop)
+Reviewed: 2026-06-09 (refreshed through the v1.4.4 hardening loop)
 
 A deliberately harsh health audit for the nine implemented CancelCop rule IDs (CC001–CC006, CC009).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -36,7 +36,7 @@ Calibration notes:
 | CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.3:** same shared scope walk + expression-tree guard as CC003. Type-gated to `System.Net.Http.HttpClient`, overload-checked. No analyzer XML doc (P3). |
 | CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses an inline token check instead of the shared helper. |
 | CC005B | Controller action missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Heavily hardened in v1.4.0: public non-static, `ControllerBase`/`Controller` by namespace, inherited `[NonAction]`, MVC HTTP-method attribute by identity + subclass. Conservative and accurate. |
-| CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.1:** now gated on the receiver implementing `Microsoft.AspNetCore.Routing.IEndpointRouteBuilder`, so an unrelated `MapGet`-named method no longer false-positives (closes the last name-only match in the CC005 family). Remaining false negatives (both pre-existing, low value): method-group handlers (`app.MapGet("/", Handler)`) and the unreduced static-call form (`EndpointRouteBuilderExtensions.MapGet(app, …)`) are not analysed. |
+| CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.4:** method-group handlers (`app.MapGet("/", Handler)`, `Handlers.Get`, local functions) are now analysed and fixed (token added to the referenced declaration, `= default`, same-document only). v1.4.1 gated the receiver on `IEndpointRouteBuilder`. Remaining false negative (pre-existing, low value): the unreduced static-call form (`EndpointRouteBuilderExtensions.MapGet(app, …)`). |
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 
@@ -56,23 +56,36 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - _None._
 
 ### P1 — Next hardening loop
-- **CC005C method-group handlers.** Minimal APIs accept method groups (`app.MapGet("/", Handler)`), not
-  just lambdas. Analyse the referenced method's signature for a token parameter. _(Promoted from P2 —
-  next-largest real false-negative class now that scope walking is unified; loop 4 target.)_
+- **Constructor / primary-constructor token parameters** *(promoted from P2 — the largest remaining
+  false-negative class; loop 5 target)*. The shared scope walk only terminates at
+  `MethodDeclarationSyntax`; a `CancellationToken` declared on a constructor, accessor, or C# 12
+  primary constructor is never found, so CC002/CC003/CC004/CC009 stay silent there.
 
 ### P2 — Opportunistic
-- **Constructor / primary-constructor token parameters.** The shared scope walk only terminates at
-  `MethodDeclarationSyntax`; a `CancellationToken` declared on a constructor, accessor, or C# 12
-  primary constructor is never found, so CC002/CC003/CC004/CC009 stay silent there (false negative,
-  parity with pre-v1.4.3 behaviour).
 - **Named-argument code fixes.** The CC003/CC004 fixers append a positional token argument; on a call
   using out-of-position named arguments (`PostAsync(content: body, requestUri: url)`) the fixed call
   hits CS8323. Needs a named-argument-aware insertion (`cancellationToken: ct`).
 - **Extract the shared report pipeline.** CC002/CC003/CC004 now end in a verbatim ~35-line block
   (token-argument check → scope walk → expression-tree guard → overload check → report). One helper
   would prevent the three-way drift this loop just fixed from recurring.
+- **Dedupe the add-token-to-declaration recipe.** The CC005C method-group fix and the CC001 fix
+  both build `CancellationToken cancellationToken = default` and insert it via
+  `InsertTokenParameter`; the method-group symbol resolution (symbol-or-single-candidate) is also
+  duplicated between `MinimalApiAnalyzer` and `MinimalApiCodeFixProvider`. Shared helpers would
+  keep analyzer and fixer matching in lockstep.
+- **CC005C → CC002 cascade.** Applying the CC005C method-group fix gives the handler a token that
+  its body does not yet propagate, so CC002/CC003/CC004 fire next — an intentional guided sequence,
+  but worth documenting (and a combined-analyzer test would pin it).
 
 ### Resolved
+- ~~**CC005C method-group handlers** (v1.4.4).~~ `app.MapGet("/", Handler)`, `Handlers.Get`,
+  `Handler<T>`, `(Handler)`, and local-function method groups are resolved to the referenced method
+  and flagged when async-shaped without a token; the fixer adds
+  `CancellationToken cancellationToken = default` to the referenced declaration (same-document
+  only). Review hardening: `handler.Invoke` and metadata methods never flag; virtual/abstract and
+  partial handlers report but get no automatic fix (CS0115/CS8795 guards); Fix All on a shared
+  handler adds the parameter once; the lambda fixer matches the diagnostic span exactly so it
+  cannot patch an unrelated enclosing lambda. Pinned by 16 new tests.
 - ~~**CC003 / CC004 scope consistency** (v1.4.3).~~ Both now use the shared
   `FindEnclosingCancellationTokenParameter` walk (local functions, lambdas, containing method) and
   CC002's expression-tree guard; pinned by 9 new tests (5 EF Core, 4 HttpClient), including an
@@ -111,8 +124,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 168 passed, 0 failed after the CC003/CC004 scope-walk fix plus the
-  static/anonymous-function hardening (154 after v1.4.2 + 14 new tests).
+- `dotnet test CancelCop.sln` — 184 passed, 0 failed after the CC005C method-group support and its
+  review hardening (168 after v1.4.3 + 16 new tests).
+- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 34 passed (18 prior + 10 analyzer tests:
+  method group/member-access/local-function/generic/parenthesized positives,
+  with-token/synchronous/delegate-variable/delegate-Invoke/metadata negatives + 6 fixer tests:
+  method, local function, fix-targets-method-not-enclosing-lambda, virtual no-fix, partial no-fix,
+  Fix All shared handler).
 - `dotnet test … --filter "FullyQualifiedName~EFCore|FullyQualifiedName~HttpClient"` — 39 passed
   (27 prior + 12 new: local-function/lambda/captured-token positives, no-token and static-function
   negatives, anonymous-method positive, and an EF expression-tree negative).

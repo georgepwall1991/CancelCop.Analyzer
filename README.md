@@ -136,6 +136,10 @@ app.MapGet("/users", async () => await GetUsersAsync());
 
 // ✅ Fixed
 app.MapGet("/users", async (CancellationToken ct) => await GetUsersAsync(ct));
+
+// ❌ Warning CC005C — method-group handlers are analysed too (v1.4.4);
+// the fix adds `CancellationToken cancellationToken = default` to GetUsersAsync itself
+app.MapGet("/users", GetUsersAsync);
 ```
 
 ### CC006: Token Not Last Parameter
