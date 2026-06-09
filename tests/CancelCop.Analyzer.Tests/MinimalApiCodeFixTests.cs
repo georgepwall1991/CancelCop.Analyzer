@@ -602,4 +602,155 @@ public static class Endpoints
         test2.ExpectedDiagnostics.Add(expected);
         await test2.RunAsync();
     }
+
+    [Fact]
+    public async Task MapGet_VirtualMethodGroup_ReportsButOffersNoFix()
+    {
+        // Rewriting a virtual method's signature would orphan its overrides (CS0115), so the
+        // diagnostic stands but no automatic fix is offered.
+        var source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Routing;
+
+public class UserHandlers
+{
+    public virtual async Task<string> Get()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}
+
+public static class Endpoints
+{
+    public static void Register(IEndpointRouteBuilder app, UserHandlers handlers)
+    {
+        app.MapGet(""/users"", {|#0:handlers.Get|});
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet");
+
+        var test2 = new CSharpCodeFixTest<MinimalApiAnalyzer, MinimalApiCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("Microsoft.AspNetCore.App.Ref", "9.0.0"))),
+        };
+
+        test2.ExpectedDiagnostics.Add(expected);
+        await test2.RunAsync();
+    }
+
+    [Fact]
+    public async Task MapGet_PartialMethodGroup_ReportsButOffersNoFix()
+    {
+        // A partial method's two declaration parts must keep matching signatures; rewriting one
+        // part would not compile (CS8795/CS0759), so no automatic fix is offered.
+        var source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public partial class Program
+{
+    public static partial Task<string> GetUsersAsync();
+
+    public static partial async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        app.MapGet(""/users"", {|#0:GetUsersAsync|});
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet");
+
+        var test2 = new CSharpCodeFixTest<MinimalApiAnalyzer, MinimalApiCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("Microsoft.AspNetCore.App.Ref", "9.0.0"))),
+        };
+
+        test2.ExpectedDiagnostics.Add(expected);
+        await test2.RunAsync();
+    }
+
+    [Fact]
+    public async Task MapGet_TwoRoutesSameHandler_FixAllAddsParameterOnce()
+    {
+        // Two endpoints referencing the same handler produce two diagnostics whose fixes edit
+        // the same declaration; the batch fixer must merge them into a single token parameter.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        app.MapGet(""/users"", {|#0:GetUsersAsync|});
+        app.MapPost(""/users"", {|#1:GetUsersAsync|});
+    }
+
+    private static async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        app.MapGet(""/users"", GetUsersAsync);
+        app.MapPost(""/users"", GetUsersAsync);
+    }
+
+    private static async Task<string> GetUsersAsync(CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var test2 = new CSharpCodeFixTest<MinimalApiAnalyzer, MinimalApiCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("Microsoft.AspNetCore.App.Ref", "9.0.0"))),
+        };
+
+        test2.ExpectedDiagnostics.Add(new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet"));
+        test2.ExpectedDiagnostics.Add(new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(1)
+            .WithArguments("MapPost"));
+        await test2.RunAsync();
+    }
 }

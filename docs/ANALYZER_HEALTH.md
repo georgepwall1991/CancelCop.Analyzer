@@ -68,13 +68,24 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - **Extract the shared report pipeline.** CC002/CC003/CC004 now end in a verbatim ~35-line block
   (token-argument check → scope walk → expression-tree guard → overload check → report). One helper
   would prevent the three-way drift this loop just fixed from recurring.
+- **Dedupe the add-token-to-declaration recipe.** The CC005C method-group fix and the CC001 fix
+  both build `CancellationToken cancellationToken = default` and insert it via
+  `InsertTokenParameter`; the method-group symbol resolution (symbol-or-single-candidate) is also
+  duplicated between `MinimalApiAnalyzer` and `MinimalApiCodeFixProvider`. Shared helpers would
+  keep analyzer and fixer matching in lockstep.
+- **CC005C → CC002 cascade.** Applying the CC005C method-group fix gives the handler a token that
+  its body does not yet propagate, so CC002/CC003/CC004 fire next — an intentional guided sequence,
+  but worth documenting (and a combined-analyzer test would pin it).
 
 ### Resolved
-- ~~**CC005C method-group handlers** (v1.4.4).~~ `app.MapGet("/", Handler)`, `Handlers.Get`, and
-  local-function method groups are resolved to the referenced method and flagged when async-shaped
-  without a token; the fixer adds `CancellationToken cancellationToken = default` to the referenced
-  declaration (same-document only). The lambda fixer now also matches the diagnostic span exactly so
-  it cannot patch an unrelated enclosing lambda. Pinned by 9 new tests.
+- ~~**CC005C method-group handlers** (v1.4.4).~~ `app.MapGet("/", Handler)`, `Handlers.Get`,
+  `Handler<T>`, `(Handler)`, and local-function method groups are resolved to the referenced method
+  and flagged when async-shaped without a token; the fixer adds
+  `CancellationToken cancellationToken = default` to the referenced declaration (same-document
+  only). Review hardening: `handler.Invoke` and metadata methods never flag; virtual/abstract and
+  partial handlers report but get no automatic fix (CS0115/CS8795 guards); Fix All on a shared
+  handler adds the parameter once; the lambda fixer matches the diagnostic span exactly so it
+  cannot patch an unrelated enclosing lambda. Pinned by 16 new tests.
 - ~~**CC003 / CC004 scope consistency** (v1.4.3).~~ Both now use the shared
   `FindEnclosingCancellationTokenParameter` walk (local functions, lambdas, containing method) and
   CC002's expression-tree guard; pinned by 9 new tests (5 EF Core, 4 HttpClient), including an
@@ -113,11 +124,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 177 passed, 0 failed after the CC005C method-group support
-  (168 after v1.4.3 + 9 new tests).
-- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 27 passed (18 prior + 6 analyzer tests:
-  method group/member-access/local-function positives, with-token/synchronous/delegate-variable
-  negatives + 3 fixer tests: method, local function, and fix-targets-method-not-enclosing-lambda).
+- `dotnet test CancelCop.sln` — 184 passed, 0 failed after the CC005C method-group support and its
+  review hardening (168 after v1.4.3 + 16 new tests).
+- `dotnet test … --filter FullyQualifiedName~MinimalApi` — 34 passed (18 prior + 10 analyzer tests:
+  method group/member-access/local-function/generic/parenthesized positives,
+  with-token/synchronous/delegate-variable/delegate-Invoke/metadata negatives + 6 fixer tests:
+  method, local function, fix-targets-method-not-enclosing-lambda, virtual no-fix, partial no-fix,
+  Fix All shared handler).
 - `dotnet test … --filter "FullyQualifiedName~EFCore|FullyQualifiedName~HttpClient"` — 39 passed
   (27 prior + 12 new: local-function/lambda/captured-token positives, no-token and static-function
   negatives, anonymous-method positive, and an EF expression-tree negative).

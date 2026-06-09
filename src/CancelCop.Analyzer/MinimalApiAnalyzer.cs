@@ -73,9 +73,13 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
 
         var handlerArgument = arguments[1].Expression;
 
-        // Method-group handlers (`app.MapGet("/", Handler)` or `app.MapGet("/", Handlers.Get)`)
+        // A parenthesized handler is the same handler: `(Handler)` must not evade analysis.
+        while (handlerArgument is ParenthesizedExpressionSyntax parenthesized)
+            handlerArgument = parenthesized.Expression;
+
+        // Method-group handlers (`app.MapGet("/", Handler)`, `Handlers.Get`, `Handler<T>`)
         // reference a declared method whose signature we can inspect directly.
-        if (handlerArgument is IdentifierNameSyntax or MemberAccessExpressionSyntax)
+        if (handlerArgument is SimpleNameSyntax or MemberAccessExpressionSyntax)
         {
             AnalyzeMethodGroupHandler(context, handlerArgument, methodName);
             return;
@@ -147,6 +151,15 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
         if (handlerMethod == null && symbolInfo.CandidateSymbols.Length == 1)
             handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
         if (handlerMethod == null)
+            return;
+
+        // `handler.Invoke` resolves to the delegate type's Invoke method — its signature belongs
+        // to the delegate type, not to anything the developer can change here.
+        if (handlerMethod.ContainingType?.TypeKind == TypeKind.Delegate)
+            return;
+
+        // A handler defined in another assembly has no editable signature in this solution.
+        if (handlerMethod.DeclaringSyntaxReferences.Length == 0)
             return;
 
         // Mirror the lambda path's async-only gating: a synchronous handler returning a plain

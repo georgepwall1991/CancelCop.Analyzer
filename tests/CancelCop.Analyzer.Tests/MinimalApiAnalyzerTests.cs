@@ -480,6 +480,112 @@ public class Program
     }
 
     [Fact]
+    public async Task MapGet_GenericMethodGroupWithoutToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        app.MapGet(""/users"", {|#0:GetItemsAsync<string>|});
+    }
+
+    private static async Task<string> GetItemsAsync<T>()
+    {
+        await Task.Delay(100);
+        return ""items"";
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task MapGet_ParenthesizedMethodGroupWithoutToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        app.MapGet(""/users"", ({|#0:GetUsersAsync|}));
+    }
+
+    private static async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task MapGet_DelegateInvokeMemberAccess_ShouldNotReportDiagnostic()
+    {
+        // handler.Invoke resolves to the delegate type's Invoke method, whose signature the
+        // developer cannot change — must stay quiet like the bare delegate variable.
+        var test = @"
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        Func<Task<string>> handler = async () => { await Task.Delay(100); return ""users""; };
+        app.MapGet(""/users"", handler.Invoke);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task MapGet_MetadataMethodGroup_ShouldNotReportDiagnostic()
+    {
+        // A handler defined in another assembly has no editable signature in this solution.
+        // TextWriter.DisposeAsync is a unique, ValueTask-returning, tokenless metadata method —
+        // async-shaped, so only the metadata guard keeps it quiet.
+        var test = @"
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        app.MapGet(""/dispose"", Console.Error.DisposeAsync);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task MapGet_DelegateVariable_ShouldNotReportDiagnostic()
     {
         // A delegate-typed variable is not a method group; its target signature is not bound

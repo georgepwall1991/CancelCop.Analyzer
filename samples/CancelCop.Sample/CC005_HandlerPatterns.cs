@@ -112,7 +112,8 @@ public static class CC005_HandlerPatterns
     // CC005C: Minimal API Endpoint Pattern
     // =========================================================================
     //
-    // Minimal APIs use lambda expressions for endpoint handlers.
+    // Minimal APIs accept lambda or method-group endpoint handlers; both are analysed
+    // (method groups as of v1.4.4).
     //
     // VIOLATION:
     // ```csharp
@@ -134,6 +135,15 @@ public static class CC005_HandlerPatterns
     //     var user = await service.GetUserAsync(id, cancellationToken);
     //     return Results.Ok(user);
     // });
+    // ```
+    //
+    // METHOD-GROUP VIOLATION (the code fix adds the token to the referenced method):
+    // ```csharp
+    // app.MapGet("/users", GetUsersAsync);                       // CC005C WARNING
+    // static async Task<string> GetUsersAsync() { ... }
+    //
+    // app.MapGet("/users", GetUsersAsync);                       // fixed
+    // static async Task<string> GetUsersAsync(CancellationToken cancellationToken = default) { ... }
     // ```
 
     // =========================================================================

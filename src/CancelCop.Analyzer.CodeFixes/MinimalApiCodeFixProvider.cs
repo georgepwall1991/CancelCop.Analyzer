@@ -8,6 +8,7 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
 
 namespace CancelCop.Analyzer;
 
@@ -41,7 +42,7 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
             .OfType<ExpressionSyntax>()
             .FirstOrDefault(e => e.Span == diagnosticSpan);
 
-        if (handlerExpression is IdentifierNameSyntax or MemberAccessExpressionSyntax)
+        if (handlerExpression is SimpleNameSyntax or MemberAccessExpressionSyntax)
         {
             await RegisterMethodGroupFixAsync(context, root, handlerExpression, diagnostic).ConfigureAwait(false);
             return;
@@ -87,6 +88,18 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
             handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
         if (handlerMethod == null)
             return;
+
+        // A partial method has two declaration parts that must keep matching signatures
+        // (CS8795/CS0759); rewriting only one part would not compile. A virtual or abstract
+        // method's signature is mirrored by its overrides, which a single-declaration rewrite
+        // would orphan (CS0115). Both keep the diagnostic but get no automatic fix.
+        if (handlerMethod.PartialDefinitionPart != null ||
+            handlerMethod.PartialImplementationPart != null ||
+            handlerMethod.IsVirtual ||
+            handlerMethod.IsAbstract)
+        {
+            return;
+        }
 
         var declaration = handlerMethod.DeclaringSyntaxReferences.FirstOrDefault()
             ?.GetSyntax(context.CancellationToken);
@@ -143,6 +156,7 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
             LocalFunctionStatementSyntax f => f.WithParameterList(newParameterList),
             _ => declaration,
         };
+        newDeclaration = newDeclaration.WithAdditionalAnnotations(Formatter.Annotation);
 
         var newRoot = root.ReplaceNode(declaration, newDeclaration);
 

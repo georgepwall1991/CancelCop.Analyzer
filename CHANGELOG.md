@@ -28,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never be "fixed" by adding a token parameter to an unrelated enclosing lambda (e.g. a registration
   lambda wrapping the `MapGet` call).
 
+### Review hardening (caught before release)
+
+- `handler.Invoke` member access resolves to the delegate type's `Invoke` method and is never
+  flagged — the developer cannot change that signature.
+- Handlers defined in another assembly (metadata) are never flagged — no editable signature exists
+  in the solution.
+- Parenthesized method groups (`(Handler)`) and generic method groups (`Handler<T>`) no longer
+  evade analysis.
+- The fix is withheld for **virtual/abstract** handlers (rewriting the base would orphan overrides,
+  CS0115) and **partial** methods (both parts must keep matching signatures, CS8795); the
+  diagnostic still reports for manual action.
+- Fix All on two routes sharing one handler adds the token parameter exactly once (pinned by test).
+- The rewritten declaration now carries the formatter annotation, matching the CC001 fix.
+
 ## [1.4.3] - 2026-06-09
 
 ### Fixed
