@@ -408,6 +408,31 @@ public class User { public int Id { get; set; } }";
     }
 
     [Fact]
+    public async Task EFCoreMethod_InConstructorWithToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class Warmup
+{
+    private readonly Task<int> _seed;
+
+    public Warmup(DbContext context, CancellationToken cancellationToken)
+    {
+        _seed = context.{|#0:SaveChangesAsync|}();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("SaveChangesAsync", "cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task EFCoreMethod_NoTokenParameter_ShouldNotReportDiagnostic()
     {
         var test = @"

@@ -399,6 +399,29 @@ public class TestClass
     }
 
     [Fact]
+    public async Task HttpClientMethod_InPrimaryConstructorClassMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Fetcher(HttpClient httpClient, CancellationToken cancellationToken)
+{
+    public async Task<string> FetchAsync()
+    {
+        return await httpClient.{|#0:GetStringAsync|}(""https://api.example.com"");
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetStringAsync", "cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task HttpClientMethod_InLambda_NoTokenAnywhere_ShouldNotReportDiagnostic()
     {
         var test = @"

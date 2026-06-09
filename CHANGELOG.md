@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-06-09
+
+### Fixed
+
+- The shared token-scope walk (CC002/CC003/CC004/CC009) now finds `CancellationToken` parameters
+  declared on **constructors** and **C# 12 primary constructors** (classes and records). Previously
+  the walk only terminated at method declarations, so all four rules were silent in these scopes:
+  ```csharp
+  public class Worker(CancellationToken cancellationToken)
+  {
+      public Task RunAsync() => Task.Delay(100);   // CC002: should pass cancellationToken
+  }
+
+  public TestClass(CancellationToken cancellationToken)
+  {
+      _init = Task.Delay(100);                     // CC002: should pass cancellationToken
+  }
+  ```
+  Primary-constructor tokens are also found from instance field initializers. The walk stays
+  conservative where capture is illegal: static members, static field initializers, and non-primary
+  constructor bodies (CS9105) never see the primary-constructor token, and operators end the search.
+
+### Review hardening (caught before release)
+
+- **Static event-field initializers** get the same CS9105 guard as static fields (the walk now
+  matches `BaseFieldDeclarationSyntax`, covering `event` fields), so a lambda in a static event
+  initializer can no longer be told to capture an uncapturable primary-constructor token.
+- **Partial types** whose primary constructor is declared on another part are now resolved through
+  the type symbol, so instance members on any part see the token (capture across parts is legal).
+- CC002 and CC009 XML-doc scope descriptions updated to match the widened walk.
+
 ## [1.4.4] - 2026-06-09
 
 ### Added

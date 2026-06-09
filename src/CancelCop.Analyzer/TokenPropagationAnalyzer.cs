@@ -30,7 +30,9 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>Scope:</b>
-/// Checks method bodies, local functions, and lambda expressions for token availability.
+/// Checks method bodies, constructors, local functions, lambda expressions, and anonymous
+/// methods for token availability, including C# 12 primary-constructor parameters captured by
+/// instance members and instance field initializers.
 /// </para>
 /// </remarks>
 /// <example>

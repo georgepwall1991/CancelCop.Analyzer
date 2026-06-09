@@ -433,4 +433,30 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task Loop_InPrimaryConstructorClassMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Processor(CancellationToken cancellationToken)
+{
+    public async Task ProcessAsync(List<int> items)
+    {
+        {|#0:foreach|} (var item in items)
+        {
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }
