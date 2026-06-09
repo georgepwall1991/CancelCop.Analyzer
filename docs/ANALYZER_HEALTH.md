@@ -79,9 +79,11 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - ~~**Constructor / primary-constructor token parameters** (v1.4.5).~~ The shared walk now inspects
   constructor parameter lists and, for tokenless non-static instance members and instance field
   initializers, falls through to the containing type's primary-constructor parameters (classes and
-  records). Conservative guards: static members/initializers, non-primary constructor bodies
-  (CS9105), and operators never see the primary token; the first containing type ends the search.
-  Pinned by 10 new tests across CC002/CC003/CC004/CC009.
+  records), resolving through the type symbol when the primary constructor sits on another partial
+  part. Conservative guards: static members, static field **and event-field** initializers
+  (`BaseFieldDeclarationSyntax`), non-primary constructor bodies (CS9105), and operators never see
+  the primary token; the first containing type ends the search. Pinned by 12 new tests across
+  CC002/CC003/CC004/CC009.
 - ~~**CC005C method-group handlers** (v1.4.4).~~ `app.MapGet("/", Handler)`, `Handlers.Get`,
   `Handler<T>`, `(Handler)`, and local-function method groups are resolved to the referenced method
   and flagged when async-shaped without a token; the fixer adds
@@ -128,9 +130,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 194 passed, 0 failed after the constructor/primary-constructor
-  scope support (184 after v1.4.4 + 10 new tests: 7 CC002 incl. record/static/CS9105 negatives,
-  1 CC003 constructor, 1 CC004 primary-constructor, 1 CC009 primary-constructor).
+- `dotnet test CancelCop.sln` — 196 passed, 0 failed after the constructor/primary-constructor
+  scope support and its review hardening (184 after v1.4.4 + 12 new tests: 9 CC002 incl.
+  record/static/CS9105/static-event-field negatives and a partial-type positive, 1 CC003
+  constructor, 1 CC004 primary-constructor, 1 CC009 primary-constructor).
 - `dotnet test … --filter FullyQualifiedName~MinimalApi` — 34 passed (18 prior + 10 analyzer tests:
   method group/member-access/local-function/generic/parenthesized positives,
   with-token/synchronous/delegate-variable/delegate-Invoke/metadata negatives + 6 fixer tests:

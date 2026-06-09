@@ -139,11 +139,15 @@ internal static class CancellationTokenHelpers
             }
             else if (current is OperatorDeclarationSyntax or ConversionOperatorDeclarationSyntax)
             {
-                // Operators are static and never declare a token.
+                // Classic operators are static and never declare a token. (C# 14 instance
+                // compound-assignment operators could capture a primary token, but staying quiet
+                // there is the conservative side.)
                 return null;
             }
-            else if (current is FieldDeclarationSyntax field)
+            else if (current is BaseFieldDeclarationSyntax field)
             {
+                // Covers field and event-field declarations alike: a static initializer runs
+                // without instance context, so the primary token is unavailable (CS9105).
                 if (field.Modifiers.Any(SyntaxKind.StaticKeyword))
                     return null;
             }
@@ -156,22 +160,51 @@ internal static class CancellationTokenHelpers
             {
                 // Reaching the type means every enclosing member was a tokenless non-static
                 // scope; the type's primary-constructor parameters (if any) are the last chance.
-                if (typeDeclaration.ParameterList != null)
-                {
-                    foreach (var parameter in typeDeclaration.ParameterList.Parameters)
-                    {
-                        if (semanticModel.GetDeclaredSymbol(parameter) is IParameterSymbol parameterSymbol &&
-                            IsCancellationToken(parameterSymbol.Type))
-                        {
-                            return parameterSymbol;
-                        }
-                    }
-                }
-
-                return null;
+                return FindPrimaryConstructorTokenParameter(typeDeclaration, semanticModel);
             }
 
             current = current.Parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds a <c>CancellationToken</c> among the type's primary-constructor parameters, looking
+    /// first at the syntactic parameter list and then — for partial types whose primary
+    /// constructor is declared on another part — through the type symbol's constructors.
+    /// </summary>
+    private static IParameterSymbol? FindPrimaryConstructorTokenParameter(
+        TypeDeclarationSyntax typeDeclaration,
+        SemanticModel semanticModel)
+    {
+        if (typeDeclaration.ParameterList != null)
+        {
+            foreach (var parameter in typeDeclaration.ParameterList.Parameters)
+            {
+                if (semanticModel.GetDeclaredSymbol(parameter) is IParameterSymbol parameterSymbol &&
+                    IsCancellationToken(parameterSymbol.Type))
+                {
+                    return parameterSymbol;
+                }
+            }
+
+            return null;
+        }
+
+        // A partial part without the parameter list: the primary constructor is the instance
+        // constructor whose declaring syntax is a type declaration (capture from any part is
+        // legal, so the token must still be found).
+        if (semanticModel.GetDeclaredSymbol(typeDeclaration) is INamedTypeSymbol typeSymbol)
+        {
+            foreach (var constructor in typeSymbol.InstanceConstructors)
+            {
+                foreach (var reference in constructor.DeclaringSyntaxReferences)
+                {
+                    if (reference.GetSyntax() is TypeDeclarationSyntax)
+                        return FindCancellationTokenParameter(constructor);
+                }
+            }
         }
 
         return null;

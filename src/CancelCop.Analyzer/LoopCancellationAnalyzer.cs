@@ -38,8 +38,9 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>Scope:</b>
-/// Only analyzes loops in methods, local functions, or lambdas that have a CancellationToken
-/// parameter available.
+/// Only analyzes loops in scopes with a CancellationToken parameter available: methods,
+/// constructors, local functions, lambdas, and instance members of C# 12 primary-constructor
+/// types whose primary constructor declares a token.
 /// </para>
 /// </remarks>
 /// <example>
