@@ -170,6 +170,51 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CustomMethod_NamedArgs_PicksTokenNameFromMatchingOverload()
+    {
+        // Declaration order would find DoWorkAsync(string, CancellationToken ct) first, but the
+        // call binds DoWorkAsync(string, int) and the fixed call binds the three-parameter
+        // overload — the named argument must use that overload's name, not the first one's.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        await {|#0:DoWorkAsync|}(retries: 3, name: ""job"");
+    }
+
+    private Task DoWorkAsync(string name, CancellationToken ct) => Task.CompletedTask;
+    private Task DoWorkAsync(string name, int retries) => Task.CompletedTask;
+    private Task DoWorkAsync(string name, int retries, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        await DoWorkAsync(retries: 3, name: ""job"", cancellationToken: cancellationToken);
+    }
+
+    private Task DoWorkAsync(string name, CancellationToken ct) => Task.CompletedTask;
+    private Task DoWorkAsync(string name, int retries) => Task.CompletedTask;
+    private Task DoWorkAsync(string name, int retries, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("DoWorkAsync", "cancellationToken");
+
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task CustomMethod_WithOutOfPositionNamedArguments_AddsNamedTokenArgument()
     {
         // Appending a positional argument after an out-of-position named argument is CS8323;

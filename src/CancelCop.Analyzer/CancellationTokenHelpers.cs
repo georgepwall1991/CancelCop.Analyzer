@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -297,23 +298,59 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// Returns the declared name of the <c>CancellationToken</c> parameter on the first overload
-    /// that accepts one, or <c>null</c> when no overload does. Fixers need the name to emit a
-    /// named argument (<c>cancellationToken: ct</c>) when the call already uses named arguments.
+    /// Returns the declared name of the <c>CancellationToken</c> parameter on the overload the
+    /// fixed call is most likely to bind to, or <c>null</c> when no overload accepts one. Fixers
+    /// need the name to emit a named argument (<c>cancellationToken: ct</c>) when the call
+    /// already uses named arguments — naming the wrong overload's parameter would be CS1739.
     /// </summary>
+    /// <remarks>
+    /// Preference order: an overload whose non-token parameters match the bound method's
+    /// parameters by type, then one matching by count, then the first token-bearing overload.
+    /// </remarks>
     public static string? GetOverloadTokenParameterName(IMethodSymbol methodSymbol)
     {
         var containingType = methodSymbol.ContainingType;
         if (containingType == null)
             return null;
 
+        // Compare against the unreduced original definition so extension methods include their
+        // `this` parameter on both sides.
+        var boundParameters = (methodSymbol.ReducedFrom ?? methodSymbol).OriginalDefinition.Parameters;
+
+        string? countMatch = null;
+        string? fallback = null;
+
         foreach (var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>())
         {
             var tokenParameter = overload.Parameters.FirstOrDefault(p => IsCancellationToken(p.Type));
-            if (tokenParameter != null)
+            if (tokenParameter == null)
+                continue;
+
+            fallback ??= tokenParameter.Name;
+
+            var nonTokenParameters = overload.Parameters
+                .Where(p => !IsCancellationToken(p.Type))
+                .ToImmutableArray();
+            if (nonTokenParameters.Length != boundParameters.Length)
+                continue;
+
+            countMatch ??= tokenParameter.Name;
+
+            var typesMatch = true;
+            for (var i = 0; i < nonTokenParameters.Length; i++)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(
+                        nonTokenParameters[i].Type, boundParameters[i].Type))
+                {
+                    typesMatch = false;
+                    break;
+                }
+            }
+
+            if (typesMatch)
                 return tokenParameter.Name;
         }
 
-        return null;
+        return countMatch ?? fallback;
     }
 }
