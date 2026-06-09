@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.7] - 2026-06-09
+
+### Changed
+
+- **Internal refactor, no behavior change.** The triplicated tail of CC002/CC003/CC004
+  (token-argument check → scope walk → expression-tree guard → overload check → diagnostic
+  construction) is now a single `CancellationTokenHelpers.ReportIfTokenNotPropagated`. Each
+  analyzer is reduced to its rule-specific gating plus one call, eliminating the three-way drift
+  class that earlier hardening loops repeatedly had to re-synchronise. All 200 tests pass
+  unchanged.
+
 ## [1.4.6] - 2026-06-09
 
 ### Fixed

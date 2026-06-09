@@ -90,42 +90,7 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
         if (methodSymbol == null)
             return;
 
-        // Check if a CancellationToken was already passed in the invocation
-        if (CancellationTokenHelpers.HasCancellationTokenArgument(invocation, context.SemanticModel))
-            return;
-
-        // Find the nearest in-scope CancellationToken parameter — from a containing local function,
-        // lambda, or the containing method.
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
-            invocation, context.SemanticModel);
-        if (tokenParameter == null)
-            return;
-
-        // An invocation inside an expression tree (e.g. an EF/IQueryable predicate lambda) is data,
-        // not executable code: the token cannot be propagated into it and the fix would not compile.
-        if (CancellationTokenHelpers.IsWithinExpressionTree(invocation, context.SemanticModel))
-            return;
-
-        // Check if there's an overload that accepts a CancellationToken
-        var overloadTokenName = CancellationTokenHelpers.GetOverloadTokenParameterName(methodSymbol);
-        if (overloadTokenName == null)
-            return;
-
-        // Report diagnostic
-        var methodName = methodSymbol.Name;
-        var properties = ImmutableDictionary.CreateBuilder<string, string?>();
-        properties.Add("TokenParameterName", tokenParameter.Name);
-        properties.Add("TokenArgumentName", overloadTokenName);
-
-        var diagnostic = Diagnostic.Create(
-            Rule,
-            invocation.Expression is MemberAccessExpressionSyntax memberAccess
-                ? memberAccess.Name.GetLocation()
-                : invocation.Expression.GetLocation(),
-            properties.ToImmutable(),
-            methodName,
-            tokenParameter.Name);
-
-        context.ReportDiagnostic(diagnostic);
+        // Shared tail: token-in-scope, not-already-passed, executable-code, and overload checks.
+        CancellationTokenHelpers.ReportIfTokenNotPropagated(context, invocation, methodSymbol, Rule);
     }
 }

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-09 (refreshed through the v1.4.6 hardening loop)
+Reviewed: 2026-06-09 (refreshed through the v1.4.7 hardening loop)
 
 A deliberately harsh health audit for the nine implemented CancelCop rule IDs (CC001–CC006, CC009).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -56,11 +56,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - _None._
 
 ### P1 — Next hardening loop
-- **Extract the shared report pipeline** *(promoted from P2 — last structural debt item; loop 7
-  target)*. CC002/CC003/CC004 end in a near-verbatim block (token-argument check → scope walk →
-  expression-tree guard → overload check → properties → report); the named-argument loop added a
-  fourth copy of the properties block. One helper would prevent the drift class this loop series
-  keeps fixing.
+- _None._ The backlog is down to P2/P3 items; the next loop should re-audit rule health rather
+  than work a pre-named item.
 
 ### P2 — Opportunistic
 - **Dedupe the add-token-to-declaration recipe.** The CC005C method-group fix and the CC001 fix
@@ -73,6 +70,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   but worth documenting (and a combined-analyzer test would pin it).
 
 ### Resolved
+- ~~**Shared report pipeline** (v1.4.7).~~ CC002/CC003/CC004 now delegate their identical tail to
+  `CancellationTokenHelpers.ReportIfTokenNotPropagated`; each analyzer is rule-specific gating
+  plus one call. Pure refactor pinned by the existing 200 tests.
 - ~~**Named-argument code fixes** (v1.4.6).~~ CC002/CC003/CC004 fixes append a named token argument
   (`cancellationToken: ct`, using the overload's parameter name carried in `TokenArgumentName`
   diagnostic metadata) whenever the call already uses a named argument, avoiding CS8323. Pinned by
@@ -132,8 +132,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.4.6: 199 tests (196 after v1.4.5 + 3 named-argument fixer tests) — verified via CI
-  (`build-and-test`) because local test execution is currently blocked (see below).
+- v1.4.7: 200 tests, pure refactor verified via CI (`build-and-test`).
+- v1.4.6: 200 tests (196 after v1.4.5 + 4 named-argument fixer tests incl. the overload-name
+  trap case) — verified via CI (`build-and-test`) because local test execution is currently
+  blocked (see below).
 - `dotnet test CancelCop.sln` — 196 passed, 0 failed after the constructor/primary-constructor
   scope support and its review hardening (184 after v1.4.4 + 12 new tests: 9 CC002 incl.
   record/static/CS9105/static-event-field negatives and a partial-type positive, 1 CC003
