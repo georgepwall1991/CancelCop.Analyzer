@@ -73,7 +73,16 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
 
         var handlerArgument = arguments[1].Expression;
 
-        // Check if it's a lambda expression
+        // Method-group handlers (`app.MapGet("/", Handler)` or `app.MapGet("/", Handlers.Get)`)
+        // reference a declared method whose signature we can inspect directly.
+        if (handlerArgument is IdentifierNameSyntax or MemberAccessExpressionSyntax)
+        {
+            AnalyzeMethodGroupHandler(context, handlerArgument, methodName);
+            return;
+        }
+
+        // Otherwise only lambda handlers are analysed; delegate variables and other expressions
+        // are not bound to an inspectable signature here.
         if (handlerArgument is not ParenthesizedLambdaExpressionSyntax and not SimpleLambdaExpressionSyntax)
             return;
 
@@ -110,6 +119,48 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
         }
 
         // Report diagnostic on the lambda expression
+        var diagnostic = Diagnostic.Create(
+            Rule,
+            handlerArgument.GetLocation(),
+            methodName);
+
+        context.ReportDiagnostic(diagnostic);
+    }
+
+    /// <summary>
+    /// Analyses a method-group handler argument: resolves the referenced method and reports when
+    /// it is async-shaped (async modifier or Task/ValueTask-returning) without a
+    /// <c>CancellationToken</c> parameter.
+    /// </summary>
+    private static void AnalyzeMethodGroupHandler(
+        SyntaxNodeAnalysisContext context,
+        ExpressionSyntax handlerArgument,
+        string methodName)
+    {
+        var symbolInfo = context.SemanticModel.GetSymbolInfo(handlerArgument);
+
+        // A method group converted to System.Delegate may bind directly (C# 10 natural type) or
+        // surface as a single candidate. A delegate-typed variable resolves to a local/field
+        // symbol instead and is filtered out here. Multiple candidates mean an ambiguous group —
+        // stay quiet rather than guess.
+        var handlerMethod = symbolInfo.Symbol as IMethodSymbol;
+        if (handlerMethod == null && symbolInfo.CandidateSymbols.Length == 1)
+            handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
+        if (handlerMethod == null)
+            return;
+
+        // Mirror the lambda path's async-only gating: a synchronous handler returning a plain
+        // value has nothing to cancel.
+        if (!handlerMethod.IsAsync && !CancellationTokenHelpers.IsAsyncReturnType(handlerMethod.ReturnType))
+            return;
+
+        if (CancellationTokenHelpers.HasCancellationTokenParameter(handlerMethod))
+            return;
+
+        // The developer cannot add a parameter to an override/interface/extern signature here.
+        if (CancellationTokenHelpers.IsSignatureExternallyControlled(handlerMethod))
+            return;
+
         var diagnostic = Diagnostic.Create(
             Rule,
             handlerArgument.GetLocation(),

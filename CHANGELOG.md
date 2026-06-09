@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-06-09
+
+### Added
+
+- **CC005C** (`MinimalApiAnalyzer`) now analyses **method-group handlers**, not just lambdas:
+  `app.MapGet("/users", GetUsersAsync)`, `app.MapGet("/users", UserHandlers.Get)`, and local-function
+  method groups are resolved to the referenced method, which is flagged when it is async-shaped
+  (`async` or Task/ValueTask-returning) without a `CancellationToken` parameter. Synchronous
+  handlers, delegate-typed variables, ambiguous method groups, and externally-controlled signatures
+  (override/interface/extern) stay quiet.
+- The CC005C **code fix** follows: for a method-group diagnostic it adds
+  `CancellationToken cancellationToken = default` to the referenced method or local function
+  (`= default` keeps any other call sites compiling). Only same-document declarations are rewritten;
+  a handler defined in another file keeps the diagnostic but gets no automatic fix.
+
+### Fixed
+
+- The CC005C lambda code fix now matches the diagnostic span exactly, so a CC005C diagnostic can
+  never be "fixed" by adding a token parameter to an unrelated enclosing lambda (e.g. a registration
+  lambda wrapping the `MapGet` call).
+
 ## [1.4.3] - 2026-06-09
 
 ### Fixed
