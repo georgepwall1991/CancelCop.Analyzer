@@ -3,6 +3,7 @@ using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
@@ -209,6 +210,60 @@ internal static class CancellationTokenHelpers
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The shared tail of the token-propagation rules (CC002/CC003/CC004): given an invocation
+    /// the caller has already gated (rule-specific name/namespace/type checks), reports
+    /// <paramref name="rule"/> when an in-scope token exists, the call does not already pass
+    /// one, the call sits in executable code, and a token-accepting overload is available.
+    /// </summary>
+    /// <remarks>
+    /// The diagnostic lands on the invoked member name, carries <c>TokenParameterName</c>
+    /// (the in-scope token to pass) and <c>TokenArgumentName</c> (the target overload's
+    /// parameter name, for named-argument fixes), and formats the rule message with the method
+    /// name and token name.
+    /// </remarks>
+    public static void ReportIfTokenNotPropagated(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol methodSymbol,
+        DiagnosticDescriptor rule)
+    {
+        // Check if a CancellationToken was already passed in the invocation
+        if (HasCancellationTokenArgument(invocation, context.SemanticModel))
+            return;
+
+        // Find the nearest in-scope CancellationToken parameter — from a containing local
+        // function, lambda, constructor, method, or primary constructor.
+        var tokenParameter = FindEnclosingCancellationTokenParameter(invocation, context.SemanticModel);
+        if (tokenParameter == null)
+            return;
+
+        // An invocation inside an expression tree is data, not executable code: the token cannot
+        // be propagated into it and the fix would not compile.
+        if (IsWithinExpressionTree(invocation, context.SemanticModel))
+            return;
+
+        // Check if there's an overload that accepts a CancellationToken
+        var overloadTokenName = GetOverloadTokenParameterName(methodSymbol);
+        if (overloadTokenName == null)
+            return;
+
+        var properties = ImmutableDictionary.CreateBuilder<string, string?>();
+        properties.Add("TokenParameterName", tokenParameter.Name);
+        properties.Add("TokenArgumentName", overloadTokenName);
+
+        var diagnostic = Diagnostic.Create(
+            rule,
+            invocation.Expression is MemberAccessExpressionSyntax memberAccess
+                ? memberAccess.Name.GetLocation()
+                : invocation.Expression.GetLocation(),
+            properties.ToImmutable(),
+            methodSymbol.Name,
+            tokenParameter.Name);
+
+        context.ReportDiagnostic(diagnostic);
     }
 
     /// <summary>
