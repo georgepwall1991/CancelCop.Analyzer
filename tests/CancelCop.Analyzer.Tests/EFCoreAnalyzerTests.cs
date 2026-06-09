@@ -227,6 +227,187 @@ public class TestClass
     }
 
     [Fact]
+    public async Task EFCoreMethod_InLocalFunctionWithOwnToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public void Setup()
+    {
+        async Task<int> CountUsersAsync(CancellationToken ct)
+        {
+            IQueryable<User> query = null;
+            return await query.{|#0:CountAsync|}();
+        }
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        var expected = new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("CountAsync", "ct");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task EFCoreMethod_InLambdaWithOwnToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public void Setup()
+    {
+        Func<CancellationToken, Task<int>> count = async ct =>
+        {
+            IQueryable<User> query = null;
+            return await query.{|#0:CountAsync|}();
+        };
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        var expected = new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("CountAsync", "ct");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task EFCoreMethod_InLambdaCapturingOuterToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public void Setup(CancellationToken cancellationToken)
+    {
+        Func<Task<int>> count = async () =>
+        {
+            IQueryable<User> query = null;
+            return await query.{|#0:CountAsync|}();
+        };
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        var expected = new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("CountAsync", "cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task EFCoreMethod_InsideExpressionTree_ShouldNotReportDiagnostic()
+    {
+        // Real EF Core async methods take an optional CancellationToken, which an expression tree
+        // may not call (CS0854) — so the stub overload below has no optional parameters, keeping
+        // the tree compilable while still resolving into the Microsoft.EntityFrameworkCore namespace.
+        var test = @"
+using System;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace Microsoft.EntityFrameworkCore
+{
+    public static class StubQueryableExtensions
+    {
+        public static Task<int> CountAsync<T>(this IQueryable<T> source) => null;
+        public static Task<int> CountAsync<T>(this IQueryable<T> source, CancellationToken cancellationToken) => null;
+    }
+}
+
+public class TestClass
+{
+    public void Setup(IQueryable<User> query, CancellationToken cancellationToken)
+    {
+        Expression<Func<Task<int>>> count = () => query.CountAsync();
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task EFCoreMethod_InLambda_NoTokenAnywhere_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public void Setup()
+    {
+        Func<Task<int>> count = async () =>
+        {
+            IQueryable<User> query = null;
+            return await query.CountAsync();
+        };
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task EFCoreMethod_InStaticLocalFunction_OuterTokenNotCapturable_ShouldNotReportDiagnostic()
+    {
+        // A static local function cannot capture the enclosing method's token (CS8421), so
+        // suggesting it would be a false positive with a non-compiling fix.
+        var test = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public void Setup(CancellationToken cancellationToken)
+    {
+        static async Task<int> CountUsersAsync(IQueryable<User> query)
+        {
+            return await query.CountAsync();
+        }
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task EFCoreMethod_NoTokenParameter_ShouldNotReportDiagnostic()
     {
         var test = @"

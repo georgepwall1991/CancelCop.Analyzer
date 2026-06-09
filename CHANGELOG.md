@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-06-09
+
+### Fixed
+
+- **CC003** (`EFCoreAnalyzer`) and **CC004** (`HttpClientAnalyzer`) now find the available
+  `CancellationToken` with the same scope walk as CC002/CC009: the nearest enclosing **local
+  function, lambda, or method** that declares (or captures) a token parameter. Previously both
+  rules only looked at the containing method declaration
+  (`FirstAncestorOrSelf<MethodDeclarationSyntax>`), so an EF Core or `HttpClient` call inside a
+  local function or lambda that owned its own token was silently missed. Examples now caught:
+  ```csharp
+  async Task<int> CountUsersAsync(CancellationToken ct)   // local function
+  {
+      return await query.CountAsync();                    // CC003: should pass ct
+  }
+
+  Func<CancellationToken, Task<string>> fetch = async ct =>
+      await httpClient.GetStringAsync(url);               // CC004: should pass ct
+  ```
+- Both rules also gained CC002's **expression-tree guard**: a matching call inside an
+  `Expression<TDelegate>` lambda is data, not executable code, so it is never flagged (the token
+  could not be propagated there, and the fix would not compile).
+- The shared scope walk (CC002/CC003/CC004/CC009) now stops at a **`static` lambda or static local
+  function** that has no token of its own: a static anonymous function cannot capture the enclosing
+  method's token (CS8820/CS8421), so suggesting it was a false positive whose code fix did not
+  compile. Surfaced during review of this release.
+- The shared scope walk now also recognises **anonymous methods** (`async delegate (CancellationToken ct)
+  { … }`), which declare parameters just like lambdas but were previously invisible — a silent false
+  negative for all four propagation rules.
+
+### Changed
+
+- All four token-propagation rules (CC002, CC003, CC004, CC009) now share the single
+  `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter` scope walk, closing the
+  P1 "scope consistency" item from `docs/ANALYZER_HEALTH.md`.
+
 ## [1.4.2] - 2026-06-04
 
 ### Fixed

@@ -261,4 +261,162 @@ public class TestClass
 
         await CreateTest(test, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task HttpClientMethod_InLocalFunctionWithOwnToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public void Setup()
+    {
+        async Task<string> FetchAsync(CancellationToken ct)
+        {
+            return await _httpClient.{|#0:GetStringAsync|}(""https://api.example.com"");
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetStringAsync", "ct");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task HttpClientMethod_InLambdaWithOwnToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public void Setup()
+    {
+        Func<CancellationToken, Task<string>> fetch = async ct =>
+            await _httpClient.{|#0:GetStringAsync|}(""https://api.example.com"");
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetStringAsync", "ct");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task HttpClientMethod_InLambdaCapturingOuterToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public void Setup(CancellationToken cancellationToken)
+    {
+        Func<Task<string>> fetch = async () =>
+            await _httpClient.{|#0:GetStringAsync|}(""https://api.example.com"");
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetStringAsync", "cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task HttpClientMethod_InStaticLambda_OuterTokenNotCapturable_ShouldNotReportDiagnostic()
+    {
+        // A static lambda cannot capture the enclosing method's token (CS8820), so suggesting it
+        // would be a false positive with a non-compiling fix.
+        var test = @"
+using System;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static readonly HttpClient _httpClient = new HttpClient();
+
+    public void Setup(CancellationToken cancellationToken)
+    {
+        Func<Task<string>> fetch = static async () =>
+            await _httpClient.GetStringAsync(""https://api.example.com"");
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task HttpClientMethod_InAnonymousMethodWithOwnToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public void Setup()
+    {
+        Func<CancellationToken, Task<string>> fetch = async delegate (CancellationToken ct)
+        {
+            return await _httpClient.{|#0:GetStringAsync|}(""https://api.example.com"");
+        };
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetStringAsync", "ct");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task HttpClientMethod_InLambda_NoTokenAnywhere_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Net.Http;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public void Setup()
+    {
+        Func<Task<string>> fetch = async () =>
+            await _httpClient.GetStringAsync(""https://api.example.com"");
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
 }

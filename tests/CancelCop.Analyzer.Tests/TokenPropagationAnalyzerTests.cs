@@ -387,4 +387,54 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task Call_InStaticLambda_OuterTokenNotCapturable_ShouldNotReportDiagnostic()
+    {
+        // A static lambda cannot capture the enclosing method's token (CS8820), so suggesting it
+        // would be a false positive with a non-compiling fix.
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Setup(CancellationToken cancellationToken)
+    {
+        Func<Task> work = static async () =>
+        {
+            await Task.Delay(100);
+        };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Call_InAnonymousMethodWithOwnToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Setup()
+    {
+        Func<CancellationToken, Task> work = async delegate (CancellationToken ct)
+        {
+            await Task.{|#0:Delay|}(100);
+        };
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "ct");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }
