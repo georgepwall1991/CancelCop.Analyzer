@@ -183,4 +183,46 @@ public class TestClass
 
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task PostAsync_WithOutOfPositionNamedArguments_AddsNamedTokenArgument()
+    {
+        // Appending a positional argument after an out-of-position named argument is CS8323;
+        // the fix must emit `cancellationToken: ct` instead.
+        var test = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public async Task PostDataAsync(HttpContent body, CancellationToken ct)
+    {
+        await _httpClient.{|#0:PostAsync|}(content: body, requestUri: ""https://api.example.com"");
+    }
+}";
+
+        var fixedCode = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public async Task PostDataAsync(HttpContent body, CancellationToken ct)
+    {
+        await _httpClient.PostAsync(content: body, requestUri: ""https://api.example.com"", cancellationToken: ct);
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("PostAsync", "ct");
+
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }

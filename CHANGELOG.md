@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.6] - 2026-06-09
+
+### Fixed
+
+- The **CC002/CC003/CC004 code fixes** no longer produce non-compiling calls when the original
+  invocation uses named arguments. Appending a positional token after an out-of-position named
+  argument is CS8323; the fixes now append a **named token argument** using the target overload's
+  parameter name whenever any existing argument is named:
+  ```csharp
+  await client.PostAsync(content: body, requestUri: url);
+  // fix now produces:
+  await client.PostAsync(content: body, requestUri: url, cancellationToken: ct);
+  ```
+  The analyzers carry the overload's token parameter name in new `TokenArgumentName` diagnostic
+  metadata, so the fixers stay purely syntactic. Plain positional calls keep positional fixes.
+
 ## [1.4.5] - 2026-06-09
 
 ### Fixed

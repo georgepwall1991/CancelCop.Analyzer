@@ -107,6 +107,29 @@ internal static class CancellationTokenFixHelpers
                 SyntaxFactory.Token(SyntaxKind.DefaultKeyword)));
 
     /// <summary>
+    /// Appends a <c>CancellationToken</c> argument to the invocation's argument list. When the
+    /// call already uses any named argument, the token is appended as a named argument
+    /// (<c>name: token</c>) — a trailing positional argument after an out-of-position named
+    /// argument is CS8323 — otherwise it stays positional.
+    /// </summary>
+    public static ArgumentListSyntax AddTokenArgument(
+        ArgumentListSyntax argumentList,
+        string tokenExpression,
+        string? namedParameterName)
+    {
+        var tokenArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenExpression));
+
+        if (namedParameterName != null &&
+            argumentList.Arguments.Any(a => a.NameColon != null))
+        {
+            tokenArgument = tokenArgument.WithNameColon(
+                SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(namedParameterName)));
+        }
+
+        return argumentList.AddArguments(tokenArgument);
+    }
+
+    /// <summary>
     /// Adds <c>using System.Threading;</c> in alphabetical order if it is not already present,
     /// preserving the file's leading trivia and avoiding spurious blank lines between usings.
     /// </summary>

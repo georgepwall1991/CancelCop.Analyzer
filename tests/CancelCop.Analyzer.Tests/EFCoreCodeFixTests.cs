@@ -201,4 +201,51 @@ public class User
 
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task FirstOrDefaultAsync_WithNamedPredicateArgument_AddsNamedTokenArgument()
+    {
+        // The call already uses a named argument, so the appended token must be named as well
+        // (a trailing positional argument would be CS8323 when the named one is out of position;
+        // staying named is always legal).
+        var test = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public async Task<User> GetUserAsync(int id, CancellationToken cancellationToken)
+    {
+        IQueryable<User> users = null;
+        return await users.{|#0:FirstOrDefaultAsync|}(predicate: u => u.Id == id);
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        var fixedCode = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public async Task<User> GetUserAsync(int id, CancellationToken cancellationToken)
+    {
+        IQueryable<User> users = null;
+        return await users.FirstOrDefaultAsync(predicate: u => u.Id == id, cancellationToken: cancellationToken);
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        var expected = new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("FirstOrDefaultAsync", "cancellationToken");
+
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }

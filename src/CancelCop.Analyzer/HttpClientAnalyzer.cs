@@ -78,13 +78,15 @@ public class HttpClientAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if there's an overload that accepts a CancellationToken
-        if (!CancellationTokenHelpers.HasOverloadWithCancellationToken(methodSymbol))
+        var overloadTokenName = CancellationTokenHelpers.GetOverloadTokenParameterName(methodSymbol);
+        if (overloadTokenName == null)
             return;
 
         // Report diagnostic
         var methodName = methodSymbol.Name;
         var properties = ImmutableDictionary.CreateBuilder<string, string?>();
         properties.Add("TokenParameterName", tokenParameter.Name);
+        properties.Add("TokenArgumentName", overloadTokenName);
 
         var diagnostic = Diagnostic.Create(
             Rule,

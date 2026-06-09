@@ -46,11 +46,14 @@ public class TokenPropagationCodeFixProvider : CodeFixProvider
             ? name
             : "cancellationToken";
 
+        // The target overload's token parameter name, used when a named argument is required.
+        diagnostic.Properties.TryGetValue("TokenArgumentName", out var tokenArgumentName);
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
                 createChangedDocument: c => AddCancellationTokenArgumentAsync(
-                    context.Document, invocation, tokenParameterName, c),
+                    context.Document, invocation, tokenParameterName, tokenArgumentName, c),
                 equivalenceKey: Title),
             diagnostic);
     }
@@ -59,18 +62,16 @@ public class TokenPropagationCodeFixProvider : CodeFixProvider
         Document document,
         InvocationExpressionSyntax invocation,
         string tokenParameterName,
+        string? tokenArgumentName,
         CancellationToken cancellationToken)
     {
         var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
         if (root == null)
             return document;
 
-        // Create the CancellationToken argument
-        var tokenArgument = SyntaxFactory.Argument(
-            SyntaxFactory.IdentifierName(tokenParameterName));
-
-        // Add the argument to the invocation
-        var newArgumentList = invocation.ArgumentList.AddArguments(tokenArgument);
+        // Append the token, switching to a named argument when the call already uses one.
+        var newArgumentList = CancellationTokenFixHelpers.AddTokenArgument(
+            invocation.ArgumentList, tokenParameterName, tokenArgumentName);
         var newInvocation = invocation.WithArgumentList(newArgumentList);
 
         var newRoot = root.ReplaceNode(invocation, newInvocation);

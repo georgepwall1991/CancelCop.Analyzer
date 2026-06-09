@@ -293,12 +293,27 @@ internal static class CancellationTokenHelpers
     /// </summary>
     public static bool HasOverloadWithCancellationToken(IMethodSymbol methodSymbol)
     {
+        return GetOverloadTokenParameterName(methodSymbol) != null;
+    }
+
+    /// <summary>
+    /// Returns the declared name of the <c>CancellationToken</c> parameter on the first overload
+    /// that accepts one, or <c>null</c> when no overload does. Fixers need the name to emit a
+    /// named argument (<c>cancellationToken: ct</c>) when the call already uses named arguments.
+    /// </summary>
+    public static string? GetOverloadTokenParameterName(IMethodSymbol methodSymbol)
+    {
         var containingType = methodSymbol.ContainingType;
         if (containingType == null)
-            return false;
+            return null;
 
-        return containingType.GetMembers(methodSymbol.Name)
-            .OfType<IMethodSymbol>()
-            .Any(m => m.Parameters.Any(p => IsCancellationToken(p.Type)));
+        foreach (var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>())
+        {
+            var tokenParameter = overload.Parameters.FirstOrDefault(p => IsCancellationToken(p.Type));
+            if (tokenParameter != null)
+                return tokenParameter.Name;
+        }
+
+        return null;
     }
 }
