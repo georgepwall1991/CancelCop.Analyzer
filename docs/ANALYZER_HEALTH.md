@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-09 (refreshed through the v1.4.7 hardening loop)
+Reviewed: 2026-06-09 (refreshed through the v1.4.8 hardening loop)
 
 A deliberately harsh health audit for the nine implemented CancelCop rule IDs (CC001–CC006, CC009).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -113,9 +113,11 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   MediatR interface; switch its inline token check to `CancellationTokenHelpers`.
 - **Analyzer XML docs.** CC003, CC004, CC005A, CC005B lack the `<remarks>`/`<example>` doc blocks that
   CC001/CC002/CC009 carry.
-- **Rule-catalog trust contract.** There is no test asserting every shipped analyzer's descriptor is
-  documented in README + `AnalyzerReleases.Shipped.md` (AutoMapper's `RuleCatalogTests` is the model).
-  A drift guard would catch undocumented or renamed rules.
+- ~~**Rule-catalog trust contract** (v1.4.8).~~ `RuleCatalogTests` now asserts every shipped
+  descriptor has a README rule-table row (severity + fix mark accurate), is tracked in
+  `AnalyzerReleases.Shipped.md` with matching severity, and that every exported code-fix provider
+  targets a shipped rule — plus a discovery canary so reflection finding zero analyzers cannot
+  vacuously pass.
 
 ## Cross-Cutting Findings
 
@@ -132,6 +134,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.4.8: 205 tests (200 + 5 `RuleCatalogTests` drift guards), verified via CI (`build-and-test`).
 - v1.4.7: 200 tests, pure refactor verified via CI (`build-and-test`).
 - v1.4.6: 200 tests (196 after v1.4.5 + 4 named-argument fixer tests incl. the overload-name
   trap case) — verified via CI (`build-and-test`) because local test execution is currently

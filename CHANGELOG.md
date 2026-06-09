@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.8] - 2026-06-09
+
+### Added
+
+- **Rule-catalog trust contract** (`RuleCatalogTests`): drift-guard tests asserting that every
+  descriptor a shipped analyzer registers has a README rule-table row with the correct severity
+  and fix mark, is tracked in `AnalyzerReleases.Shipped.md` with the correct severity, and that
+  every exported code-fix provider targets a shipped rule. A rule can no longer be added, renamed,
+  or re-severitied without the public docs following.
+
 ## [1.4.7] - 2026-06-09
 
 ### Changed
