@@ -67,18 +67,16 @@ public class EFCoreAnalyzer : DiagnosticAnalyzer
         if (CancellationTokenHelpers.HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
-        // Find the containing method
-        var containingMethod = invocation.FirstAncestorOrSelf<MethodDeclarationSyntax>();
-        if (containingMethod == null)
-            return;
-
-        var containingMethodSymbol = context.SemanticModel.GetDeclaredSymbol(containingMethod);
-        if (containingMethodSymbol == null)
-            return;
-
-        // Check if the containing method has a CancellationToken parameter
-        var tokenParameter = CancellationTokenHelpers.FindCancellationTokenParameter(containingMethodSymbol);
+        // Find the nearest in-scope CancellationToken parameter — from a containing local function,
+        // lambda, or the containing method.
+        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+            invocation, context.SemanticModel);
         if (tokenParameter == null)
+            return;
+
+        // An invocation inside an expression tree (e.g. an IQueryable predicate lambda) is data,
+        // not executable code: the token cannot be propagated into it and the fix would not compile.
+        if (CancellationTokenHelpers.IsWithinExpressionTree(invocation, context.SemanticModel))
             return;
 
         // Check if there's an overload that accepts a CancellationToken
