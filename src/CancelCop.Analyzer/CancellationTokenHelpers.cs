@@ -1,5 +1,6 @@
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CancelCop.Analyzer;
@@ -81,10 +82,12 @@ internal static class CancellationTokenHelpers
     /// and returns the nearest in-scope token parameter, or <c>null</c> if none is available.
     /// </summary>
     /// <remarks>
-    /// A local function or lambda that has no token of its own does not stop the search: an outer
-    /// scope's token is captured and remains usable from the inner body. Reaching the containing
-    /// method declaration ends the search, because its parameter list is the outermost local scope
-    /// (class members are not parameters).
+    /// A local function or anonymous function that has no token of its own does not stop the
+    /// search: an outer scope's token is captured and remains usable from the inner body — unless
+    /// the inner function is <c>static</c>, which forbids capturing enclosing parameters
+    /// (CS8421/CS8820), so a tokenless static function ends the search with no token. Reaching the
+    /// containing method declaration also ends the search, because its parameter list is the
+    /// outermost local scope (class members are not parameters).
     /// </remarks>
     public static IParameterSymbol? FindEnclosingCancellationTokenParameter(
         SyntaxNode node,
@@ -93,20 +96,25 @@ internal static class CancellationTokenHelpers
         var current = node.Parent;
         while (current != null)
         {
-            // Local function first (innermost), then lambda, then the containing method.
+            // Local function first (innermost), then lambda / anonymous method, then the
+            // containing method.
             if (current is LocalFunctionStatementSyntax localFunction)
             {
                 var token = FindCancellationTokenParameter(
                     semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol);
                 if (token != null)
                     return token;
+                if (localFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
+                    return null;
             }
-            else if (current is LambdaExpressionSyntax lambda)
+            else if (current is AnonymousFunctionExpressionSyntax anonymousFunction)
             {
                 var token = FindCancellationTokenParameter(
-                    semanticModel.GetSymbolInfo(lambda).Symbol as IMethodSymbol);
+                    semanticModel.GetSymbolInfo(anonymousFunction).Symbol as IMethodSymbol);
                 if (token != null)
                     return token;
+                if (anonymousFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
+                    return null;
             }
             else if (current is MethodDeclarationSyntax method)
             {

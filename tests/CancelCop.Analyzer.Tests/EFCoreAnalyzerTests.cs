@@ -381,6 +381,33 @@ public class User { public int Id { get; set; } }";
     }
 
     [Fact]
+    public async Task EFCoreMethod_InStaticLocalFunction_OuterTokenNotCapturable_ShouldNotReportDiagnostic()
+    {
+        // A static local function cannot capture the enclosing method's token (CS8421), so
+        // suggesting it would be a false positive with a non-compiling fix.
+        var test = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public void Setup(CancellationToken cancellationToken)
+    {
+        static async Task<int> CountUsersAsync(IQueryable<User> query)
+        {
+            return await query.CountAsync();
+        }
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task EFCoreMethod_NoTokenParameter_ShouldNotReportDiagnostic()
     {
         var test = @"

@@ -61,7 +61,16 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   next-largest real false-negative class now that scope walking is unified; loop 4 target.)_
 
 ### P2 — Opportunistic
-- _None currently._
+- **Constructor / primary-constructor token parameters.** The shared scope walk only terminates at
+  `MethodDeclarationSyntax`; a `CancellationToken` declared on a constructor, accessor, or C# 12
+  primary constructor is never found, so CC002/CC003/CC004/CC009 stay silent there (false negative,
+  parity with pre-v1.4.3 behaviour).
+- **Named-argument code fixes.** The CC003/CC004 fixers append a positional token argument; on a call
+  using out-of-position named arguments (`PostAsync(content: body, requestUri: url)`) the fixed call
+  hits CS8323. Needs a named-argument-aware insertion (`cancellationToken: ct`).
+- **Extract the shared report pipeline.** CC002/CC003/CC004 now end in a verbatim ~35-line block
+  (token-argument check → scope walk → expression-tree guard → overload check → report). One helper
+  would prevent the three-way drift this loop just fixed from recurring.
 
 ### Resolved
 - ~~**CC003 / CC004 scope consistency** (v1.4.3).~~ Both now use the shared
@@ -69,6 +78,11 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   CC002's expression-tree guard; pinned by 9 new tests (5 EF Core, 4 HttpClient), including an
   expression-tree negative built on a no-optional-args EF-namespace stub (real EF Core signatures
   cannot appear in an expression tree, CS0854).
+- ~~**Static anonymous functions in the shared walk** (v1.4.3, surfaced in review).~~ A tokenless
+  `static` lambda / static local function now stops the walk — the outer token is not capturable
+  (CS8820/CS8421), so reporting it was a false positive with a non-compiling fix. The walk also
+  matches `AnonymousFunctionExpressionSyntax`, so `delegate (CancellationToken ct) { … }` parameters
+  are now found (previously a silent false negative). Pinned by 5 new tests across CC002/CC003/CC004.
 - ~~**CC002 lambda scope + docs drift** (v1.4.2).~~ CC002 now walks lambdas via the shared
   `FindEnclosingCancellationTokenParameter`; the docs' lambda-support promise is now true and pinned by
   three new tests.
@@ -97,12 +111,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- `dotnet test CancelCop.sln` — 163 passed, 0 failed after the CC003/CC004 scope-walk fix (154 after
-  v1.4.2 + 9 new tests).
-- `dotnet test … --filter "FullyQualifiedName~EFCore|FullyQualifiedName~HttpClient"` — 36 passed
-  (27 prior + 9 new: local-function-owns-token, lambda-owns-token, lambda-captures-outer-token for
-  each rule, plus lambda-no-token negatives and an EF expression-tree negative).
-- `dotnet test … --filter FullyQualifiedName~TokenPropagationAnalyzer` — 15 passed (unchanged).
+- `dotnet test CancelCop.sln` — 168 passed, 0 failed after the CC003/CC004 scope-walk fix plus the
+  static/anonymous-function hardening (154 after v1.4.2 + 14 new tests).
+- `dotnet test … --filter "FullyQualifiedName~EFCore|FullyQualifiedName~HttpClient"` — 39 passed
+  (27 prior + 12 new: local-function/lambda/captured-token positives, no-token and static-function
+  negatives, anonymous-method positive, and an EF expression-tree negative).
+- `dotnet test … --filter FullyQualifiedName~TokenPropagationAnalyzer` — 17 passed (15 prior +
+  static-lambda negative + anonymous-method positive).
 - Local SDK: .NET 10.0.300; `global.json` pins `10.0.300`. Tests target `net10.0`.
 - Note: the Roslyn-testing NuGet cache at `%TEMP%\test-packages` can become torn (missing nuspec /
   half-deleted package dirs) and fail every test with packaging exceptions; deleting the whole
