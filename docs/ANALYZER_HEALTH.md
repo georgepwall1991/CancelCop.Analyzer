@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-09 (refreshed through the v1.4.5 hardening loop)
+Reviewed: 2026-06-09 (refreshed through the v1.4.6 hardening loop)
 
 A deliberately harsh health audit for the nine implemented CancelCop rule IDs (CC001–CC006, CC009).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -56,16 +56,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 - _None._
 
 ### P1 — Next hardening loop
-- **Named-argument code fixes** *(promoted from P2 — the remaining known non-compiling-fix class;
-  loop 6 target)*. The CC003/CC004 fixers append a positional token argument; on a call using
-  out-of-position named arguments (`PostAsync(content: body, requestUri: url)`) the fixed call hits
-  CS8323. Needs a named-argument-aware insertion (`cancellationToken: ct`). Audit CC002's fixer for
-  the same pattern while there.
+- **Extract the shared report pipeline** *(promoted from P2 — last structural debt item; loop 7
+  target)*. CC002/CC003/CC004 end in a near-verbatim block (token-argument check → scope walk →
+  expression-tree guard → overload check → properties → report); the named-argument loop added a
+  fourth copy of the properties block. One helper would prevent the drift class this loop series
+  keeps fixing.
 
 ### P2 — Opportunistic
-- **Extract the shared report pipeline.** CC002/CC003/CC004 now end in a verbatim ~35-line block
-  (token-argument check → scope walk → expression-tree guard → overload check → report). One helper
-  would prevent the three-way drift this loop just fixed from recurring.
 - **Dedupe the add-token-to-declaration recipe.** The CC005C method-group fix and the CC001 fix
   both build `CancellationToken cancellationToken = default` and insert it via
   `InsertTokenParameter`; the method-group symbol resolution (symbol-or-single-candidate) is also
@@ -76,6 +73,11 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   but worth documenting (and a combined-analyzer test would pin it).
 
 ### Resolved
+- ~~**Named-argument code fixes** (v1.4.6).~~ CC002/CC003/CC004 fixes append a named token argument
+  (`cancellationToken: ct`, using the overload's parameter name carried in `TokenArgumentName`
+  diagnostic metadata) whenever the call already uses a named argument, avoiding CS8323. Pinned by
+  3 new fixer tests (EF named predicate, HttpClient out-of-position named args, CC002 custom
+  overload with a differently-named token parameter).
 - ~~**Constructor / primary-constructor token parameters** (v1.4.5).~~ The shared walk now inspects
   constructor parameter lists and, for tokenless non-static instance members and instance field
   initializers, falls through to the containing type's primary-constructor parameters (classes and
@@ -130,10 +132,16 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.4.6: 199 tests (196 after v1.4.5 + 3 named-argument fixer tests) — verified via CI
+  (`build-and-test`) because local test execution is currently blocked (see below).
 - `dotnet test CancelCop.sln` — 196 passed, 0 failed after the constructor/primary-constructor
   scope support and its review hardening (184 after v1.4.4 + 12 new tests: 9 CC002 incl.
   record/static/CS9105/static-event-field negatives and a partial-type positive, 1 CC003
   constructor, 1 CC004 primary-constructor, 1 CC009 primary-constructor).
+- **Local runtime limitation (2026-06-09):** Windows Smart App Control entered full enforcement on
+  this machine mid-session and now blocks freshly built unsigned test DLLs
+  (`FileLoadException … Application Control policy has blocked this file`, 0x800711C7). Local
+  `dotnet test` is unavailable until SAC is relaxed; CI remains the verification baseline.
 - `dotnet test … --filter FullyQualifiedName~MinimalApi` — 34 passed (18 prior + 10 analyzer tests:
   method group/member-access/local-function/generic/parenthesized positives,
   with-token/synchronous/delegate-variable/delegate-Invoke/metadata negatives + 6 fixer tests:
