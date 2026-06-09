@@ -437,4 +437,146 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task Call_InConstructorWithToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly Task _init;
+
+    public TestClass(CancellationToken cancellationToken)
+    {
+        _init = Task.{|#0:Delay|}(100);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Call_InInstanceMethodOfPrimaryConstructorClass_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker(CancellationToken cancellationToken)
+{
+    public Task RunAsync() => Task.{|#0:Delay|}(100);
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Call_InFieldInitializerOfPrimaryConstructorClass_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker(CancellationToken cancellationToken)
+{
+    private readonly Task _init = Task.{|#0:Delay|}(100);
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Call_InRecordWithPositionalToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public record Service(CancellationToken Token)
+{
+    public Task RunAsync() => Task.{|#0:Delay|}(100);
+}
+
+namespace System.Runtime.CompilerServices
+{
+    internal static class IsExternalInit { }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "Token");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Call_InStaticMethodOfPrimaryConstructorClass_ShouldNotReportDiagnostic()
+    {
+        // A static member cannot capture primary-constructor parameters (CS9105-adjacent), so
+        // suggesting the token would produce non-compiling code.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker(CancellationToken cancellationToken)
+{
+    public static Task RunAsync() => Task.Delay(100);
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Call_InNonPrimaryConstructorOfPrimaryConstructorClass_ShouldNotReportDiagnostic()
+    {
+        // A non-primary constructor's body cannot reference primary-constructor parameters
+        // (CS9105); only its own parameter list counts.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker(CancellationToken cancellationToken)
+{
+    private readonly Task _unused = Task.CompletedTask;
+
+    public Worker() : this(CancellationToken.None)
+    {
+        Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Call_InStaticFieldInitializer_ShouldNotReportDiagnostic()
+    {
+        // Static initializers run without instance context; the primary-constructor token is
+        // not available there.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker(CancellationToken cancellationToken)
+{
+    private static readonly Task _init = Task.Delay(100);
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

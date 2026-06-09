@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-06-09
+
+### Fixed
+
+- The shared token-scope walk (CC002/CC003/CC004/CC009) now finds `CancellationToken` parameters
+  declared on **constructors** and **C# 12 primary constructors** (classes and records). Previously
+  the walk only terminated at method declarations, so all four rules were silent in these scopes:
+  ```csharp
+  public class Worker(CancellationToken cancellationToken)
+  {
+      public Task RunAsync() => Task.Delay(100);   // CC002: should pass cancellationToken
+  }
+
+  public TestClass(CancellationToken cancellationToken)
+  {
+      _init = Task.Delay(100);                     // CC002: should pass cancellationToken
+  }
+  ```
+  Primary-constructor tokens are also found from instance field initializers. The walk stays
+  conservative where capture is illegal: static members, static field initializers, and non-primary
+  constructor bodies (CS9105) never see the primary-constructor token, and operators end the search.
+
 ## [1.4.4] - 2026-06-09
 
 ### Added

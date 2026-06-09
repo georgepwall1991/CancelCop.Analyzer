@@ -85,9 +85,13 @@ internal static class CancellationTokenHelpers
     /// A local function or anonymous function that has no token of its own does not stop the
     /// search: an outer scope's token is captured and remains usable from the inner body — unless
     /// the inner function is <c>static</c>, which forbids capturing enclosing parameters
-    /// (CS8421/CS8820), so a tokenless static function ends the search with no token. Reaching the
-    /// containing method declaration also ends the search, because its parameter list is the
-    /// outermost local scope (class members are not parameters).
+    /// (CS8421/CS8820), so a tokenless static function ends the search with no token. A method or
+    /// constructor parameter list is the outermost <em>local</em> scope, but a tokenless
+    /// non-static member keeps searching one level further: a C# 12 primary-constructor parameter
+    /// is captured and usable from instance-member bodies and initializers. Static members cannot
+    /// capture primary-constructor parameters, and a non-primary constructor's body cannot
+    /// reference them (CS9105), so those end the search. The first containing type declaration
+    /// always ends the search — an outer type's parameters are never in scope.
     /// </remarks>
     public static IParameterSymbol? FindEnclosingCancellationTokenParameter(
         SyntaxNode node,
@@ -97,7 +101,7 @@ internal static class CancellationTokenHelpers
         while (current != null)
         {
             // Local function first (innermost), then lambda / anonymous method, then the
-            // containing method.
+            // containing member, then the containing type's primary constructor.
             if (current is LocalFunctionStatementSyntax localFunction)
             {
                 var token = FindCancellationTokenParameter(
@@ -116,10 +120,55 @@ internal static class CancellationTokenHelpers
                 if (anonymousFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
                     return null;
             }
+            else if (current is ConstructorDeclarationSyntax constructor)
+            {
+                // A non-primary constructor's body cannot reference primary-constructor
+                // parameters (CS9105), so its own parameter list ends the search.
+                return FindCancellationTokenParameter(
+                    semanticModel.GetDeclaredSymbol(constructor) as IMethodSymbol);
+            }
             else if (current is MethodDeclarationSyntax method)
             {
-                return FindCancellationTokenParameter(
+                var token = FindCancellationTokenParameter(
                     semanticModel.GetDeclaredSymbol(method) as IMethodSymbol);
+                if (token != null)
+                    return token;
+                // A static member cannot capture primary-constructor parameters.
+                if (method.Modifiers.Any(SyntaxKind.StaticKeyword))
+                    return null;
+            }
+            else if (current is OperatorDeclarationSyntax or ConversionOperatorDeclarationSyntax)
+            {
+                // Operators are static and never declare a token.
+                return null;
+            }
+            else if (current is FieldDeclarationSyntax field)
+            {
+                if (field.Modifiers.Any(SyntaxKind.StaticKeyword))
+                    return null;
+            }
+            else if (current is BasePropertyDeclarationSyntax property)
+            {
+                if (property.Modifiers.Any(SyntaxKind.StaticKeyword))
+                    return null;
+            }
+            else if (current is TypeDeclarationSyntax typeDeclaration)
+            {
+                // Reaching the type means every enclosing member was a tokenless non-static
+                // scope; the type's primary-constructor parameters (if any) are the last chance.
+                if (typeDeclaration.ParameterList != null)
+                {
+                    foreach (var parameter in typeDeclaration.ParameterList.Parameters)
+                    {
+                        if (semanticModel.GetDeclaredSymbol(parameter) is IParameterSymbol parameterSymbol &&
+                            IsCancellationToken(parameterSymbol.Type))
+                        {
+                            return parameterSymbol;
+                        }
+                    }
+                }
+
+                return null;
             }
 
             current = current.Parent;
