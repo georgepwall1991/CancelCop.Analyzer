@@ -334,6 +334,88 @@ try { await DoAsync(token); }
 catch (Exception ex) when (ex is not OperationCanceledException) { Log(ex); }
 ```
 
+### CC020: gRPC Method Ignoring `ServerCallContext.CancellationToken`
+
+```csharp
+// ❌ Warning CC020 - keeps running after the client cancels
+public override async Task<Reply> Handle(Request request, ServerCallContext context)
+    => new Reply { Value = await _db.LoadAsync() };
+
+// ✅ Fixed
+public override async Task<Reply> Handle(Request request, ServerCallContext context)
+    => new Reply { Value = await _db.LoadAsync(context.CancellationToken) };
+```
+
+### CC021: Method Ignoring `HttpContext.RequestAborted`
+
+```csharp
+// ℹ️ Info CC021 - work continues after the client disconnects
+public async Task InvokeAsync(HttpContext context)
+    => await _service.DoWorkAsync();
+
+// ✅ Fixed
+public async Task InvokeAsync(HttpContext context)
+    => await _service.DoWorkAsync(context.RequestAborted);
+```
+
+### CC022: Prefer `CancelAsync()` Over `Cancel()`
+
+```csharp
+// ℹ️ Info CC022 - runs callbacks synchronously on this thread
+public async Task StopAsync(CancellationTokenSource cts)
+    => cts.Cancel();
+
+// ✅ Fixed
+public async Task StopAsync(CancellationTokenSource cts)
+    => await cts.CancelAsync();
+```
+
+### CC023: `async void`
+
+```csharp
+// ❌ Warning CC023 - cannot be awaited; exceptions crash the process
+public async void ProcessAsync() => await DoWorkAsync();
+
+// ✅ Fixed
+public async Task ProcessAsync() => await DoWorkAsync();
+```
+
+### CC024: `async` Lambda Converted to `Action`
+
+```csharp
+// ❌ Warning CC024 - the async body runs fire-and-forget (async void)
+Parallel.ForEach(items, async item => await ProcessAsync(item));
+
+// ✅ Fixed - use an API that awaits, e.g.
+await Parallel.ForEachAsync(items, async (item, ct) => await ProcessAsync(item, ct));
+```
+
+### CC025: `await using` for `IAsyncDisposable`
+
+```csharp
+// ℹ️ Info CC025 - Dispose() blocks on the async cleanup
+using var resource = new AsyncResource();
+
+// ✅ Fixed
+await using var resource = new AsyncResource();
+```
+
+### CC026: `SemaphoreSlim.Wait()` in Async Code
+
+```csharp
+// ❌ Warning CC026 - blocks the thread; a classic deadlock source
+public async Task RunAsync(SemaphoreSlim gate, CancellationToken ct)
+{
+    gate.Wait();
+}
+
+// ✅ Fixed
+public async Task RunAsync(SemaphoreSlim gate, CancellationToken ct)
+{
+    await gate.WaitAsync(ct);
+}
+```
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:

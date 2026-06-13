@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.5] - 2026-06-14
+
+### Documentation
+
+- The packaged README now has a "Quick Examples" section for every rule: added violation-and-fix
+  snippets for CC020–CC026 (gRPC, HttpContext, CancelAsync, async void, async-void lambda,
+  await using, SemaphoreSlim.Wait). All 26 rules are now documented with a runnable example.
+
 ## [1.22.4] - 2026-06-14
 
 ### Tests
