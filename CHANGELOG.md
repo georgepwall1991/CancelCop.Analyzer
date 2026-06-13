@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.1] - 2026-06-14
+
+### Tests
+
+- Added a cross-analyzer false-positive regression guard (`AllAnalyzersCleanCodeTests`): a single
+  idiomatic async sample — proper token propagation, loop checks, `WithCancellation`,
+  `[EnumeratorCancellation]`, `await using`, `await WaitAsync`, and a cancellation-excluding catch —
+  is run through **every** analyzer in the package at once and must produce zero diagnostics. A
+  future rule that over-fires on correct code now fails here.
+
 ## [1.22.0] - 2026-06-14
 
 ### Added

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.22.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.22.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-six implemented CancelCop rule IDs (CC001–CC006, CC009–CC026).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -155,6 +155,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.22.1: 329 tests (328 + 1 cross-analyzer clean-code FP guard — all 26 analyzers run together
+  over idiomatic async code produce zero diagnostics). Green locally.
 - v1.22.0: 328 tests (322 + 6 for new rule CC026: Wait-in-async positive; sync-method,
   Wait(timeout), non-semaphore negatives; and 2 fixer tests — with/without in-scope token). Green.
 - v1.21.0: 322 tests (316 + 6 for new rule CC025: using-declaration and using-statement positives;
