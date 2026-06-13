@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-06-14
+
+### Added
+
+- **New rule CC025 — prefer `await using` for `IAsyncDisposable`.** A type implementing
+  `IAsyncDisposable` releases resources asynchronously; disposing it through a synchronous `using`
+  calls `Dispose()` (typically blocking on the async cleanup). CC025 flags a `using` statement or
+  declaration (without `await`) over a resource whose type implements `System.IAsyncDisposable`,
+  inside async code, and the fix turns it into `await using` so `DisposeAsync()` is awaited. Info
+  severity. Pinned by 6 new tests (5 analyzer, 1 fixer).
+
 ## [1.20.0] - 2026-06-14
 
 ### Added

@@ -1,3 +1,11 @@
+## Release 1.21.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC025 | Usage | Info | Prefer await using for IAsyncDisposable
+
 ## Release 1.20.0
 
 ### New Rules

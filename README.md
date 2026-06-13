@@ -54,6 +54,7 @@ Install-Package CancelCop.Analyzer
 | **CC022** | Prefer `await CancelAsync()` over `Cancel()` in async code | Info | ✅ |
 | **CC023** | Avoid `async void` (non-event-handler) | Warning | ✅ |
 | **CC024** | Avoid `async` lambdas converted to `Action` | Warning | ❌ |
+| **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
 
 ## Quick Examples
 
