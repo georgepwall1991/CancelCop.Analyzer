@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-09 (refreshed through the v1.4.8 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.5.0 hardening loop)
 
-A deliberately harsh health audit for the nine implemented CancelCop rule IDs (CC001–CC006, CC009).
+A deliberately harsh health audit for the ten implemented CancelCop rule IDs (CC001–CC006, CC009, CC010).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -39,6 +39,7 @@ Calibration notes:
 | CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.4:** method-group handlers (`app.MapGet("/", Handler)`, `Handlers.Get`, local functions) are now analysed and fixed (token added to the referenced declaration, `= default`, same-document only). v1.4.1 gated the receiver on `IEndpointRouteBuilder`. Remaining false negative (pre-existing, low value): the unreduced static-call form (`EndpointRouteBuilderExtensions.MapGet(app, …)`). |
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
+| CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
 
 ## Planning Shortlist
 
@@ -134,6 +135,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.5.0: 214 tests (205 + 9 for new rule CC010: 7 analyzer — async-enumerable positive,
+  with-cancellation/no-token-in-scope/synchronous-foreach/producer-already-passes-token/configured-
+  cancelable negatives, lambda-scope positive — and 2 fixer: identifier source and invocation
+  source). `dotnet test CancelCop.sln -c Release` green locally (SAC blocker lifted 2026-06-13).
 - v1.4.8: 205 tests (200 + 5 `RuleCatalogTests` drift guards), verified via CI (`build-and-test`).
 - v1.4.7: 200 tests, pure refactor verified via CI (`build-and-test`).
 - v1.4.6: 200 tests (196 after v1.4.5 + 4 named-argument fixer tests incl. the overload-name

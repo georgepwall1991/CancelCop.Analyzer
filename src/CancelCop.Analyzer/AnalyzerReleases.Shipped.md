@@ -1,3 +1,11 @@
+## Release 1.5.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC010 | Usage | Warning | await foreach should flow a CancellationToken via .WithCancellation
+
 ## Release 1.3.0
 
 ### New Rules

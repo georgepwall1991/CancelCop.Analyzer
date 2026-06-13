@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-13
+
+### Added
+
+- **New rule CC010 — `await foreach` should flow a `CancellationToken`.** Consuming an
+  `IAsyncEnumerable<T>` with `await foreach` can block indefinitely on the next element; CC010
+  flags an `await foreach` whose source is (or implements) `IAsyncEnumerable<T>` when a token is in
+  scope and the source neither already passes a token argument nor is wrapped in a configured
+  cancelable enumerable (`.WithCancellation`/`.ConfigureAwait`). The code fix rewrites the source to
+  `source.WithCancellation(token)`, routing the token to the producer's `[EnumeratorCancellation]`
+  parameter. Conservative by design: no token in scope, a synchronous `foreach`, or a producer call
+  that already receives a token are all left alone. Pinned by 9 new tests (7 analyzer, 2 fixer).
+
 ## [1.4.8] - 2026-06-09
 
 ### Added

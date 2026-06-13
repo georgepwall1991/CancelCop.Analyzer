@@ -39,6 +39,7 @@ Install-Package CancelCop.Analyzer
 | **CC005C** | Minimal API endpoints must accept CancellationToken | Warning | ✅ |
 | **CC006** | CancellationToken should be the last parameter | Info | ❌ |
 | **CC009** | Loops should check for cancellation | Warning | ✅ |
+| **CC010** | `await foreach` should flow a CancellationToken via `.WithCancellation` | Warning | ✅ |
 
 ## Quick Examples
 
