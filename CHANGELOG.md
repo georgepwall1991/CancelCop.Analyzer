@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-06-13
+
+### Fixed
+
+- **CC015** now also flags `task.ConfigureAwait(false).GetAwaiter().GetResult()` — a very common
+  sync-over-async blocking form that the awaiter-type check previously missed (it only recognised
+  the bare `TaskAwaiter`/`ValueTaskAwaiter`, not the configured awaiters). The fix rewrites it to
+  `(await task.ConfigureAwait(false))`, preserving the `ConfigureAwait`. Pinned by 2 new tests.
+
 ## [1.10.1] - 2026-06-13
 
 ### Documentation

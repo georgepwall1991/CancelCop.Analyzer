@@ -130,8 +130,13 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (type == null)
             return false;
 
-        var ns = type.ContainingNamespace?.ToDisplayString();
-        return (type.Name == "TaskAwaiter" || type.Name == "ValueTaskAwaiter") &&
-               (ns == "System.Runtime.CompilerServices");
+        // Covers the bare awaiters (TaskAwaiter/ValueTaskAwaiter) and the configured awaiters
+        // produced by `.ConfigureAwait(...)` — so `task.ConfigureAwait(false).GetAwaiter().GetResult()`
+        // is caught too. All live in System.Runtime.CompilerServices.
+        if (type.ContainingNamespace?.ToDisplayString() != "System.Runtime.CompilerServices")
+            return false;
+
+        return type.Name is "TaskAwaiter" or "ValueTaskAwaiter" or
+            "ConfiguredTaskAwaiter" or "ConfiguredValueTaskAwaiter";
     }
 }

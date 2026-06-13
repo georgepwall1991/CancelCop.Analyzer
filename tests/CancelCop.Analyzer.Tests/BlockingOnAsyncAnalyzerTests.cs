@@ -64,6 +64,21 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ConfigureAwaitGetResult_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task<int> RunAsync()
+    {
+        await Task.Yield();
+        return GetValueAsync().ConfigureAwait(false).GetAwaiter().{|#0:GetResult|}();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".GetAwaiter().GetResult()");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Result_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

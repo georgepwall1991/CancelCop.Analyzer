@@ -66,6 +66,29 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ConfigureAwaitGetResult_BecomesAwaitOfConfigured()
+    {
+        var test = Harness + @"
+    public async Task<int> RunAsync()
+    {
+        await Task.Yield();
+        return GetValueAsync().ConfigureAwait(false).GetAwaiter().{|#0:GetResult|}();
+    }
+}";
+
+        var fixedCode = Harness + @"
+    public async Task<int> RunAsync()
+    {
+        await Task.Yield();
+        return (await GetValueAsync().ConfigureAwait(false));
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".GetAwaiter().GetResult()");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task GetAwaiterGetResult_BecomesAwait()
     {
         var test = Harness + @"
