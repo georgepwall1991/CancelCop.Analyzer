@@ -23,7 +23,12 @@
 // CC015_BlockingOnAsync.cs     - Avoid blocking on async code (sync-over-async)
 // CC016_UnusedToken.cs         - CancellationToken accepted but never used
 // CC019_SwallowedCancellation.cs - Broad catch swallows OperationCanceledException
-// (CC017 BackgroundService and CC018 SignalR are framework-specific; see tests.)
+// CC022_PreferCancelAsync.cs   - Prefer await CancelAsync() over Cancel()
+// CC023_AsyncVoid.cs           - Avoid async void (non-event-handler)
+// CC024_AsyncVoidLambda.cs     - Avoid async lambdas converted to Action
+// CC025_AwaitUsing.cs          - Prefer await using for IAsyncDisposable
+// CC026_BlockingSemaphore.cs   - Avoid SemaphoreSlim.Wait() in async code
+// (CC017/CC018/CC020/CC021 are framework-specific; see their analyzer tests.)
 //
 // VIEWING WARNINGS:
 // -----------------

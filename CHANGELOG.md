@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.7] - 2026-06-14
+
+### Documentation
+
+- Added `samples/CancelCop.Sample` files for the framework-free newer rules (CC022 CancelAsync,
+  CC023 async void, CC024 async-void lambda, CC025 await using, CC026 SemaphoreSlim.Wait), each a
+  violation and its fix. A clean sample build confirms each fires on its violation. The remaining
+  framework-specific rules (CC017/CC018/CC020/CC021) stay covered by their analyzer tests.
+
 ## [1.22.6] - 2026-06-14
 
 ### Tests
