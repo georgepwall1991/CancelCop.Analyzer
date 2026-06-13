@@ -55,6 +55,7 @@ Install-Package CancelCop.Analyzer
 | **CC023** | Avoid `async void` (non-event-handler) | Warning | ✅ |
 | **CC024** | Avoid `async` lambdas converted to `Action` | Warning | ❌ |
 | **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
+| **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
 
 ## Quick Examples
 

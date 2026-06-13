@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-06-14
+
+### Added
+
+- **New rule CC026 — avoid `SemaphoreSlim.Wait()` in async code.** A synchronous `Wait()` on a
+  `SemaphoreSlim` blocks the calling thread and is a classic deadlock source under a synchronization
+  context. CC026 flags a parameterless `Wait()` on a `System.Threading.SemaphoreSlim` inside an
+  `async` method, local function, lambda, or anonymous method, and the code fix rewrites it to
+  `await gate.WaitAsync(token)` — flowing the in-scope token when one is available, otherwise
+  `await gate.WaitAsync()`. The timeout/token `Wait` overloads are left alone. Pinned by 6 new tests
+  (4 analyzer, 2 fixer).
+
 ## [1.21.0] - 2026-06-14
 
 ### Added

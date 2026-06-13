@@ -1,3 +1,11 @@
+## Release 1.22.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC026 | Usage | Warning | Avoid SemaphoreSlim.Wait() in async code; use await WaitAsync()
+
 ## Release 1.21.0
 
 ### New Rules
