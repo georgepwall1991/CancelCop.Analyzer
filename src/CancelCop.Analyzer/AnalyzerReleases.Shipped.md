@@ -1,3 +1,11 @@
+## Release 1.6.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC011 | Usage | Warning | Async-iterator CancellationToken should be [EnumeratorCancellation]
+
 ## Release 1.5.0
 
 ### New Rules

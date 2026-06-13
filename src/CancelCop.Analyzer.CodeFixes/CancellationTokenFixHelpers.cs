@@ -133,22 +133,30 @@ internal static class CancellationTokenFixHelpers
     /// Adds <c>using System.Threading;</c> in alphabetical order if it is not already present,
     /// preserving the file's leading trivia and avoiding spurious blank lines between usings.
     /// </summary>
-    public static CompilationUnitSyntax AddSystemThreadingUsing(CompilationUnitSyntax compilationUnit)
+    public static CompilationUnitSyntax AddSystemThreadingUsing(CompilationUnitSyntax compilationUnit) =>
+        AddUsing(compilationUnit, SystemThreadingNamespace);
+
+    /// <summary>
+    /// Adds <c>using <paramref name="namespaceName"/>;</c> in alphabetical order if it is not
+    /// already present as a plain (non-alias, non-static) import, preserving the file's leading
+    /// trivia and avoiding spurious blank lines between usings.
+    /// </summary>
+    public static CompilationUnitSyntax AddUsing(CompilationUnitSyntax compilationUnit, string namespaceName)
     {
-        // Only a plain 'using System.Threading;' makes the unqualified CancellationToken
-        // resolve. An alias ('using X = System.Threading;') or static using does not, so
-        // those must NOT short-circuit insertion (otherwise the fixed code is CS0246).
+        // Only a plain 'using <namespaceName>;' makes the unqualified type resolve. An alias
+        // ('using X = <namespaceName>;') or static using does not, so those must NOT
+        // short-circuit insertion (otherwise the fixed code is CS0246).
         var alreadyImported = compilationUnit.Usings.Any(u =>
             u.Alias == null &&
             !u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword) &&
-            u.Name?.ToString() == SystemThreadingNamespace);
+            u.Name?.ToString() == namespaceName);
 
         if (alreadyImported)
             return compilationUnit;
 
         var usings = compilationUnit.Usings.ToList();
         var newLine = SyntaxFactory.EndOfLine(DetectNewLine(compilationUnit));
-        var newUsing = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(SystemThreadingNamespace));
+        var newUsing = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName));
 
         if (usings.Count == 0)
         {
@@ -170,7 +178,7 @@ internal static class CancellationTokenFixHelpers
         var insertIndex = usings.Count;
         for (var i = firstNonGlobal; i < usings.Count; i++)
         {
-            if (string.CompareOrdinal(SystemThreadingNamespace, usings[i].Name?.ToString()) < 0)
+            if (string.CompareOrdinal(namespaceName, usings[i].Name?.ToString()) < 0)
             {
                 insertIndex = i;
                 break;

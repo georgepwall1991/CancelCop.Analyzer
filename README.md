@@ -40,6 +40,7 @@ Install-Package CancelCop.Analyzer
 | **CC006** | CancellationToken should be the last parameter | Info | ❌ |
 | **CC009** | Loops should check for cancellation | Warning | ✅ |
 | **CC010** | `await foreach` should flow a CancellationToken via `.WithCancellation` | Warning | ✅ |
+| **CC011** | Async-iterator CancellationToken should be `[EnumeratorCancellation]` | Warning | ✅ |
 
 ## Quick Examples
 

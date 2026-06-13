@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-13
+
+### Added
+
+- **New rule CC011 — async-iterator `CancellationToken` should be `[EnumeratorCancellation]`.**
+  The producer-side complement to CC010: an `async IAsyncEnumerable<T>` iterator (method or local
+  function with `yield`) that declares a `CancellationToken` parameter but does not mark any token
+  parameter `[EnumeratorCancellation]` silently drops a token passed via `.WithCancellation(token)`
+  — the parameter just receives `default`. CC011 flags the first unmarked token parameter; the code
+  fix adds the `[EnumeratorCancellation]` attribute and the `System.Runtime.CompilerServices` import.
+  Conservative gating: non-iterator methods that merely return an `IAsyncEnumerable<T>`, iterators
+  with no token, and iterators where a token is already marked are all left alone. Pinned by 8 new
+  tests (6 analyzer, 2 fixer). The using-insertion fixer helper was generalized from
+  `AddSystemThreadingUsing` to a namespace-parameterized `AddUsing`.
+
 ## [1.5.0] - 2026-06-13
 
 ### Added
