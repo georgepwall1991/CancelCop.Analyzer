@@ -1,3 +1,11 @@
+## Release 1.14.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC019 | Usage | Info | Broad catch swallows OperationCanceledException
+
 ## Release 1.13.0
 
 ### New Rules

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-06-13
+
+### Added
+
+- **New rule CC019 — broad `catch` swallows `OperationCanceledException`.** A catch-all or
+  `catch (Exception)` over awaited work that does not rethrow turns a cancelled operation into a
+  generic, handled failure, so callers awaiting the cancellation never observe it. CC019 flags such
+  a catch (Info severity) when it has no `when` filter, its `try` block contains an `await`, and its
+  body never rethrows. Conservative: a `when` filter, a rethrow, a more specific exception type, or
+  a `try` with no awaited work all suppress it. Pinned by 7 new tests.
+
 ## [1.13.0] - 2026-06-13
 
 ### Added
