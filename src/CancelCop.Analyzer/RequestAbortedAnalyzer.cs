@@ -8,47 +8,47 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace CancelCop.Analyzer;
 
 /// <summary>
-/// Analyzer that detects a gRPC service method which receives a <c>ServerCallContext</c> but never
-/// observes its <c>CancellationToken</c>.
+/// Analyzer that detects a method which receives an <c>HttpContext</c> but never observes its
+/// <c>RequestAborted</c> cancellation token.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Rule ID:</b> CC020
+/// <b>Rule ID:</b> CC021
 /// </para>
 /// <para>
 /// <b>Why this matters:</b>
-/// In a gRPC service the per-call cancellation token is exposed as
-/// <c>ServerCallContext.CancellationToken</c>, signalled when the client cancels the call or
-/// disconnects. Because it is a property rather than a parameter, the general propagation rule
-/// (CC002) cannot see it, so a method that does async work without threading
-/// <c>context.CancellationToken</c> through keeps running after the caller is gone.
+/// ASP.NET Core exposes the request's cancellation token as
+/// <c>HttpContext.RequestAborted</c>, signalled when the client disconnects. As with gRPC's
+/// <c>ServerCallContext.CancellationToken</c> (CC020), it is a property rather than a parameter, so
+/// the general propagation rule (CC002) cannot see it. Async middleware/handlers that ignore it keep
+/// working on a response nobody will read. Reported as <b>Info</b> because an <c>HttpContext</c> is
+/// frequently taken for reasons unrelated to cancellation.
 /// </para>
 /// <para>
-/// <b>What it detects:</b> a method with a <c>Grpc.Core.ServerCallContext</c> parameter whose body
-/// performs asynchronous work (contains an <c>await</c>) but never reads
-/// <c>context.CancellationToken</c> and never passes the context on to another method.
+/// <b>What it detects:</b> a method with a <c>Microsoft.AspNetCore.Http.HttpContext</c> parameter
+/// whose body performs asynchronous work (contains an <c>await</c>) but never reads
+/// <c>context.RequestAborted</c> and never passes the context on to another method.
 /// </para>
 /// </remarks>
 /// <example>
 /// <code>
-/// public override async Task&lt;Reply&gt; Handle(Request request, ServerCallContext context)  // CC020
+/// public async Task InvokeAsync(HttpContext context)   // CC021
 /// {
-///     await _db.SaveChangesAsync();   // context.CancellationToken ignored
-///     return new Reply();
+///     await _next(context);   // wait — passing context on satisfies the rule; this would not flag
 /// }
 /// </code>
 /// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class GrpcServerCallContextAnalyzer : DiagnosticAnalyzer
+public class RequestAbortedAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
     /// The diagnostic ID for this analyzer rule.
     /// </summary>
-    public const string DiagnosticId = "CC020";
+    public const string DiagnosticId = "CC021";
 
-    private static readonly LocalizableString Title = "gRPC method ignores ServerCallContext.CancellationToken";
-    private static readonly LocalizableString MessageFormat = "gRPC method does async work but never observes '{0}.CancellationToken'";
-    private static readonly LocalizableString Description = "A gRPC service method should flow ServerCallContext.CancellationToken into its async calls so the call is cancelled when the client disconnects.";
+    private static readonly LocalizableString Title = "HttpContext.RequestAborted is not observed";
+    private static readonly LocalizableString MessageFormat = "Method does async work but never observes '{0}.RequestAborted'";
+    private static readonly LocalizableString Description = "A method holding an HttpContext should flow HttpContext.RequestAborted into its async calls so work stops when the client disconnects.";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -56,7 +56,7 @@ public class GrpcServerCallContextAnalyzer : DiagnosticAnalyzer
         Title,
         MessageFormat,
         Category,
-        DiagnosticSeverity.Warning,
+        DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: Description);
 
@@ -80,17 +80,14 @@ public class GrpcServerCallContextAnalyzer : DiagnosticAnalyzer
         if (context.SemanticModel.GetDeclaredSymbol(method, context.CancellationToken) is not IMethodSymbol symbol)
             return;
 
-        var contextParameter = symbol.Parameters.FirstOrDefault(IsServerCallContext);
+        var contextParameter = symbol.Parameters.FirstOrDefault(IsHttpContext);
         if (contextParameter == null)
             return;
 
-        // Only async work observes cancellation.
         if (!body.DescendantNodes().OfType<AwaitExpressionSyntax>().Any())
             return;
 
-        // Observing context.CancellationToken (or handing the context off so a callee can) satisfies
-        // the rule.
-        if (CancellationTokenHelpers.AccessesMember(body, contextParameter, "CancellationToken", context.SemanticModel, context.CancellationToken) ||
+        if (CancellationTokenHelpers.AccessesMember(body, contextParameter, "RequestAborted", context.SemanticModel, context.CancellationToken) ||
             CancellationTokenHelpers.ParameterEscapesAsArgument(body, contextParameter, context.SemanticModel, context.CancellationToken))
             return;
 
@@ -101,10 +98,10 @@ public class GrpcServerCallContextAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(Rule, location, contextParameter.Name));
     }
 
-    private static bool IsServerCallContext(IParameterSymbol parameter)
+    private static bool IsHttpContext(IParameterSymbol parameter)
     {
         var type = parameter.Type;
-        return type.Name == "ServerCallContext" &&
-               type.ContainingNamespace?.ToDisplayString() == "Grpc.Core";
+        return type.Name == "HttpContext" &&
+               type.ContainingNamespace?.ToDisplayString() == "Microsoft.AspNetCore.Http";
     }
 }

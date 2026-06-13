@@ -318,6 +318,57 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns true when <paramref name="body"/> reads a member named <paramref name="memberName"/>
+    /// off <paramref name="parameter"/> (e.g. <c>context.CancellationToken</c>). Used by the
+    /// context-token rules (CC020/CC021) to tell an observed token from an ignored one.
+    /// </summary>
+    public static bool AccessesMember(
+        SyntaxNode body,
+        IParameterSymbol parameter,
+        string memberName,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        foreach (var memberAccess in body.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+        {
+            if (memberAccess.Name.Identifier.Text != memberName)
+                continue;
+
+            if (SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol, parameter))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="parameter"/> is passed as an argument somewhere in
+    /// <paramref name="body"/> — i.e. it is handed off to another method that may observe it — so a
+    /// rule that requires the parameter to be used locally should stand down.
+    /// </summary>
+    public static bool ParameterEscapesAsArgument(
+        SyntaxNode body,
+        IParameterSymbol parameter,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        foreach (var identifier in body.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Identifier.Text != parameter.Name)
+                continue;
+            if (identifier.Parent is not ArgumentSyntax)
+                continue;
+
+            if (SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Returns true when the method's signature is dictated by another declaration the developer
     /// cannot freely change here — an <c>override</c>, an explicit or implicit interface
     /// implementation, or an <c>extern</c> method. Adding or reordering a parameter on such a

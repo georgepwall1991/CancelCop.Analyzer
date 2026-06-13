@@ -50,6 +50,7 @@ Install-Package CancelCop.Analyzer
 | **CC018** | SignalR hub methods should accept a `CancellationToken` | Warning | ✅ |
 | **CC019** | Broad `catch` swallows `OperationCanceledException` | Info | ❌ |
 | **CC020** | gRPC method should observe `ServerCallContext.CancellationToken` | Warning | ❌ |
+| **CC021** | Method should observe `HttpContext.RequestAborted` | Info | ❌ |
 
 ## Quick Examples
 

@@ -1,3 +1,11 @@
+## Release 1.16.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC021 | Usage | Info | Method should observe HttpContext.RequestAborted
+
 ## Release 1.15.0
 
 ### New Rules

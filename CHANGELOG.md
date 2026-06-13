@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-06-13
+
+### Added
+
+- **New rule CC021 — observe `HttpContext.RequestAborted`.** The ASP.NET Core request cancellation
+  token is exposed as `HttpContext.RequestAborted` (a property, invisible to CC002, like gRPC's
+  `ServerCallContext.CancellationToken`). CC021 flags a method with a
+  `Microsoft.AspNetCore.Http.HttpContext` parameter that does async work but never reads
+  `context.RequestAborted` and never passes the context on. Info severity (an `HttpContext` is often
+  taken for non-cancellation reasons). Analyzer-only. Pinned by 5 new tests (HttpContext stub).
+
+### Changed
+
+- The context-token probing used by CC020/CC021 is now shared
+  (`CancellationTokenHelpers.AccessesMember` / `ParameterEscapesAsArgument`); CC020 was refactored
+  onto it.
+
 ## [1.15.0] - 2026-06-13
 
 ### Added
