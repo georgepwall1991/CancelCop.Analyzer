@@ -72,6 +72,33 @@ public class TestClass
     }
 
     [Fact]
+    public async Task None_InTargetTypedNew_WhenTokenInScope_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker
+{
+    public Worker(CancellationToken token) { }
+}
+
+public class TestClass
+{
+    public void Run(CancellationToken cancellationToken)
+    {
+        Worker w = new({|#0:CancellationToken.None|});
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC012")
+            .WithLocation(0)
+            .WithArguments("CancellationToken.None", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task None_WhenNoTokenInScope_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

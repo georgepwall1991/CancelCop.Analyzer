@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.16.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.16.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-one implemented CancelCop rule IDs (CC001–CC006, CC009–CC021).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -150,6 +150,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.16.1: 295 tests (294 + 1 CC012 target-typed-`new` coverage). `BaseObjectCreationExpressionSyntax`
+  now covers both `new T(...)` and `new(...)`. Green locally.
 - v1.16.0: 294 tests (289 + 5 for new rule CC021: ignores-RequestAborted positive; observes-token,
   passes-context-on, no-async-work, non-HttpContext negatives). CC020 refactored onto the shared
   context-probe helpers (no behavior change). Green locally.

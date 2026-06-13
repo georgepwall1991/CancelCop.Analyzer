@@ -76,8 +76,10 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
     {
         var argument = (ArgumentSyntax)context.Node;
 
-        // Only call arguments are interesting (an argument also appears in element-access, etc.).
-        if (argument.Parent is not ArgumentListSyntax { Parent: InvocationExpressionSyntax or ObjectCreationExpressionSyntax })
+        // Only call/constructor arguments are interesting (an argument also appears in
+        // element-access, etc.). BaseObjectCreationExpressionSyntax covers both `new T(...)` and the
+        // target-typed `new(...)` form.
+        if (argument.Parent is not ArgumentListSyntax { Parent: InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax })
             return;
 
         if (!IsNoneishToken(argument.Expression, out var displayText))

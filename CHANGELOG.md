@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-06-14
+
+### Fixed
+
+- **CC012** now also flags `CancellationToken.None`/`default` passed to a target-typed `new(...)`
+  constructor (e.g. `Worker w = new(CancellationToken.None);`). The argument-parent check only
+  recognised the explicit `new T(...)` form; it now uses `BaseObjectCreationExpressionSyntax`, which
+  covers both. Pinned by 1 new test.
+
 ## [1.16.0] - 2026-06-13
 
 ### Added
