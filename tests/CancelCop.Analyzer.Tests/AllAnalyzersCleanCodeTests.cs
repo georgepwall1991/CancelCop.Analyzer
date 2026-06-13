@@ -124,6 +124,44 @@ internal sealed class NestedService
     }
 
     [Fact]
+    public async Task ExoticSyntaxWithTokens_ProducesNoDiagnostics()
+    {
+        // Expression-bodied members, a switch expression returning a Task, and a non-async
+        // Task-returning method must not trip any analyzer when the token is threaded correctly.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ExoticService
+{
+    public Task RunAsync(int x, CancellationToken cancellationToken) => x switch
+    {
+        0 => Task.CompletedTask,
+        _ => Task.Delay(x, cancellationToken),
+    };
+
+    public async Task<int> ComputeAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(1, cancellationToken);
+        return await Task.FromResult(42);
+    }
+
+    public Task DelegateAsync(CancellationToken cancellationToken)
+        => InnerAsync(cancellationToken);
+
+    private Task InnerAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticFrameworkCode_ProducesNoDiagnostics()
     {
         // Faithful stubs for the framework base types the property-token rules gate on, plus

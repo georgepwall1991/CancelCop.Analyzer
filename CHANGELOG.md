@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.8] - 2026-06-14
+
+### Tests
+
+- Added an exotic-syntax case to the cross-analyzer FP guard: expression-bodied members, a `switch`
+  expression returning a `Task`, a non-async `Task`-returning method, and a delegating method — all
+  with the token threaded correctly — must produce zero diagnostics across every analyzer.
+
 ## [1.22.7] - 2026-06-14
 
 ### Documentation
