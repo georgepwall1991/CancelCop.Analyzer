@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-06-14
+
+### Added
+
+- **CC019 now ships a code fix.** The "Rethrow OperationCanceledException" fix inserts
+  `if (ex is OperationCanceledException) throw;` as the first statement of the flagged catch block
+  (introducing an `ex` variable when the catch has none), so cancellation propagates instead of
+  being swallowed. The `System` import is added when missing. Offered for typed catches; a bare
+  catch-all (no exception variable to test) still reports without a fix. Pinned by 2 new fixer tests.
+
 ## [1.16.1] - 2026-06-14
 
 ### Fixed

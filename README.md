@@ -48,7 +48,7 @@ Install-Package CancelCop.Analyzer
 | **CC016** | `CancellationToken` parameter is accepted but never used | Info | ❌ |
 | **CC017** | `BackgroundService.ExecuteAsync` should observe its stopping token | Warning | ❌ |
 | **CC018** | SignalR hub methods should accept a `CancellationToken` | Warning | ✅ |
-| **CC019** | Broad `catch` swallows `OperationCanceledException` | Info | ❌ |
+| **CC019** | Broad `catch` swallows `OperationCanceledException` | Info | ✅ |
 | **CC020** | gRPC method should observe `ServerCallContext.CancellationToken` | Warning | ❌ |
 | **CC021** | Method should observe `HttpContext.RequestAborted` | Info | ❌ |
 

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.16.1 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.17.0 hardening loop)
 
 A deliberately harsh health audit for the twenty-one implemented CancelCop rule IDs (CC001–CC006, CC009–CC021).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -42,7 +42,7 @@ Calibration notes:
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
 | CC021 | `HttpContext.RequestAborted` not observed | Usage | Info | 4 | 3 | n/a | 4 | 3 | 3 | Low | **v1.16.0 (new):** the HttpContext parallel of CC020. Flags a method with a `Microsoft.AspNetCore.Http.HttpContext` parameter that does async work but never reads `context.RequestAborted` and never passes the context on. Info because HttpContext is often taken for non-cancellation reasons (hence FP score 3). Shares `AccessesMember`/`ParameterEscapesAsArgument` with CC020. |
 | CC020 | gRPC method ignores `ServerCallContext.CancellationToken` | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 3 | Low | **v1.15.0 (new):** flags a method with a `Grpc.Core.ServerCallContext` parameter that does async work but never reads `context.CancellationToken` and never passes the context on. Fills a genuine gap — the token is a property, not a parameter, so CC002 can't see it (cf. CC017 for BackgroundService). Analyzer-only; gated by parameter type name+namespace (tests use a stub). |
-| CC019 | Broad catch swallows `OperationCanceledException` | Usage | Info | 4 | 3 | n/a | 4 | 3 | 3 | Low | **v1.14.0 (new):** flags a catch-all/`catch (Exception)` with no `when` filter, over a `try` containing an `await`, whose body never rethrows. Info because boundary handlers are sometimes intended. Conservative (filter/rethrow/specific-type/no-await all suppress); higher inherent FP than the structural rules, hence FP score 3. Analyzer-only. |
+| CC019 | Broad catch swallows `OperationCanceledException` | Usage | Info | 4 | 3 | 4 | 4 | 3 | 3 | Low | **v1.14.0 (new); fix v1.17.0:** flags a catch-all/`catch (Exception)` with no `when` filter, over a `try` containing an `await`, whose body never rethrows. Info because boundary handlers are sometimes intended. Conservative (filter/rethrow/specific-type/no-await all suppress). The fix inserts `if (ex is OperationCanceledException) throw;` (typed catches only). |
 | CC018 | SignalR hub method missing `CancellationToken` | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.13.0 (new):** SignalR analogue of CC005B. Flags a public non-static async method on a `Microsoft.AspNetCore.SignalR.Hub`/`Hub<T>` subclass without a token; excludes lifecycle overrides + externally-controlled signatures. Reuses the shared add-token-parameter fixer. Base-type gated by name+namespace (tests use a faithful Hub stub, no package). |
 | CC017 | `BackgroundService.ExecuteAsync` ignores stopping token | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.12.0 (new):** flags an `override` of `ExecuteAsync(CancellationToken)` on a `Microsoft.Extensions.Hosting.BackgroundService` subclass whose body never references the stopping token — the override case CC016 skips. Analyzer-only; token passed to a helper or observed in a loop counts as used. Framework-gated to BackgroundService by base-type walk. |
 | CC016 | Unused `CancellationToken` parameter | Usage | Info | 4 | 4 | n/a | 4 | 3 | 3 | Low | **v1.11.0 (new):** flags a method/local function that does async work (has `await`) but never references its `CancellationToken` parameter; excludes externally-controlled signatures and sync bodies. Analyzer-only by design (wiring up or removing a parameter is too invasive to auto-fix). A token used in a nested lambda/local function counts as used. |
@@ -150,6 +150,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.17.0: 297 tests (295 + 2 CC019 fixer: named-exception adds rethrow guard, unnamed adds the
+  variable too). CC019 is no longer analyzer-only. Green locally.
 - v1.16.1: 295 tests (294 + 1 CC012 target-typed-`new` coverage). `BaseObjectCreationExpressionSyntax`
   now covers both `new T(...)` and `new(...)`. Green locally.
 - v1.16.0: 294 tests (289 + 5 for new rule CC021: ignores-RequestAborted positive; observes-token,
