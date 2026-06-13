@@ -116,30 +116,12 @@ public class UnusedTokenParameterAnalyzer : DiagnosticAnalyzer
             if (context.SemanticModel.GetDeclaredSymbol(parameter, context.CancellationToken) is not IParameterSymbol parameterSymbol)
                 continue;
 
-            if (IsReferencedIn(body, parameterSymbol, context.SemanticModel, context.CancellationToken))
+            if (CancellationTokenHelpers.IsParameterReferenced(
+                    body, parameterSymbol, context.SemanticModel, context.CancellationToken))
                 continue;
 
             context.ReportDiagnostic(Diagnostic.Create(
                 Rule, parameter.Identifier.GetLocation(), parameter.Identifier.Text));
         }
-    }
-
-    private static bool IsReferencedIn(
-        SyntaxNode body,
-        IParameterSymbol parameter,
-        SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
-    {
-        foreach (var identifier in body.DescendantNodes().OfType<IdentifierNameSyntax>())
-        {
-            if (identifier.Identifier.Text != parameter.Name)
-                continue;
-
-            if (SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
-                return true;
-        }
-
-        return false;
     }
 }

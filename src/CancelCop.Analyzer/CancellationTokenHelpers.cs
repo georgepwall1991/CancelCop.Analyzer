@@ -294,6 +294,30 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns true when <paramref name="parameter"/> is referenced anywhere within
+    /// <paramref name="body"/> — including inside nested lambdas and local functions, where the
+    /// parameter is captured. Used to tell an observed token from a dead one.
+    /// </summary>
+    public static bool IsParameterReferenced(
+        SyntaxNode body,
+        IParameterSymbol parameter,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        foreach (var identifier in body.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Identifier.Text != parameter.Name)
+                continue;
+
+            if (SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Returns true when the method's signature is dictated by another declaration the developer
     /// cannot freely change here — an <c>override</c>, an explicit or implicit interface
     /// implementation, or an <c>extern</c> method. Adding or reordering a parameter on such a

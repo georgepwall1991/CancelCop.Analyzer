@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-06-13
+
+### Added
+
+- **New rule CC017 — `BackgroundService.ExecuteAsync` should observe its stopping token.** A hosted
+  service whose `ExecuteAsync` override never references its `stoppingToken` will not stop when the
+  host shuts down, stalling graceful shutdown until a forced timeout. CC017 flags an `override` of
+  `ExecuteAsync(CancellationToken)` on a `Microsoft.Extensions.Hosting.BackgroundService` subclass
+  whose body never references the token. This is the high-value override case that CC016
+  deliberately skips (it excludes externally-controlled signatures). A token passed to a helper or
+  observed in a loop counts as used. Analyzer-only. Pinned by 4 new tests. The
+  parameter-reference check was extracted to a shared `CancellationTokenHelpers.IsParameterReferenced`
+  now used by both CC016 and CC017.
+
 ## [1.11.0] - 2026-06-13
 
 ### Added

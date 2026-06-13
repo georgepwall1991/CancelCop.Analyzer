@@ -1,3 +1,11 @@
+## Release 1.12.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC017 | Usage | Warning | BackgroundService.ExecuteAsync should observe its stopping token
+
 ## Release 1.11.0
 
 ### New Rules
