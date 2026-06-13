@@ -47,6 +47,7 @@ Install-Package CancelCop.Analyzer
 | **CC015** | Avoid blocking on async code (`.Result`/`.Wait()`/`.GetAwaiter().GetResult()`) | Warning | ✅ |
 | **CC016** | `CancellationToken` parameter is accepted but never used | Info | ❌ |
 | **CC017** | `BackgroundService.ExecuteAsync` should observe its stopping token | Warning | ❌ |
+| **CC018** | SignalR hub methods should accept a `CancellationToken` | Warning | ✅ |
 
 ## Quick Examples
 

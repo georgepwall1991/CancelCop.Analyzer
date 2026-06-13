@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-06-13
+
+### Added
+
+- **New rule CC018 — SignalR hub methods should accept a `CancellationToken`.** SignalR binds a
+  hub method's `CancellationToken` parameter to the invocation/connection abort token, so a
+  long-running hub method without one keeps running after the client disconnects. CC018 flags a
+  public, non-static, async (or `Task`/`ValueTask`-returning) method on a
+  `Microsoft.AspNetCore.SignalR.Hub`/`Hub<T>` subclass that has no token parameter — the SignalR
+  analogue of CC005B. Hub lifecycle overrides (`OnConnectedAsync`/`OnDisconnectedAsync`) and other
+  externally-controlled signatures are excluded. The existing "Add CancellationToken parameter"
+  code fix now also serves CC018. Pinned by 6 new tests (5 analyzer, 1 fixer).
+
 ## [1.12.0] - 2026-06-13
 
 ### Added

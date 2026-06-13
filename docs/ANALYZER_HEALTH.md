@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.12.0 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.13.0 hardening loop)
 
-A deliberately harsh health audit for the seventeen implemented CancelCop rule IDs (CC001–CC006, CC009–CC017).
+A deliberately harsh health audit for the eighteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC018).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC018 | SignalR hub method missing `CancellationToken` | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.13.0 (new):** SignalR analogue of CC005B. Flags a public non-static async method on a `Microsoft.AspNetCore.SignalR.Hub`/`Hub<T>` subclass without a token; excludes lifecycle overrides + externally-controlled signatures. Reuses the shared add-token-parameter fixer. Base-type gated by name+namespace (tests use a faithful Hub stub, no package). |
 | CC017 | `BackgroundService.ExecuteAsync` ignores stopping token | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.12.0 (new):** flags an `override` of `ExecuteAsync(CancellationToken)` on a `Microsoft.Extensions.Hosting.BackgroundService` subclass whose body never references the stopping token — the override case CC016 skips. Analyzer-only; token passed to a helper or observed in a loop counts as used. Framework-gated to BackgroundService by base-type walk. |
 | CC016 | Unused `CancellationToken` parameter | Usage | Info | 4 | 4 | n/a | 4 | 3 | 3 | Low | **v1.11.0 (new):** flags a method/local function that does async work (has `await`) but never references its `CancellationToken` parameter; excludes externally-controlled signatures and sync bodies. Analyzer-only by design (wiring up or removing a parameter is too invasive to auto-fix). A token used in a nested lambda/local function counts as used. |
 | CC015 | Blocking on async code (sync-over-async) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.10.0 (new):** flags `.Result`/`.Wait()`/`.GetAwaiter().GetResult()` on a `Task`/`Task<T>`/`ValueTask` inside an `async` function; fixer rewrites to `await`. Symbol-resolved (a look-alike `.Result` on a non-task is ignored). Shares `IsInAsyncFunction` with CC013. |
@@ -142,6 +143,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.13.0: 274 tests (268 + 6 for new rule CC018: missing-token positive; with-token,
+  OnConnectedAsync-override, non-hub, private-method negatives; and a fixer test that the shared
+  add-token-parameter fix applies to CC018). Tests use a faithful Hub stub. Green locally.
 - v1.12.0: 268 tests (264 + 4 for new rule CC017: ignores-stopping-token positive;
   observes-token, non-BackgroundService, passes-token-to-helper negatives). Uses the
   `Microsoft.Extensions.Hosting.Abstractions` 9.0.0 package in tests. Green locally.

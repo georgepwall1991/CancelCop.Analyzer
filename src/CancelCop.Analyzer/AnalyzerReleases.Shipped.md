@@ -1,3 +1,11 @@
+## Release 1.13.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC018 | Usage | Warning | SignalR hub methods should accept a CancellationToken
+
 ## Release 1.12.0
 
 ### New Rules

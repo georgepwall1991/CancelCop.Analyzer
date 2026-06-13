@@ -17,7 +17,7 @@ public class HandlerPatternCodeFixProvider : CodeFixProvider
     private const string Title = "Add CancellationToken parameter";
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
-        ImmutableArray.Create("CC005A", "CC005B");
+        ImmutableArray.Create("CC005A", "CC005B", "CC018");
 
     public sealed override FixAllProvider GetFixAllProvider() =>
         WellKnownFixAllProviders.BatchFixer;
