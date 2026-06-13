@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-06-13
+
+### Added
+
+- **New rule CC014 — `CancellationTokenSource` should be disposed.** A `CancellationTokenSource`
+  owns disposable resources (a timer and a wait handle). CC014 flags a local variable initialized
+  with `new CancellationTokenSource(...)` or `CancellationTokenSource.CreateLinkedTokenSource(...)`
+  that is not already a `using` declaration, is never disposed, and never escapes — it is not
+  returned, assigned out, passed as an argument, or captured by a nested function. The code fix
+  converts the declaration into a `using` declaration. Conservative escape analysis keeps false
+  positives down: any path by which the source could be disposed elsewhere suppresses the
+  diagnostic. Pinned by 9 new tests (7 analyzer, 2 fixer).
+
 ## [1.8.1] - 2026-06-13
 
 ### Fixed

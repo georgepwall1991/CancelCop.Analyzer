@@ -1,3 +1,11 @@
+## Release 1.9.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC014 | Usage | Warning | CancellationTokenSource should be disposed
+
 ## Release 1.8.0
 
 ### New Rules
