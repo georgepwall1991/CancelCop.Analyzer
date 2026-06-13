@@ -198,10 +198,16 @@ internal static class CancellationTokenFixHelpers
         }
         else
         {
-            // Append after the last using: match its trivia shape.
+            // Append after the last using on its own line. The line break before it already comes
+            // from the previous using's trailing newline, so only the last using's *indentation*
+            // (its leading trivia minus end-of-line trivia) is carried over — copying its full
+            // leading trivia would re-insert the file's leading newline and leave a blank line
+            // between the two directives.
             var last = usings[usings.Count - 1];
+            var indent = SyntaxFactory.TriviaList(
+                last.GetLeadingTrivia().Where(t => !t.IsKind(SyntaxKind.EndOfLineTrivia)));
             newUsing = newUsing
-                .WithLeadingTrivia(last.GetLeadingTrivia())
+                .WithLeadingTrivia(indent)
                 .WithTrailingTrivia(last.GetTrailingTrivia());
         }
 

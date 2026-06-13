@@ -52,6 +52,7 @@ Install-Package CancelCop.Analyzer
 | **CC020** | gRPC method should observe `ServerCallContext.CancellationToken` | Warning | ❌ |
 | **CC021** | Method should observe `HttpContext.RequestAborted` | Info | ❌ |
 | **CC022** | Prefer `await CancelAsync()` over `Cancel()` in async code | Info | ✅ |
+| **CC023** | Avoid `async void` (non-event-handler) | Warning | ✅ |
 
 ## Quick Examples
 

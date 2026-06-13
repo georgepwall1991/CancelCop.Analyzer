@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-06-14
+
+### Added
+
+- **New rule CC023 — avoid `async void`.** An `async void` method cannot be awaited, so callers
+  cannot observe completion, flow cancellation into it, or catch its exceptions (an unhandled one
+  crashes the process). CC023 flags an `async void` method whose signature is not the event-handler
+  shape (`(object sender, EventArgs e)`, including `EventArgs` subclasses) and is not dictated by an
+  override/interface/extern, and the code fix changes the return type to `Task` (adding the
+  `System.Threading.Tasks` import when missing). Pinned by 6 new tests (5 analyzer, 1 fixer).
+
+### Fixed
+
+- The shared using-insertion helper no longer leaves a blank line between directives when appending
+  an import **after** the last existing using (it was copying the last using's full leading trivia,
+  re-inserting the file's leading newline). Surfaced while wiring CC023's fix; affects any fix that
+  adds an alphabetically-last import.
+
 ## [1.18.1] - 2026-06-14
 
 ### Fixed

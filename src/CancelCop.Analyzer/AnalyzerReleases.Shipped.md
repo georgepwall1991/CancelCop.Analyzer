@@ -1,3 +1,11 @@
+## Release 1.19.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC023 | Usage | Warning | Avoid async void (non-event-handler)
+
 ## Release 1.18.0
 
 ### New Rules
