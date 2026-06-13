@@ -82,4 +82,63 @@ internal sealed class CleanService
 
         await test.RunAsync();
     }
+
+    [Fact]
+    public async Task IdiomaticFrameworkCode_ProducesNoDiagnostics()
+    {
+        // Faithful stubs for the framework base types the property-token rules gate on, plus
+        // representative implementations that correctly observe their cancellation source.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Microsoft.Extensions.Hosting
+{
+    public abstract class BackgroundService
+    {
+        protected abstract Task ExecuteAsync(CancellationToken stoppingToken);
+    }
+}
+
+namespace Grpc.Core
+{
+    public abstract class ServerCallContext
+    {
+        public CancellationToken CancellationToken => default;
+    }
+}
+
+internal sealed class Worker : Microsoft.Extensions.Hosting.BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(1000, stoppingToken);
+        }
+    }
+}
+
+internal abstract class GreeterBase
+{
+    public abstract Task<string> HandleAsync(string request, Grpc.Core.ServerCallContext context);
+}
+
+internal sealed class GreeterService : GreeterBase
+{
+    public override async Task<string> HandleAsync(string request, Grpc.Core.ServerCallContext context)
+    {
+        await Task.Delay(1, context.CancellationToken);
+        return request;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
 }

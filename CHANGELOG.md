@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.4] - 2026-06-14
+
+### Tests
+
+- Extended the cross-analyzer false-positive guard with a framework scenario: a `BackgroundService`
+  override and a gRPC-style override (both observing their cancellation source, via faithful base-type
+  stubs) are run through every analyzer and must produce zero diagnostics. Confirms the property-token
+  rules (CC017/CC020) and the CC009 loop-condition fix stay quiet on idiomatic framework code, and
+  that CC001 correctly excludes such overrides.
+
 ## [1.22.3] - 2026-06-14
 
 ### Fixed
