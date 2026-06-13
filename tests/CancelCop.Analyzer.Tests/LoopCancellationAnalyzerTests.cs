@@ -161,6 +161,70 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WhileLoop_WithConditionCheck_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ForLoop_WithConditionCheck_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(int count, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count && !cancellationToken.IsCancellationRequested; i++)
+        {
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task DoWhileLoop_WithConditionCheck_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        do
+        {
+            await Task.Delay(100, cancellationToken);
+        }
+        while (!cancellationToken.IsCancellationRequested);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Loop_InMethodWithoutCancellationToken_ShouldNotReportDiagnostic()
     {
         var test = @"

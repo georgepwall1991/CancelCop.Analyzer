@@ -108,28 +108,28 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     private void AnalyzeForStatement(SyntaxNodeAnalysisContext context)
     {
         var forStatement = (ForStatementSyntax)context.Node;
-        AnalyzeLoop(context, forStatement, forStatement.Statement, forStatement.ForKeyword);
+        AnalyzeLoop(context, forStatement, forStatement.Statement, forStatement.ForKeyword, forStatement.Condition);
     }
 
     private void AnalyzeForEachStatement(SyntaxNodeAnalysisContext context)
     {
         var foreachStatement = (ForEachStatementSyntax)context.Node;
-        AnalyzeLoop(context, foreachStatement, foreachStatement.Statement, foreachStatement.ForEachKeyword);
+        AnalyzeLoop(context, foreachStatement, foreachStatement.Statement, foreachStatement.ForEachKeyword, condition: null);
     }
 
     private void AnalyzeWhileStatement(SyntaxNodeAnalysisContext context)
     {
         var whileStatement = (WhileStatementSyntax)context.Node;
-        AnalyzeLoop(context, whileStatement, whileStatement.Statement, whileStatement.WhileKeyword);
+        AnalyzeLoop(context, whileStatement, whileStatement.Statement, whileStatement.WhileKeyword, whileStatement.Condition);
     }
 
     private void AnalyzeDoStatement(SyntaxNodeAnalysisContext context)
     {
         var doStatement = (DoStatementSyntax)context.Node;
-        AnalyzeLoop(context, doStatement, doStatement.Statement, doStatement.DoKeyword);
+        AnalyzeLoop(context, doStatement, doStatement.Statement, doStatement.DoKeyword, doStatement.Condition);
     }
 
-    private void AnalyzeLoop(SyntaxNodeAnalysisContext context, SyntaxNode loopNode, StatementSyntax loopBody, SyntaxToken loopKeyword)
+    private void AnalyzeLoop(SyntaxNodeAnalysisContext context, SyntaxNode loopNode, StatementSyntax loopBody, SyntaxToken loopKeyword, ExpressionSyntax? condition)
     {
         // Find the containing method, local function, or lambda that has a CancellationToken parameter
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
@@ -137,8 +137,11 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
         if (tokenParameter == null)
             return;
 
-        // Check if the loop body contains a cancellation check on the in-scope token
-        if (HasCancellationCheck(loopBody, tokenParameter, context.SemanticModel))
+        // A cancellation check satisfies the rule whether it is in the loop body or the loop
+        // condition — `while (!token.IsCancellationRequested)` and
+        // `for (...; !token.IsCancellationRequested; ...)` are canonical cancellation-aware loops.
+        if (HasCancellationCheck(loopBody, tokenParameter, context.SemanticModel) ||
+            (condition != null && HasCancellationCheck(condition, tokenParameter, context.SemanticModel)))
             return;
 
         // Report diagnostic
@@ -148,13 +151,14 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Checks if the loop body contains a cancellation check (ThrowIfCancellationRequested or
-    /// IsCancellationRequested) on the specific in-scope token. The receiver is resolved through
-    /// the semantic model and compared to <paramref name="tokenParameter"/> by symbol identity,
-    /// so a look-alike named "...token" is rejected, a real token with a plain name is accepted,
-    /// and a check on a different token does not satisfy the rule for the reported token.
+    /// Checks if <paramref name="loopBody"/> (a loop body or a loop condition) contains a
+    /// cancellation check (ThrowIfCancellationRequested or IsCancellationRequested) on the specific
+    /// in-scope token. The receiver is resolved through the semantic model and compared to
+    /// <paramref name="tokenParameter"/> by symbol identity, so a look-alike named "...token" is
+    /// rejected, a real token with a plain name is accepted, and a check on a different token does
+    /// not satisfy the rule for the reported token.
     /// </summary>
-    private static bool HasCancellationCheck(StatementSyntax loopBody, IParameterSymbol tokenParameter, SemanticModel semanticModel)
+    private static bool HasCancellationCheck(SyntaxNode loopBody, IParameterSymbol tokenParameter, SemanticModel semanticModel)
     {
         if (loopBody == null)
             return false;

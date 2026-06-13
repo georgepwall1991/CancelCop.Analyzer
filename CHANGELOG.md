@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.3] - 2026-06-14
+
+### Fixed
+
+- **CC009 false positive:** a loop whose *condition* checks the token —
+  `while (!token.IsCancellationRequested)`, `for (...; !token.IsCancellationRequested; ...)`,
+  `do { } while (!token.IsCancellationRequested)` — is the canonical cancellation-aware loop but was
+  flagged because the analyzer only scanned the loop *body*. CC009 now also accepts a cancellation
+  check in the loop condition. Pinned by 3 new tests (while/for/do-while condition checks).
+
 ## [1.22.2] - 2026-06-14
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.22.2 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.22.3 hardening loop)
 
 A deliberately harsh health audit for the twenty-six implemented CancelCop rule IDs (CC001–CC006, CC009–CC026).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -155,6 +155,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.22.3: 334 tests (331 + 3 CC009 FP fix: a cancellation check in the loop *condition*
+  (while/for/do-while) now satisfies the rule — surfaced while building a BackgroundService-style
+  clean-code sample). Green locally.
 - v1.22.2: 331 tests (329 + 2 CC026 coverage: `Wait(timeout)` and `Wait(token)` now flagged; fixer
   carries the original args through to `WaitAsync`). Green locally.
 - v1.22.1: 329 tests (328 + 1 cross-analyzer clean-code FP guard — all 26 analyzers run together
