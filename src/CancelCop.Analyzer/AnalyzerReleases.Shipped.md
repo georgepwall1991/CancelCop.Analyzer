@@ -1,3 +1,11 @@
+## Release 1.15.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC020 | Usage | Warning | gRPC method should observe ServerCallContext.CancellationToken
+
 ## Release 1.14.0
 
 ### New Rules

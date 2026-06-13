@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-06-13
+
+### Added
+
+- **New rule CC020 — gRPC method should observe `ServerCallContext.CancellationToken`.** In a gRPC
+  service the per-call cancellation token is exposed as a property
+  (`ServerCallContext.CancellationToken`), not a parameter, so the general propagation rule (CC002)
+  cannot see it. CC020 flags a method with a `Grpc.Core.ServerCallContext` parameter whose body does
+  async work (contains an `await`) but never reads `context.CancellationToken` and never passes the
+  context on to another method. Analyzer-only (which call to thread the token into is ambiguous).
+  Pinned by 5 new tests (using a faithful `ServerCallContext` stub, no gRPC package).
+
 ## [1.14.4] - 2026-06-13
 
 ### Fixed
