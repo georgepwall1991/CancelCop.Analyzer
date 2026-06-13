@@ -53,6 +53,7 @@ Install-Package CancelCop.Analyzer
 | **CC021** | Method should observe `HttpContext.RequestAborted` | Info | ❌ |
 | **CC022** | Prefer `await CancelAsync()` over `Cancel()` in async code | Info | ✅ |
 | **CC023** | Avoid `async void` (non-event-handler) | Warning | ✅ |
+| **CC024** | Avoid `async` lambdas converted to `Action` | Warning | ❌ |
 
 ## Quick Examples
 

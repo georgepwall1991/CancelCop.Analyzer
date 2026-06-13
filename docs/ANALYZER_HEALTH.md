@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.19.1 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.20.0 hardening loop)
 
-A deliberately harsh health audit for the twenty-three implemented CancelCop rule IDs (CC001–CC006, CC009–CC023).
+A deliberately harsh health audit for the twenty-four implemented CancelCop rule IDs (CC001–CC006, CC009–CC024).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC024 | `async` lambda converted to `Action` | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.20.0 (new):** the lambda counterpart of CC023. Flags an `async` lambda whose converted delegate type is `System.Action`/`Action<…>` (binds as async void). Catches the `Parallel.ForEach(..., async x => …)` trap. `Func<Task>` and event-handler delegates are not `Action`, so excluded. Analyzer-only (the right delegate depends on the consuming API). |
 | CC023 | `async void` (non-event-handler) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.19.0 (new):** flags an `async void` method that is not an event handler (`(object, EventArgs)` shape, EventArgs subclasses included) and not externally-controlled; fixer changes `void`→`Task` + adds the Tasks import. Classic async anti-pattern (cf. VSTHRD100) — `async void` can't be awaited or cancelled and crashes on unhandled exceptions. |
 | CC022 | Prefer `CancelAsync()` over `Cancel()` in async | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.18.0 (new):** flags a parameterless `CancellationTokenSource.Cancel()` inside async code; fixer rewrites to `await cts.CancelAsync()`. Info (`Cancel()` is still valid). The `Cancel(bool)` overload and sync contexts are excluded. Modern .NET 8 guidance — `Cancel()` runs callbacks synchronously on the caller. |
 | CC021 | `HttpContext.RequestAborted` not observed | Usage | Info | 4 | 3 | n/a | 4 | 3 | 3 | Low | **v1.16.0 (new):** the HttpContext parallel of CC020. Flags a method with a `Microsoft.AspNetCore.Http.HttpContext` parameter that does async work but never reads `context.RequestAborted` and never passes the context on. Info because HttpContext is often taken for non-cancellation reasons (hence FP score 3). Shares `AccessesMember`/`ParameterEscapesAsArgument` with CC020. |
@@ -152,6 +153,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.20.0: 316 tests (311 + 5 for new rule CC024: async-lambda-to-Action and
+  passed-where-Action-expected positives; Func<Task>, sync-Action, EventHandler negatives). Green.
 - v1.19.1: 311 tests (309 + 2 CC015 coverage: `Wait(timeout)` and `Task.WaitAll(...)` now flagged;
   fixer guarded to the parameterless `Wait()`). Green locally.
 - v1.19.0: 309 tests (303 + 6 for new rule CC023: async-void positive; event-handler,

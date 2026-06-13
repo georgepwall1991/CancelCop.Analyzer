@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-06-14
+
+### Added
+
+- **New rule CC024 — avoid `async` lambdas converted to `Action`.** When an `async` lambda is
+  assigned to `System.Action`/`Action<T>` (or passed where one is expected), it binds as
+  `async void`: the caller cannot await it and an unhandled exception crashes the process. The
+  classic trap is `Parallel.ForEach(items, async item => await ...)`, where the body runs
+  fire-and-forget. CC024 flags an `async` lambda whose converted delegate type is `System.Action`/
+  `Action<…>`; `Func<Task>` and event-handler delegates are not `Action` and are left alone. The
+  lambda counterpart of CC023; analyzer-only (the right delegate type depends on the consuming API).
+  Pinned by 5 new tests.
+
 ## [1.19.1] - 2026-06-14
 
 ### Fixed

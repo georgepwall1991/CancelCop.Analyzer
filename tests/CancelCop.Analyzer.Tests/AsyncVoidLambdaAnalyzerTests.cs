@@ -1,0 +1,104 @@
+using Microsoft.CodeAnalysis.CSharp.Testing;
+using Microsoft.CodeAnalysis.Testing;
+using Xunit;
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerVerifier<
+    CancelCop.Analyzer.AsyncVoidLambdaAnalyzer,
+    Microsoft.CodeAnalysis.Testing.DefaultVerifier>;
+
+namespace CancelCop.Analyzer.Tests;
+
+public class AsyncVoidLambdaAnalyzerTests
+{
+    [Fact]
+    public async Task AsyncLambda_AssignedToAction_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register()
+    {
+        Action run = {|#0:async|} () => await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC024").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task AsyncLambda_AssignedToFuncTask_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register()
+    {
+        Func<Task> run = async () => await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task SyncLambda_AssignedToAction_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+
+public class TestClass
+{
+    public void Register()
+    {
+        Action run = () => { };
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncLambda_AsEventHandler_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register()
+    {
+        EventHandler handler = async (s, e) => await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncLambda_PassedWhereActionExpected_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private void Run(Action action) => action();
+
+    public void Register()
+    {
+        Run({|#0:async|} () => await Task.Yield());
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC024").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+}

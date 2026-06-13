@@ -1,3 +1,11 @@
+## Release 1.20.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC024 | Usage | Warning | Avoid async lambdas converted to Action
+
 ## Release 1.19.0
 
 ### New Rules
