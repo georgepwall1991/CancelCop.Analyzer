@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.6] - 2026-06-14
+
+### Tests
+
+- Added a nested-scope case to the cross-analyzer FP guard: an outer `CancellationToken` captured by
+  a local function and a lambda, plus a token-checked loop, must produce zero diagnostics across all
+  analyzers. Locks in that the shared scope walk recognises captured tokens (no false propagation
+  warnings inside nested functions).
+
 ## [1.22.5] - 2026-06-14
 
 ### Documentation

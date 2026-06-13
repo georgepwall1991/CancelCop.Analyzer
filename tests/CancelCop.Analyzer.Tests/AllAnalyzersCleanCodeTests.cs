@@ -84,6 +84,46 @@ internal sealed class CleanService
     }
 
     [Fact]
+    public async Task NestedScopesCapturingToken_ProduceNoDiagnostics()
+    {
+        // The shared scope walk must recognise the outer token captured by a local function and a
+        // lambda, so the token-propagation rules stay quiet.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class NestedService
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        async Task LocalAsync()
+        {
+            await Task.Delay(1, cancellationToken);
+        }
+
+        await LocalAsync();
+
+        Func<Task> work = async () => await Task.Delay(1, cancellationToken);
+        await work();
+
+        for (int i = 0; i < 5; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticFrameworkCode_ProducesNoDiagnostics()
     {
         // Faithful stubs for the framework base types the property-token rules gate on, plus
