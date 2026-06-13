@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.14.2 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.14.3 hardening loop)
 
 A deliberately harsh health audit for the nineteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC019).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -119,9 +119,11 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   three new tests.
 
 ### P3 — Directional
-- **CC005A product value.** Document that CC005A mainly assists a handler that does not yet satisfy the
-  MediatR interface; switch its inline token check to `CancellationTokenHelpers`. (Documentation part
-  done in v1.14.2; the shared-helper refactor remains.)
+- ~~**CC005A product value + shared helper** (docs v1.14.2, refactor v1.14.3).~~ CC005A's class doc
+  now records that it mainly assists a handler not yet satisfying the MediatR interface, and its
+  inline token-parameter / async-return checks were replaced with
+  `CancellationTokenHelpers.HasCancellationTokenParameter` / `IsAsyncReturnType`. No behavior change
+  (the `IRequestHandler.Handle` return type is interface-mandated `Task`).
 - ~~**Analyzer XML docs** (v1.14.2).~~ CC003, CC004, CC005A, CC005B now carry class-level
   `<remarks>`/`<example>` doc blocks matching CC001/CC002/CC009 and the CC010+ rules; every shipped
   analyzer is now self-documenting.
@@ -146,6 +148,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.14.3: refactor only — CC005A now uses `CancellationTokenHelpers.HasCancellationTokenParameter`
+  / `IsAsyncReturnType` instead of hand-rolled checks. No behavior change; 281 tests unchanged.
 - v1.14.2: analyzer XML docs only — added `<remarks>`/`<example>` blocks to CC003/CC004/CC005A/CC005B
   (P3 closure). No behavior change; 281 tests unchanged.
 - v1.14.1: docs/samples only — README example sections for CC016–CC019 and sample files for CC016 /

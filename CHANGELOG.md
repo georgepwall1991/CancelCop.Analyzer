@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-06-13
+
+### Changed
+
+- **Internal refactor, no behavior change.** CC005A (MediatR) now uses the shared
+  `CancellationTokenHelpers.HasCancellationTokenParameter` and `IsAsyncReturnType` instead of its
+  own inline token and `Task`-return checks, so all the rules share one definition of "is a
+  CancellationToken" and "is an async return type". The `IRequestHandler.Handle` return type is an
+  interface-mandated `Task`, so behavior is unchanged. Closes the last P3 backlog item.
+
 ## [1.14.2] - 2026-06-13
 
 ### Documentation

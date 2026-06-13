@@ -70,7 +70,7 @@ public class MediatRHandlerAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if method is async
-        if (!methodSymbol.IsAsync && !IsTaskReturnType(methodSymbol.ReturnType))
+        if (!methodSymbol.IsAsync && !CancellationTokenHelpers.IsAsyncReturnType(methodSymbol.ReturnType))
             return;
 
         // Check if this is a MediatR IRequestHandler implementation
@@ -78,11 +78,7 @@ public class MediatRHandlerAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if method already has CancellationToken parameter
-        var hasCancellationToken = methodSymbol.Parameters.Any(p =>
-            p.Type.Name == "CancellationToken" &&
-            p.Type.ContainingNamespace?.ToString() == "System.Threading");
-
-        if (hasCancellationToken)
+        if (CancellationTokenHelpers.HasCancellationTokenParameter(methodSymbol))
             return;
 
         // Report diagnostic
@@ -111,20 +107,5 @@ public class MediatRHandlerAnalyzer : DiagnosticAnalyzer
         });
 
         return implementsRequestHandler;
-    }
-
-    private static bool IsTaskReturnType(ITypeSymbol returnType)
-    {
-        if (returnType.Name == "Task" && returnType.ContainingNamespace?.ToString() == "System.Threading.Tasks")
-            return true;
-
-        // Check for Task<T>
-        if (returnType is INamedTypeSymbol namedType &&
-            namedType.IsGenericType &&
-            namedType.Name == "Task" &&
-            namedType.ContainingNamespace?.ToString() == "System.Threading.Tasks")
-            return true;
-
-        return false;
     }
 }
