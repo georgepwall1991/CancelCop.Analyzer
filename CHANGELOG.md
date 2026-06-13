@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-06-14
+
+### Fixed
+
+- **CC010's code fix** no longer produces mis-bound code when the `await foreach` source is a loose
+  expression. `await foreach (var x in await GetAsync())` now becomes
+  `(await GetAsync()).WithCancellation(token)` instead of the wrong
+  `await GetAsync().WithCancellation(token)` (which binds `.WithCancellation` to the inner call and
+  awaits the result). The fix now parenthesizes the receiver unless it already binds tighter than
+  member access. Pinned by 1 new fixer test.
+
 ## [1.18.0] - 2026-06-14
 
 ### Added

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.18.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.18.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-two implemented CancelCop rule IDs (CC001–CC006, CC009–CC022).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -151,6 +151,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.18.1: 303 tests (302 + 1 CC010 fixer hardening: an awaited source is now parenthesized before
+  `.WithCancellation`, fixing a mis-bound fix). Green locally.
 - v1.18.0: 302 tests (297 + 5 for new rule CC022: Cancel-in-async positive; sync-method,
   Cancel(bool)-overload, non-CancellationTokenSource negatives; and a fixer test). Net90 refs for
   CancelAsync. Green locally.

@@ -61,12 +61,15 @@ public class AsyncEnumerableCancellationCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Build `<source>.WithCancellation(<tokenName>)`, preserving the source's leading/trailing trivia.
-        var bareSource = source.WithoutTrivia();
+        // Build `<source>.WithCancellation(<tokenName>)`, preserving the source's leading/trailing
+        // trivia. The receiver is parenthesized when it is not a simple postfix expression, so
+        // `await foreach (var x in await GetAsync())` becomes `(await GetAsync()).WithCancellation(ct)`
+        // rather than the mis-bound `await GetAsync().WithCancellation(ct)`.
+        var receiver = AsReceiver(source.WithoutTrivia());
         var withCancellation = SyntaxFactory.InvocationExpression(
                 SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
-                    bareSource,
+                    receiver,
                     SyntaxFactory.IdentifierName("WithCancellation")),
                 SyntaxFactory.ArgumentList(
                     SyntaxFactory.SingletonSeparatedList(
@@ -76,4 +79,16 @@ public class AsyncEnumerableCancellationCodeFixProvider : CodeFixProvider
         var newRoot = root.ReplaceNode(source, withCancellation);
         return document.WithSyntaxRoot(newRoot);
     }
+
+    /// <summary>
+    /// Returns <paramref name="expression"/> as a member-access receiver, parenthesizing it unless
+    /// it already binds tighter than member access (identifier, member access, invocation, element
+    /// access, or an already-parenthesized expression). Without this, wrapping a looser expression
+    /// such as <c>await x</c> or <c>a ? b : c</c> would re-bind to only its trailing operand.
+    /// </summary>
+    private static ExpressionSyntax AsReceiver(ExpressionSyntax expression) =>
+        expression is IdentifierNameSyntax or MemberAccessExpressionSyntax or
+            InvocationExpressionSyntax or ElementAccessExpressionSyntax or ParenthesizedExpressionSyntax
+            ? expression
+            : SyntaxFactory.ParenthesizedExpression(expression);
 }

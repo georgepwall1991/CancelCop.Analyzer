@@ -101,6 +101,50 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AwaitForeach_OverAwaitedSource_ParenthesizesBeforeWithCancellation()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task<IAsyncEnumerable<int>> GetAsync() => null;
+
+    public async Task ConsumeAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var item in {|#0:await GetAsync()|})
+        {
+        }
+    }
+}";
+
+        var fixedCode = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task<IAsyncEnumerable<int>> GetAsync() => null;
+
+    public async Task ConsumeAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var item in (await GetAsync()).WithCancellation(cancellationToken))
+        {
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC010", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitForeach_OverInvocation_WrapsInWithCancellation()
     {
         var test = @"
