@@ -1,3 +1,11 @@
+## Release 1.8.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC013 | Usage | Warning | Avoid Thread.Sleep in async code; use await Task.Delay
+
 ## Release 1.7.0
 
 ### New Rules

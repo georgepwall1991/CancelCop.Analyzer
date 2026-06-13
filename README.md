@@ -42,6 +42,7 @@ Install-Package CancelCop.Analyzer
 | **CC010** | `await foreach` should flow a CancellationToken via `.WithCancellation` | Warning | ✅ |
 | **CC011** | Async-iterator CancellationToken should be `[EnumeratorCancellation]` | Warning | ✅ |
 | **CC012** | Avoid passing `CancellationToken.None`/`default` when a token is in scope | Info | ✅ |
+| **CC013** | Avoid `Thread.Sleep` in async code; use `await Task.Delay` | Warning | ✅ |
 
 ## Quick Examples
 

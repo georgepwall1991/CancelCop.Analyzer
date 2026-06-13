@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-06-13
+
+### Added
+
+- **New rule CC013 — avoid `Thread.Sleep` in async code.** `Thread.Sleep` blocks the calling
+  thread (risking thread-pool starvation) and cannot be cancelled. CC013 flags a
+  `System.Threading.Thread.Sleep` call lexically inside an `async` method, local function, lambda,
+  or anonymous method, and the code fix rewrites it to `await Task.Delay(delay, token)` — flowing
+  the in-scope token when one is available, otherwise `await Task.Delay(delay)`. The async-context
+  check stops at the first function boundary, so a synchronous lambda inside an async method is not
+  flagged. Pinned by 7 new tests (5 analyzer, 2 fixer).
+
 ## [1.7.0] - 2026-06-13
 
 ### Added
