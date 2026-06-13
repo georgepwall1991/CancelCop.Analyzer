@@ -45,6 +45,7 @@ Install-Package CancelCop.Analyzer
 | **CC013** | Avoid `Thread.Sleep` in async code; use `await Task.Delay` | Warning | ✅ |
 | **CC014** | `CancellationTokenSource` should be disposed | Warning | ✅ |
 | **CC015** | Avoid blocking on async code (`.Result`/`.Wait()`/`.GetAwaiter().GetResult()`) | Warning | ✅ |
+| **CC016** | `CancellationToken` parameter is accepted but never used | Info | ❌ |
 
 ## Quick Examples
 

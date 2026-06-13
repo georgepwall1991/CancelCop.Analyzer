@@ -1,3 +1,11 @@
+## Release 1.11.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC016 | Usage | Info | CancellationToken parameter is accepted but never used
+
 ## Release 1.10.0
 
 ### New Rules

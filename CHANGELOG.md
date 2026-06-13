@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-06-13
+
+### Added
+
+- **New rule CC016 — `CancellationToken` parameter is accepted but never used.** A method or local
+  function whose body performs asynchronous work (contains an `await`) but never references its
+  declared `CancellationToken` parameter silently fails to honour cancellation. CC016 flags the dead
+  token (Info severity; the token is occasionally reserved deliberately). Signatures dictated
+  elsewhere — `override`, interface implementations, `extern` — are excluded since they cannot drop
+  the parameter, as are sync bodies with no `await`. A token referenced anywhere, including inside a
+  nested lambda or local function, is considered used. Analyzer-only (removing or wiring up a
+  parameter is too invasive to automate). Pinned by 6 new tests.
+
 ## [1.10.2] - 2026-06-13
 
 ### Fixed

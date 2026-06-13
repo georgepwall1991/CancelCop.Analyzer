@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.10.2 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.11.0 hardening loop)
 
-A deliberately harsh health audit for the fifteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC015).
+A deliberately harsh health audit for the sixteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC016).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC016 | Unused `CancellationToken` parameter | Usage | Info | 4 | 4 | n/a | 4 | 3 | 3 | Low | **v1.11.0 (new):** flags a method/local function that does async work (has `await`) but never references its `CancellationToken` parameter; excludes externally-controlled signatures and sync bodies. Analyzer-only by design (wiring up or removing a parameter is too invasive to auto-fix). A token used in a nested lambda/local function counts as used. |
 | CC015 | Blocking on async code (sync-over-async) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.10.0 (new):** flags `.Result`/`.Wait()`/`.GetAwaiter().GetResult()` on a `Task`/`Task<T>`/`ValueTask` inside an `async` function; fixer rewrites to `await`. Symbol-resolved (a look-alike `.Result` on a non-task is ignored). Shares `IsInAsyncFunction` with CC013. |
 | CC014 | `CancellationTokenSource` never disposed | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.9.0 (new):** flags a local `new CancellationTokenSource(...)`/`CreateLinkedTokenSource(...)` that is not a `using` decl, never disposed, and never escapes (return/out-assign/argument/nested-capture); fixer converts to a `using` declaration. Conservative escape analysis — any disposal-elsewhere path suppresses it (like a scoped CA2000 for CTS). |
 | CC013 | `Thread.Sleep` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.8.0 (new):** flags `System.Threading.Thread.Sleep` lexically inside an `async` method/local function/lambda/anonymous method; fixer rewrites to `await Task.Delay(delay, token)` (token flowed when in scope). Async-context check stops at the first function boundary, so a synchronous lambda inside an async method is quiet. Symbol-resolved (no name-only match). |
@@ -140,6 +141,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.11.0: 264 tests (258 + 6 for new rule CC016: async-unused-token and local-function positives;
+  used-token, sync-method, interface-implementation, used-inside-lambda negatives). Green locally.
 - v1.10.2: 258 tests (256 + 2 CC015 hardening: a `ConfigureAwait(false).GetAwaiter().GetResult()`
   positive and its fixer producing `(await task.ConfigureAwait(false))`). Recognises configured
   awaiters, not just bare ones. Green locally.
