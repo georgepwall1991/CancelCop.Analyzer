@@ -96,7 +96,11 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         if (methodSymbol == null)
             return;
 
-        if (!CancellationTokenHelpers.IsAsyncReturnType(methodSymbol.ReturnType))
+        // Task/ValueTask methods, plus async iterators (async IAsyncEnumerable<T>/IAsyncEnumerator<T>),
+        // which should accept a token so consumers can cancel the stream (CC011 then prompts the
+        // [EnumeratorCancellation] attribute once a token parameter exists).
+        if (!CancellationTokenHelpers.IsAsyncReturnType(methodSymbol.ReturnType) &&
+            !IsAsyncIteratorReturnType(methodSymbol.ReturnType))
             return;
 
         // Don't flag methods whose signature is fixed by a base type or interface — the fix
@@ -111,5 +115,13 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         // Report diagnostic
         var diagnostic = Diagnostic.Create(Rule, methodDeclaration.Identifier.GetLocation(), methodDeclaration.Identifier.Text);
         context.ReportDiagnostic(diagnostic);
+    }
+
+    private static bool IsAsyncIteratorReturnType(ITypeSymbol type)
+    {
+        // The caller has already confirmed the `async` modifier, so a method returning
+        // IAsyncEnumerable<T>/IAsyncEnumerator<T> here is necessarily an async iterator.
+        return (type.Name == "IAsyncEnumerable" || type.Name == "IAsyncEnumerator") &&
+               type.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic";
     }
 }

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.14.3 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.14.4 hardening loop)
 
 A deliberately harsh health audit for the nineteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC019).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -148,6 +148,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.14.4: 284 tests (281 + 3 CC001 async-iterator coverage: public-async-iterator-without-token
+  positive, with-token and private-iterator negatives). Closes the FN where a tokenless public
+  `async IAsyncEnumerable<T>` was flagged by neither CC001 nor CC011. Green locally.
 - v1.14.3: refactor only — CC005A now uses `CancellationTokenHelpers.HasCancellationTokenParameter`
   / `IsAsyncReturnType` instead of hand-rolled checks. No behavior change; 281 tests unchanged.
 - v1.14.2: analyzer XML docs only — added `<remarks>`/`<example>` blocks to CC003/CC004/CC005A/CC005B

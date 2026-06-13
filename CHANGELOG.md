@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.4] - 2026-06-13
+
+### Fixed
+
+- **CC001** now also flags a public/protected **async iterator**
+  (`async IAsyncEnumerable<T>`/`IAsyncEnumerator<T>`) that has no `CancellationToken` parameter.
+  Previously these slipped through both CC001 (which only matched `Task`/`ValueTask`) and CC011
+  (which only checks an *existing* token parameter for `[EnumeratorCancellation]`), so a tokenless
+  public async stream was flagged by nothing. The existing "Add CancellationToken parameter" fix
+  applies; CC011 then prompts the `[EnumeratorCancellation]` attribute once the parameter exists.
+  Pinned by 3 new tests. The shared `IsAsyncReturnType` is intentionally left unchanged (it feeds
+  many rules); the iterator check is local to CC001.
+
 ## [1.14.3] - 2026-06-13
 
 ### Changed
