@@ -44,6 +44,39 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WaitWithTokenArg_CarriesArgumentThrough()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim gate, CancellationToken ct)
+    {
+        gate.{|#0:Wait|}(ct);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim gate, CancellationToken ct)
+    {
+        await gate.WaitAsync(ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task Wait_WithoutToken_BecomesAwaitWaitAsync()
     {
         var test = @"

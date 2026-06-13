@@ -48,7 +48,7 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
     public const string TokenNameProperty = "TokenName";
 
     private static readonly LocalizableString Title = "Avoid SemaphoreSlim.Wait() in async code";
-    private static readonly LocalizableString MessageFormat = "SemaphoreSlim.Wait() blocks the thread in async code; use 'await WaitAsync()'";
+    private static readonly LocalizableString MessageFormat = "SemaphoreSlim.Wait blocks the thread in async code; use 'await WaitAsync(...)'";
     private static readonly LocalizableString Description = "SemaphoreSlim.Wait() blocks the calling thread; in async code use await WaitAsync().";
     private const string Category = "Usage";
 
@@ -82,8 +82,9 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;
 
-        // Only the parameterless Wait() maps cleanly to WaitAsync().
-        if (method.Name != "Wait" || method.Parameters.Length != 0)
+        // All Wait overloads block; the fix carries the original arguments through to WaitAsync
+        // (and adds the in-scope token only when Wait() was parameterless).
+        if (method.Name != "Wait")
             return;
         if (method.ContainingType?.Name != "SemaphoreSlim" ||
             method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading")

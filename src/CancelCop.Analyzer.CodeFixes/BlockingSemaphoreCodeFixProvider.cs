@@ -61,10 +61,16 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        var argumentList = tokenName != null
-            ? SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
-                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName))))
-            : SyntaxFactory.ArgumentList();
+        // Carry the original Wait arguments (timeout and/or token) through to WaitAsync; only when
+        // Wait() was parameterless do we add the in-scope token (if any).
+        ArgumentListSyntax argumentList;
+        if (invocation.ArgumentList.Arguments.Count > 0)
+            argumentList = invocation.ArgumentList.WithoutTrivia();
+        else if (tokenName != null)
+            argumentList = SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
+                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName))));
+        else
+            argumentList = SyntaxFactory.ArgumentList();
 
         var waitAsync = SyntaxFactory.InvocationExpression(
             SyntaxFactory.MemberAccessExpression(

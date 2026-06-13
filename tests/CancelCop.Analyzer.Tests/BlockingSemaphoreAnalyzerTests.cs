@@ -47,7 +47,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task WaitWithTimeout_ShouldNotReportDiagnostic()
+    public async Task WaitWithTimeout_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = @"
 using System.Threading;
@@ -57,12 +57,33 @@ public class TestClass
 {
     public async Task RunAsync(SemaphoreSlim gate)
     {
-        gate.Wait(1000);
+        gate.{|#0:Wait|}(1000);
         await Task.Yield();
     }
 }";
 
-        await VerifyCS.VerifyAnalyzerAsync(test);
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task WaitWithToken_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim gate, CancellationToken ct)
+    {
+        gate.{|#0:Wait|}(ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.2] - 2026-06-14
+
+### Fixed
+
+- **CC026** now flags every blocking `SemaphoreSlim.Wait` overload, not just the parameterless one:
+  `Wait(timeout)`, `Wait(token)`, and `Wait(timeout, token)` all block the thread. The code fix
+  carries the original arguments through to `WaitAsync(...)` (e.g. `gate.Wait(ct)` →
+  `await gate.WaitAsync(ct)`); only a parameterless `Wait()` has the in-scope token added. Pinned by
+  2 new tests.
+
 ## [1.22.1] - 2026-06-14
 
 ### Tests
