@@ -90,7 +90,7 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
 
         // Only flag inside async code: a blocking sleep in a synchronous method is a different
         // (and sometimes legitimate) decision.
-        if (!IsInAsyncContext(invocation))
+        if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
@@ -102,31 +102,5 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
 
         var diagnostic = Diagnostic.Create(Rule, invocation.GetLocation(), properties);
         context.ReportDiagnostic(diagnostic);
-    }
-
-    /// <summary>
-    /// Returns true when the nearest enclosing function (method, local function, lambda, or
-    /// anonymous method) is declared <c>async</c>. The search stops at the first function boundary,
-    /// so a synchronous lambda inside an async method is correctly treated as non-async.
-    /// </summary>
-    private static bool IsInAsyncContext(SyntaxNode node)
-    {
-        for (var current = node.Parent; current != null; current = current.Parent)
-        {
-            switch (current)
-            {
-                case MethodDeclarationSyntax method:
-                    return method.Modifiers.Any(SyntaxKind.AsyncKeyword);
-                case LocalFunctionStatementSyntax local:
-                    return local.Modifiers.Any(SyntaxKind.AsyncKeyword);
-                case AnonymousFunctionExpressionSyntax anonymous:
-                    return anonymous.Modifiers.Any(SyntaxKind.AsyncKeyword);
-                case AccessorDeclarationSyntax:
-                case BasePropertyDeclarationSyntax:
-                    return false;
-            }
-        }
-
-        return false;
     }
 }

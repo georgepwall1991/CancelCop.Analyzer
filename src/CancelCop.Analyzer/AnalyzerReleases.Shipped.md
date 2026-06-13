@@ -1,3 +1,11 @@
+## Release 1.10.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC015 | Usage | Warning | Avoid blocking on async code (.Result/.Wait()/.GetAwaiter().GetResult())
+
 ## Release 1.9.0
 
 ### New Rules

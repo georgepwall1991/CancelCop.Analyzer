@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-06-13
+
+### Added
+
+- **New rule CC015 — avoid blocking on async code.** Synchronously blocking on a task
+  (`task.Result`, `task.Wait()`, `task.GetAwaiter().GetResult()`) inside an `async` function can
+  deadlock under a synchronization context and wraps cancellation in an `AggregateException`. CC015
+  flags these three forms on a `Task`/`Task<T>`/`ValueTask` inside an `async` method, local
+  function, lambda, or anonymous method (symbol-resolved, so a look-alike `.Result` on a non-task
+  type is ignored), and the code fix rewrites them to `await` the task. Pinned by 8 new tests
+  (5 analyzer, 3 fixer). The async-context check was extracted to a shared
+  `CancellationTokenHelpers.IsInAsyncFunction` now used by both CC013 and CC015.
+
 ## [1.9.0] - 2026-06-13
 
 ### Added

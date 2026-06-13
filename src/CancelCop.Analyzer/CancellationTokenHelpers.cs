@@ -267,6 +267,33 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns true when the nearest enclosing function (method, local function, lambda, or
+    /// anonymous method) is declared <c>async</c>. The search stops at the first function boundary,
+    /// so a synchronous lambda inside an async method is correctly treated as non-async, and a
+    /// property/accessor boundary ends the search.
+    /// </summary>
+    public static bool IsInAsyncFunction(SyntaxNode node)
+    {
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            switch (current)
+            {
+                case MethodDeclarationSyntax method:
+                    return method.Modifiers.Any(SyntaxKind.AsyncKeyword);
+                case LocalFunctionStatementSyntax local:
+                    return local.Modifiers.Any(SyntaxKind.AsyncKeyword);
+                case AnonymousFunctionExpressionSyntax anonymous:
+                    return anonymous.Modifiers.Any(SyntaxKind.AsyncKeyword);
+                case AccessorDeclarationSyntax:
+                case BasePropertyDeclarationSyntax:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Returns true when the method's signature is dictated by another declaration the developer
     /// cannot freely change here — an <c>override</c>, an explicit or implicit interface
     /// implementation, or an <c>extern</c> method. Adding or reordering a parameter on such a

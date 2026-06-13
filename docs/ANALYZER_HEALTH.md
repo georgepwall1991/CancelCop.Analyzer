@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.9.0 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.10.0 hardening loop)
 
-A deliberately harsh health audit for the fourteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC014).
+A deliberately harsh health audit for the fifteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC015).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC015 | Blocking on async code (sync-over-async) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.10.0 (new):** flags `.Result`/`.Wait()`/`.GetAwaiter().GetResult()` on a `Task`/`Task<T>`/`ValueTask` inside an `async` function; fixer rewrites to `await`. Symbol-resolved (a look-alike `.Result` on a non-task is ignored). Shares `IsInAsyncFunction` with CC013. |
 | CC014 | `CancellationTokenSource` never disposed | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.9.0 (new):** flags a local `new CancellationTokenSource(...)`/`CreateLinkedTokenSource(...)` that is not a `using` decl, never disposed, and never escapes (return/out-assign/argument/nested-capture); fixer converts to a `using` declaration. Conservative escape analysis — any disposal-elsewhere path suppresses it (like a scoped CA2000 for CTS). |
 | CC013 | `Thread.Sleep` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.8.0 (new):** flags `System.Threading.Thread.Sleep` lexically inside an `async` method/local function/lambda/anonymous method; fixer rewrites to `await Task.Delay(delay, token)` (token flowed when in scope). Async-context check stops at the first function boundary, so a synchronous lambda inside an async method is quiet. Symbol-resolved (no name-only match). |
 | CC012 | Explicit `CancellationToken.None`/`default` when a token is in scope | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.7.0 (new):** flags `CancellationToken.None`/`default`/`default(CancellationToken)` bound to a `CancellationToken` parameter when an in-scope token exists; fixer swaps in the token. Info severity because best-effort cleanup legitimately opts out. Uses the shared scope walk + converted-type gate (a bare `default` only counts in token context). |
@@ -139,6 +140,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.10.0: 256 tests (248 + 8 for new rule CC015: 5 analyzer — Result/Wait/GetAwaiter-GetResult
+  positives, sync-method and non-task negatives — and 3 fixer: each form → await). Green locally.
 - v1.9.0: 248 tests (239 + 9 for new rule CC014: 7 analyzer — never-disposed and linked-source
   positives; using-declaration, disposed, returned, passed-as-argument, captured-by-lambda
   negatives — and 2 fixer: new and linked source → `using` declaration). Green locally.

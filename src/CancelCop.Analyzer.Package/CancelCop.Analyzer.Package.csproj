@@ -13,7 +13,7 @@
         <PackageId>CancelCop.Analyzer</PackageId>
         <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-        <Version>1.9.0</Version>
+        <Version>1.10.0</Version>
         <Authors>George Wall</Authors>
         <Description>A surgical Roslyn analyzer focused on CancellationToken best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes for public APIs, handlers, EF Core, HTTP calls, and Minimal APIs.</Description>
         <PackageTags>roslyn;analyzer;cancellationtoken;async;code-fix;loops;efcore;httpclient</PackageTags>
