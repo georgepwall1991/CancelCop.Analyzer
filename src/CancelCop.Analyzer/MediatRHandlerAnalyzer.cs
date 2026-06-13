@@ -7,6 +7,32 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
+/// <summary>
+/// Analyzer that detects a MediatR <c>IRequestHandler.Handle</c> implementation without a
+/// <c>CancellationToken</c> parameter.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC005A
+/// </para>
+/// <para>
+/// <b>Why this matters:</b> MediatR passes a <c>CancellationToken</c> to <c>Handle</c>; a handler
+/// that drops it cannot be cancelled when the request is abandoned. (Because the real MediatR
+/// interface mandates the token, this rule mostly assists a handler that does not yet satisfy the
+/// interface, hence its lower product importance.)
+/// </para>
+/// <para>
+/// <b>What it detects:</b> a <c>Handle</c> method on an <c>MediatR.IRequestHandler</c> implementer
+/// that is async-shaped and has no <c>CancellationToken</c> parameter. The "Add CancellationToken
+/// parameter" code fix applies.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// public async Task&lt;Unit&gt; Handle(MyRequest request)   // CC005A: add a CancellationToken
+///     =&gt; await _db.SaveChangesAsync();
+/// </code>
+/// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class MediatRHandlerAnalyzer : DiagnosticAnalyzer
 {

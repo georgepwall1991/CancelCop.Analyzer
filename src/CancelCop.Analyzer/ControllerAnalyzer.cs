@@ -7,6 +7,34 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
+/// <summary>
+/// Analyzer that detects an ASP.NET Core controller action method without a
+/// <c>CancellationToken</c> parameter.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC005B
+/// </para>
+/// <para>
+/// <b>Why this matters:</b> ASP.NET Core binds a controller action's <c>CancellationToken</c>
+/// parameter to <c>HttpContext.RequestAborted</c>, which fires when the client disconnects. An
+/// action without one keeps doing work (DB queries, HTTP calls) for a response nobody will read.
+/// </para>
+/// <para>
+/// <b>What it detects:</b> a public, non-static, async (or <c>Task</c>/<c>ValueTask</c>-returning)
+/// method on a <c>Microsoft.AspNetCore.Mvc.ControllerBase</c>/<c>Controller</c> subclass that carries
+/// an MVC HTTP-method attribute (<c>[HttpGet]</c>, …, matched by namespace identity including
+/// subclasses) and has no token. Inherited <c>[NonAction]</c> methods are excluded. The
+/// "Add CancellationToken parameter" code fix applies.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// [HttpGet]
+/// public async Task&lt;IActionResult&gt; Get()           // CC005B: add a CancellationToken
+///     =&gt; Ok(await _db.Users.ToListAsync());
+/// </code>
+/// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class ControllerAnalyzer : DiagnosticAnalyzer
 {

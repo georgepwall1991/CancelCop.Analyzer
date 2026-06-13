@@ -7,6 +7,33 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
+/// <summary>
+/// Analyzer that detects <c>HttpClient</c> async calls that do not propagate an in-scope
+/// <c>CancellationToken</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC004
+/// </para>
+/// <para>
+/// <b>Why this matters:</b> An outbound HTTP call can block for the full request timeout. Each
+/// <c>HttpClient</c> async method (<c>GetAsync</c>, <c>PostAsync</c>, <c>SendAsync</c>, …) has a
+/// <c>CancellationToken</c> overload; passing the in-scope token lets a cancelled request abort
+/// promptly instead of holding a socket until the server responds.
+/// </para>
+/// <para>
+/// <b>What it detects:</b> a call on a <c>System.Net.Http.HttpClient</c> receiver to a method with a
+/// token-accepting overload, where a token is in scope and the call does not already pass one. Calls
+/// inside an expression tree are excluded. Shares the
+/// <see cref="CancellationTokenHelpers.ReportIfTokenNotPropagated"/> pipeline with CC002/CC003.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// public async Task&lt;string&gt; FetchAsync(HttpClient client, string url, CancellationToken cancellationToken)
+///     =&gt; await client.GetStringAsync(url);   // CC004: pass cancellationToken
+/// </code>
+/// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class HttpClientAnalyzer : DiagnosticAnalyzer
 {

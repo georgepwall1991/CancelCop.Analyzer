@@ -7,6 +7,34 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace CancelCop.Analyzer;
 
+/// <summary>
+/// Analyzer that detects EF Core async query calls that do not propagate an in-scope
+/// <c>CancellationToken</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC003
+/// </para>
+/// <para>
+/// <b>Why this matters:</b> EF Core async operations (<c>ToListAsync</c>, <c>FirstOrDefaultAsync</c>,
+/// <c>SaveChangesAsync</c>, …) each accept a <c>CancellationToken</c> that cancels the underlying
+/// database round-trip. Omitting it leaves a query running on the server after the caller has given
+/// up, holding a connection and burning database time.
+/// </para>
+/// <para>
+/// <b>What it detects:</b> a call to a method in the <c>Microsoft.EntityFrameworkCore</c> namespace
+/// that has a token-accepting overload, where a token is in scope (method, local function, lambda,
+/// constructor, or primary constructor) and the call does not already pass one. Calls inside an
+/// expression tree are excluded — they are translated, not executed. Shares the
+/// <see cref="CancellationTokenHelpers.ReportIfTokenNotPropagated"/> pipeline with CC002/CC004.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// public async Task&lt;User&gt; GetAsync(int id, CancellationToken cancellationToken)
+///     =&gt; await _db.Users.FirstOrDefaultAsync(u =&gt; u.Id == id);   // CC003: pass cancellationToken
+/// </code>
+/// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class EFCoreAnalyzer : DiagnosticAnalyzer
 {

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-06-13
+
+### Documentation
+
+- Added class-level `<remarks>`/`<example>` XML documentation to the CC003 (EF Core), CC004
+  (HttpClient), CC005A (MediatR), and CC005B (controller) analyzers, matching the doc style the
+  other rules already carry. Closes the P3 "analyzer XML docs" backlog item; no behavior change.
+
 ## [1.14.1] - 2026-06-13
 
 ### Documentation
