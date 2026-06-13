@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-06-14
+
+### Added
+
+- **New rule CC022 — prefer `await CancelAsync()` over `Cancel()` in async code.**
+  `CancellationTokenSource.Cancel()` runs every registered callback synchronously on the calling
+  thread, so a slow callback blocks the canceller. .NET 8's `CancelAsync()` schedules them instead.
+  CC022 flags a parameterless `Cancel()` on a `CancellationTokenSource` inside an `async` method,
+  local function, lambda, or anonymous method (Info severity — `Cancel()` is still valid), and the
+  code fix rewrites it to `await cts.CancelAsync()`. The `Cancel(bool)` overload (no async
+  counterpart) and a sync context are left alone. Pinned by 5 new tests (4 analyzer, 1 fixer).
+
 ## [1.17.0] - 2026-06-14
 
 ### Added

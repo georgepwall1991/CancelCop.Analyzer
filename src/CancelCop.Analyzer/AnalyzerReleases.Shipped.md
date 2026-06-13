@@ -1,3 +1,11 @@
+## Release 1.18.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC022 | Usage | Info | Prefer await CancelAsync() over Cancel() in async code
+
 ## Release 1.16.0
 
 ### New Rules

@@ -51,6 +51,7 @@ Install-Package CancelCop.Analyzer
 | **CC019** | Broad `catch` swallows `OperationCanceledException` | Info | ✅ |
 | **CC020** | gRPC method should observe `ServerCallContext.CancellationToken` | Warning | ❌ |
 | **CC021** | Method should observe `HttpContext.RequestAborted` | Info | ❌ |
+| **CC022** | Prefer `await CancelAsync()` over `Cancel()` in async code | Info | ✅ |
 
 ## Quick Examples
 
