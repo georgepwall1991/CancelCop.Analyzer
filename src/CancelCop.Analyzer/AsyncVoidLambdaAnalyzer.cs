@@ -63,11 +63,16 @@ public class AsyncVoidLambdaAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
 
-        context.RegisterSyntaxNodeAction(AnalyzeLambda, SyntaxKind.SimpleLambdaExpression, SyntaxKind.ParenthesizedLambdaExpression);
+        context.RegisterSyntaxNodeAction(
+            AnalyzeLambda,
+            SyntaxKind.SimpleLambdaExpression,
+            SyntaxKind.ParenthesizedLambdaExpression,
+            SyntaxKind.AnonymousMethodExpression);
     }
 
     private void AnalyzeLambda(SyntaxNodeAnalysisContext context)
     {
+        // Covers lambdas and `async delegate { }` anonymous methods alike.
         var lambda = (AnonymousFunctionExpressionSyntax)context.Node;
         if (!lambda.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword))
             return;

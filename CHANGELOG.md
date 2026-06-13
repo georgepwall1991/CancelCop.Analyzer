@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.10] - 2026-06-14
+
+### Fixed
+
+- **CC024** now also flags an `async delegate { }` anonymous method converted to `Action`, not just
+  `async` lambdas — both bind as async void. Pinned by 1 new test.
+
 ## [1.22.9] - 2026-06-14
 
 ### Fixed
