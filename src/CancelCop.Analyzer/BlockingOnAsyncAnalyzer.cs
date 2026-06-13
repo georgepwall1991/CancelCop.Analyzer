@@ -94,10 +94,18 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;
 
-        // task.Wait() — the parameterless overload.
-        if (method.Name == "Wait" && method.Parameters.Length == 0 && IsTaskLike(method.ContainingType))
+        // task.Wait() / task.Wait(timeout) / task.Wait(cancellationToken) — all block synchronously.
+        // (The code fix only rewrites the parameterless overload; the others report without a fix.)
+        if (method.Name == "Wait" && IsTaskLike(method.ContainingType))
         {
             Report(context, memberAccess.Name, ".Wait()");
+            return;
+        }
+
+        // Task.WaitAll(...) / Task.WaitAny(...) — static blocking joins.
+        if ((method.Name == "WaitAll" || method.Name == "WaitAny") && IsTaskLike(method.ContainingType))
+        {
+            Report(context, memberAccess.Name, "." + method.Name + "()");
             return;
         }
 

@@ -64,7 +64,10 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
                 return true;
 
             case "Wait":
-                if (memberAccess.Parent is not InvocationExpressionSyntax waitInvocation)
+                // Only the parameterless Wait() maps cleanly to `await task`; Wait(timeout) /
+                // Wait(token) change semantics, so they report without a fix.
+                if (memberAccess.Parent is not InvocationExpressionSyntax waitInvocation ||
+                    waitInvocation.ArgumentList.Arguments.Count != 0)
                     return false;
                 target = waitInvocation;
                 replacement = SyntaxFactory.AwaitExpression(memberAccess.Expression.WithoutTrivia());

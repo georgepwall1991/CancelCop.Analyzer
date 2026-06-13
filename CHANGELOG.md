@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.1] - 2026-06-14
+
+### Fixed
+
+- **CC015** now also flags the blocking forms it previously missed: `task.Wait(timeout)` /
+  `task.Wait(token)` (not just the parameterless `Wait()`), and the static joins `Task.WaitAll(...)`
+  / `Task.WaitAny(...)`. The code fix still applies only to the forms with a clean `await`
+  equivalent (parameterless `Wait()`, `.Result`, `.GetAwaiter().GetResult()`); the timeout/token
+  `Wait` overloads and `WaitAll`/`WaitAny` report without a fix (their `await` rewrite would change
+  semantics). Pinned by 2 new tests.
+
 ## [1.19.0] - 2026-06-14
 
 ### Added

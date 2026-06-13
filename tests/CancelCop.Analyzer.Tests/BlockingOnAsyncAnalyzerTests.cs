@@ -79,6 +79,36 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WaitWithTimeout_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        await Task.Yield();
+        DoAsync().{|#0:Wait|}(1000);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Wait()");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task WaitAll_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        await Task.Yield();
+        Task.{|#0:WaitAll|}(DoAsync());
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".WaitAll()");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Result_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

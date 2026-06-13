@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.19.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.19.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-three implemented CancelCop rule IDs (CC001–CC006, CC009–CC023).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -152,6 +152,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.19.1: 311 tests (309 + 2 CC015 coverage: `Wait(timeout)` and `Task.WaitAll(...)` now flagged;
+  fixer guarded to the parameterless `Wait()`). Green locally.
 - v1.19.0: 309 tests (303 + 6 for new rule CC023: async-void positive; event-handler,
   custom-EventArgs-handler, async-Task, sync-void negatives; and a fixer test that changes
   `void`→`Task` and adds the import). Green locally.
