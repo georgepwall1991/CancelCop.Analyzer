@@ -41,6 +41,7 @@ Install-Package CancelCop.Analyzer
 | **CC009** | Loops should check for cancellation | Warning | ✅ |
 | **CC010** | `await foreach` should flow a CancellationToken via `.WithCancellation` | Warning | ✅ |
 | **CC011** | Async-iterator CancellationToken should be `[EnumeratorCancellation]` | Warning | ✅ |
+| **CC012** | Avoid passing `CancellationToken.None`/`default` when a token is in scope | Info | ✅ |
 
 ## Quick Examples
 

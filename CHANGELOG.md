@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-13
+
+### Added
+
+- **New rule CC012 — avoid passing `CancellationToken.None`/`default` when a token is in scope.**
+  Passing `CancellationToken.None`, `default`, or `default(CancellationToken)` to a call explicitly
+  opts it out of cancellation; when the surrounding scope already has a token, that is usually an
+  oversight. CC012 flags the none-ish argument (binding to a `CancellationToken`) whenever an
+  in-scope token parameter exists, and the code fix replaces it with that token. Reported as
+  **Info** because the pattern is occasionally intentional (best-effort cleanup). Conservative: no
+  diagnostic when no token is in scope or when the argument does not bind to a `CancellationToken`.
+  Pinned by 8 new tests (6 analyzer, 2 fixer).
+
 ## [1.6.0] - 2026-06-13
 
 ### Added

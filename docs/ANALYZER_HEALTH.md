@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.6.0 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.7.0 hardening loop)
 
-A deliberately harsh health audit for the eleven implemented CancelCop rule IDs (CC001–CC006, CC009, CC010, CC011).
+A deliberately harsh health audit for the twelve implemented CancelCop rule IDs (CC001–CC006, CC009, CC010, CC011, CC012).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC012 | Explicit `CancellationToken.None`/`default` when a token is in scope | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.7.0 (new):** flags `CancellationToken.None`/`default`/`default(CancellationToken)` bound to a `CancellationToken` parameter when an in-scope token exists; fixer swaps in the token. Info severity because best-effort cleanup legitimately opts out. Uses the shared scope walk + converted-type gate (a bare `default` only counts in token context). |
 | CC011 | Async-iterator token missing `[EnumeratorCancellation]` | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.6.0 (new):** producer-side complement to CC010. Flags an `async IAsyncEnumerable<T>` iterator (method or local function with `yield`) whose `CancellationToken` parameter lacks `[EnumeratorCancellation]`, so a token passed via `.WithCancellation` would be silently dropped. Fixer adds the attribute + `System.Runtime.CompilerServices` import. Conservative: non-iterators returning the type, tokenless iterators, and already-marked params are quiet. Yield detection stops at nested local functions/lambdas. |
 
 ## Planning Shortlist
@@ -136,6 +137,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.7.0: 230 tests (222 + 8 for new rule CC012: 6 analyzer — None/default/default(CancellationToken)
+  positives, no-token-in-scope/real-token/non-token-parameter negatives — and 2 fixer: None→token
+  and default→differently-named token). Green locally.
 - v1.6.0: 222 tests (214 + 8 for new rule CC011: 6 analyzer — unmarked-token positive,
   marked-token/no-token/non-iterator/second-token-marked negatives, local-function positive —
   and 2 fixer: add attribute+import, add attribute when import already present). Green locally.

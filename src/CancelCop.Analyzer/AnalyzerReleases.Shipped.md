@@ -1,3 +1,11 @@
+## Release 1.7.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC012 | Usage | Info | Avoid passing CancellationToken.None/default when a token is in scope
+
 ## Release 1.6.0
 
 ### New Rules
