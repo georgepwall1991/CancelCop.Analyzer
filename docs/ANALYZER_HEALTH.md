@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.8.0 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.8.1 hardening loop)
 
 A deliberately harsh health audit for the thirteen implemented CancelCop rule IDs (CC001–CC006, CC009, CC010, CC011, CC012, CC013).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -138,6 +138,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.8.1: 239 tests (237 + 2 CC010 hardening: a `ConfigureAwait(false)`-without-`WithCancellation`
+  positive and its fixer, which inserts `.WithCancellation(token)` before `.ConfigureAwait`). Green.
 - v1.8.0: 237 tests (230 + 7 for new rule CC013: 5 analyzer — async-method-with-token/async-method-
   without-token/async-lambda positives, sync-method and sync-lambda-in-async negatives — and 2
   fixer: with-token and without-token rewrites). Green locally.

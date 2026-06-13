@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-06-13
+
+### Fixed
+
+- **CC010** now also flags an `await foreach` whose source is `source.ConfigureAwait(false)` without
+  a `.WithCancellation(token)` — previously the configured-cancelable wrapper hid the missing token
+  (a false negative). The analyzer peels trailing `.WithCancellation`/`.ConfigureAwait` calls off
+  the source: a chain that already contains `.WithCancellation` stays quiet, while a `ConfigureAwait`-
+  only chain is reported on the underlying enumerable, and the code fix inserts
+  `.WithCancellation(token)` before the `.ConfigureAwait(...)`. Pinned by 2 new tests.
+
 ## [1.8.0] - 2026-06-13
 
 ### Added

@@ -165,6 +165,31 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AwaitForeach_ConfigureAwaitWithoutWithCancellation_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ConsumeAsync(IAsyncEnumerable<int> source, CancellationToken cancellationToken)
+    {
+        await foreach (var item in {|#0:source|}.ConfigureAwait(false))
+        {
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC010", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitForeach_ConfiguredCancelable_ShouldNotReportDiagnostic()
     {
         var test = @"

@@ -86,11 +86,15 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
         if (forEach.AwaitKeyword.IsKind(SyntaxKind.None))
             return;
 
-        var source = forEach.Expression;
+        // Peel any trailing `.WithCancellation(...)` / `.ConfigureAwait(...)` wrappers off the
+        // source so the underlying async stream is examined. `source.ConfigureAwait(false)` is a
+        // configured cancelable enumerable that still never received a token — that should be
+        // flagged, while a chain that already includes `.WithCancellation(...)` should not.
+        var source = UnwrapConfiguredEnumerable(forEach.Expression, out var hasWithCancellation);
+        if (hasWithCancellation)
+            return;
 
-        // The source must be (or implement) IAsyncEnumerable<T>. A configured cancelable enumerable
-        // (the result of .WithCancellation / .ConfigureAwait) is a different type, so a source that
-        // already flows a token is naturally excluded.
+        // The (unwrapped) source must be (or implement) IAsyncEnumerable<T>.
         var sourceType = context.SemanticModel.GetTypeInfo(source, context.CancellationToken).Type;
         if (!ImplementsAsyncEnumerable(sourceType))
             return;
@@ -110,6 +114,37 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
         var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, tokenParameter.Name);
         var diagnostic = Diagnostic.Create(Rule, source.GetLocation(), properties, tokenParameter.Name);
         context.ReportDiagnostic(diagnostic);
+    }
+
+    /// <summary>
+    /// Strips trailing <c>.WithCancellation(...)</c> and <c>.ConfigureAwait(...)</c> calls from an
+    /// <c>await foreach</c> source, returning the underlying enumerable expression and reporting
+    /// (via <paramref name="hasWithCancellation"/>) whether a <c>.WithCancellation</c> was present —
+    /// in which case a token already flows and the loop must not be flagged.
+    /// </summary>
+    private static ExpressionSyntax UnwrapConfiguredEnumerable(ExpressionSyntax source, out bool hasWithCancellation)
+    {
+        hasWithCancellation = false;
+
+        while (source is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
+        {
+            var name = memberAccess.Name.Identifier.Text;
+            if (name == "WithCancellation")
+            {
+                hasWithCancellation = true;
+                source = memberAccess.Expression;
+            }
+            else if (name == "ConfigureAwait")
+            {
+                source = memberAccess.Expression;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return source;
     }
 
     /// <summary>

@@ -61,6 +61,46 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AwaitForeach_ConfigureAwaitChain_InsertsWithCancellationBeforeConfigureAwait()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ConsumeAsync(IAsyncEnumerable<int> source, CancellationToken cancellationToken)
+    {
+        await foreach (var item in {|#0:source|}.ConfigureAwait(false))
+        {
+        }
+    }
+}";
+
+        var fixedCode = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ConsumeAsync(IAsyncEnumerable<int> source, CancellationToken cancellationToken)
+    {
+        await foreach (var item in source.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC010", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitForeach_OverInvocation_WrapsInWithCancellation()
     {
         var test = @"
