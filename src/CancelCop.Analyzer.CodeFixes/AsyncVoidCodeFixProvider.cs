@@ -33,33 +33,48 @@ public class AsyncVoidCodeFixProvider : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
-        var method = root.FindToken(diagnostic.Location.SourceSpan.Start)
-            .Parent?.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-        if (method?.ReturnType == null)
+        var node = root.FindToken(diagnostic.Location.SourceSpan.Start)
+            .Parent?.AncestorsAndSelf()
+            .FirstOrDefault(n => n is MethodDeclarationSyntax or LocalFunctionStatementSyntax);
+        if (node == null)
             return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => ChangeReturnTypeAsync(context.Document, method, c),
+                createChangedDocument: c => ChangeReturnTypeAsync(context.Document, node, c),
                 equivalenceKey: Title),
             diagnostic);
     }
 
     private static async Task<Document> ChangeReturnTypeAsync(
         Document document,
-        MethodDeclarationSyntax method,
+        SyntaxNode node,
         CancellationToken cancellationToken)
     {
         var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
         if (root == null)
             return document;
 
-        // Carry the void keyword's trivia (the space before the method name) onto Task.
-        var taskType = SyntaxFactory.IdentifierName("Task").WithTriviaFrom(method.ReturnType);
-        var newMethod = method.WithReturnType(taskType);
+        // Carry the void keyword's trivia (the space before the name) onto Task.
+        var returnType = node switch
+        {
+            MethodDeclarationSyntax m => m.ReturnType,
+            LocalFunctionStatementSyntax l => l.ReturnType,
+            _ => null,
+        };
+        if (returnType == null)
+            return document;
 
-        var newRoot = root.ReplaceNode(method, newMethod);
+        var taskType = SyntaxFactory.IdentifierName("Task").WithTriviaFrom(returnType);
+        SyntaxNode newNode = node switch
+        {
+            MethodDeclarationSyntax m => m.WithReturnType(taskType),
+            LocalFunctionStatementSyntax l => l.WithReturnType(taskType),
+            _ => node,
+        };
+
+        var newRoot = root.ReplaceNode(node, newNode);
 
         if (newRoot is CompilationUnitSyntax compilationUnit)
             newRoot = CancellationTokenFixHelpers.AddUsing(compilationUnit, TasksNamespace);

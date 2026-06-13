@@ -83,6 +83,29 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncVoidLocalFunction_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Outer()
+    {
+        async void {|#0:Local|}()
+        {
+            await Task.CompletedTask;
+        }
+
+        Local();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC023").WithLocation(0).WithArguments("Local");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task SyncVoidMethod_ShouldNotReportDiagnostic()
     {
         var test = @"

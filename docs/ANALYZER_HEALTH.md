@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.22.8 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.22.9 hardening loop)
 
 A deliberately harsh health audit for the twenty-six implemented CancelCop rule IDs (CC001–CC006, CC009–CC026).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -155,6 +155,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.22.9: 339 tests (337 + 2 CC023 local-function coverage: an `async void` local function is
+  flagged and the fix changes its return type to `Task`). Green locally.
 - v1.22.8: 337 tests (336 + 1 exotic-syntax clean-code FP guard — switch expressions / expression
   bodies / non-async Task methods produce zero diagnostics). Green locally.
 - v1.22.7: docs/samples only — sample files for CC022–CC026 (each fires on its `Bad` member in a

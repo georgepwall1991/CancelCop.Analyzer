@@ -39,4 +39,43 @@ public class TestClass
         var expected = VerifyCS.Diagnostic("CC023").WithLocation(0).WithArguments("ProcessAsync");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    [Fact]
+    public async Task AsyncVoidLocalFunction_BecomesAsyncTask()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Outer()
+    {
+        async void {|#0:Local|}()
+        {
+            await Task.CompletedTask;
+        }
+
+        Local();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Outer()
+    {
+        async Task Local()
+        {
+            await Task.CompletedTask;
+        }
+
+        Local();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC023").WithLocation(0).WithArguments("Local");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

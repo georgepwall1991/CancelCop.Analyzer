@@ -63,6 +63,23 @@ public class AsyncVoidAnalyzer : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
 
         context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
+        context.RegisterSyntaxNodeAction(AnalyzeLocalFunction, SyntaxKind.LocalFunctionStatement);
+    }
+
+    private void AnalyzeLocalFunction(SyntaxNodeAnalysisContext context)
+    {
+        var local = (LocalFunctionStatementSyntax)context.Node;
+
+        // A local function cannot be an event handler or an override/interface implementation, so
+        // the only checks are the async modifier and the void return.
+        if (!local.Modifiers.Any(SyntaxKind.AsyncKeyword))
+            return;
+        if (local.ReturnType is not PredefinedTypeSyntax predefined ||
+            !predefined.Keyword.IsKind(SyntaxKind.VoidKeyword))
+            return;
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            Rule, local.Identifier.GetLocation(), local.Identifier.Text));
     }
 
     private void AnalyzeMethod(SyntaxNodeAnalysisContext context)

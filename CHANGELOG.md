@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.9] - 2026-06-14
+
+### Fixed
+
+- **CC023** now also flags an `async void` **local function**, not just methods — it is the same
+  anti-pattern (cannot be awaited; exceptions crash the process). The code fix changes the local
+  function's return type to `Task`. Local functions can't be event handlers or override an external
+  signature, so no exclusions apply. Pinned by 2 new tests.
+
 ## [1.22.8] - 2026-06-14
 
 ### Tests
