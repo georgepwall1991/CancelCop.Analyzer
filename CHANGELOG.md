@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.11] - 2026-06-14
+
+### Tests
+
+- Added an MVC controller case to the cross-analyzer FP guard: a `[HttpGet]` action that accepts a
+  `CancellationToken` must satisfy both the general CC001 and the controller-specific CC005B, with
+  zero diagnostics across every analyzer (faithful `ControllerBase`/`[HttpGet]` stubs).
+
 ## [1.22.10] - 2026-06-14
 
 ### Fixed

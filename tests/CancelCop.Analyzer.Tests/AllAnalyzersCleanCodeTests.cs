@@ -84,6 +84,40 @@ internal sealed class CleanService
     }
 
     [Fact]
+    public async Task IdiomaticControllerCode_ProducesNoDiagnostics()
+    {
+        // A proper MVC controller action that accepts a token must satisfy both the general CC001
+        // and the controller-specific CC005B (faithful ControllerBase/[HttpGet] stubs).
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Microsoft.AspNetCore.Mvc
+{
+    public abstract class ControllerBase { }
+    public sealed class HttpGetAttribute : System.Attribute { }
+}
+
+internal sealed class UsersController : Microsoft.AspNetCore.Mvc.ControllerBase
+{
+    [Microsoft.AspNetCore.Mvc.HttpGet]
+    public async Task<int> Get(CancellationToken cancellationToken)
+    {
+        await Task.Delay(1, cancellationToken);
+        return 1;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task NestedScopesCapturingToken_ProduceNoDiagnostics()
     {
         // The shared scope walk must recognise the outer token captured by a local function and a
