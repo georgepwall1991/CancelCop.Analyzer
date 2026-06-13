@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-06-13
+
+### Documentation
+
+- Completed README "Quick Examples" parity for every rule by adding sections for CC016–CC019, and
+  added `samples/CancelCop.Sample` files for the two general rules (CC016, CC019). The packaged
+  README now shows a violation-and-fix for all nineteen rules. CC017 (BackgroundService) and CC018
+  (SignalR) remain framework-specific and are covered by their analyzer tests.
+
 ## [1.14.0] - 2026-06-13
 
 ### Added

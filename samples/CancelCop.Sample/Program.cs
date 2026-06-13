@@ -21,6 +21,9 @@
 // CC013_BlockingSleep.cs       - Avoid Thread.Sleep in async code
 // CC014_UndisposedTokenSource.cs  - CancellationTokenSource should be disposed
 // CC015_BlockingOnAsync.cs     - Avoid blocking on async code (sync-over-async)
+// CC016_UnusedToken.cs         - CancellationToken accepted but never used
+// CC019_SwallowedCancellation.cs - Broad catch swallows OperationCanceledException
+// (CC017 BackgroundService and CC018 SignalR are framework-specific; see tests.)
 //
 // VIEWING WARNINGS:
 // -----------------

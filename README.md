@@ -271,6 +271,62 @@ public async Task<int> RunAsync()
     => await GetValueAsync();
 ```
 
+### CC016: Unused `CancellationToken` Parameter
+
+```csharp
+// ℹ️ Info CC016 - accepts a token but never observes it
+public async Task SaveAsync(string text, CancellationToken cancellationToken)
+{
+    await File.WriteAllTextAsync("f.txt", text);   // token ignored
+}
+
+// ✅ Fixed
+public async Task SaveAsync(string text, CancellationToken cancellationToken)
+{
+    await File.WriteAllTextAsync("f.txt", text, cancellationToken);
+}
+```
+
+### CC017: `BackgroundService` Ignoring Its Stopping Token
+
+```csharp
+// ❌ Warning CC017 - never stops on shutdown
+protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+{
+    while (true) { await DoWorkAsync(); }
+}
+
+// ✅ Fixed
+protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+{
+    while (!stoppingToken.IsCancellationRequested) { await DoWorkAsync(stoppingToken); }
+}
+```
+
+### CC018: SignalR Hub Method Without a Token
+
+```csharp
+// ❌ Warning CC018 - keeps running after the client disconnects
+public async Task Broadcast(string message)
+    => await Clients.All.SendAsync("recv", message);
+
+// ✅ Fixed
+public async Task Broadcast(string message, CancellationToken cancellationToken)
+    => await Clients.All.SendAsync("recv", message, cancellationToken);
+```
+
+### CC019: Broad `catch` Swallowing Cancellation
+
+```csharp
+// ℹ️ Info CC019 - also swallows OperationCanceledException
+try { await DoAsync(token); }
+catch (Exception ex) { Log(ex); }
+
+// ✅ Fixed - let cancellation propagate
+try { await DoAsync(token); }
+catch (Exception ex) when (ex is not OperationCanceledException) { Log(ex); }
+```
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:

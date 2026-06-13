@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.14.0 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.14.1 hardening loop)
 
 A deliberately harsh health audit for the nineteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC019).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -144,6 +144,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.14.1: docs/samples only — README example sections for CC016–CC019 and sample files for CC016 /
+  CC019. 281 tests unchanged; sample project compiles (clean rebuild fires CC016/CC019 on the
+  intended `Bad` members only).
 - v1.14.0: 281 tests (274 + 7 for new rule CC019: catch (Exception) and catch-all positives;
   rethrow, when-filter, specific-type, no-await, catch (OperationCanceledException) negatives).
   Green locally.
