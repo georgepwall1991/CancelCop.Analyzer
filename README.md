@@ -185,6 +185,88 @@ public async Task ProcessItemsAsync(List<Item> items, CancellationToken cancella
 }
 ```
 
+### CC010: `await foreach` Without a Token
+
+```csharp
+// ❌ Warning CC010 - the async stream never receives the token
+await foreach (var item in source)
+{
+}
+
+// ✅ Fixed - .WithCancellation flows the token to the producer
+await foreach (var item in source.WithCancellation(cancellationToken))
+{
+}
+```
+
+### CC011: Async Iterator Token Without `[EnumeratorCancellation]`
+
+```csharp
+// ❌ Warning CC011 - WithCancellation can't deliver a token to this parameter
+public async IAsyncEnumerable<int> ReadAsync(CancellationToken token)
+{
+    yield return await NextAsync(token);
+}
+
+// ✅ Fixed
+public async IAsyncEnumerable<int> ReadAsync([EnumeratorCancellation] CancellationToken token)
+{
+    yield return await NextAsync(token);
+}
+```
+
+### CC012: Explicit `CancellationToken.None` When a Token Is in Scope
+
+```csharp
+// ℹ️ Info CC012 - discards cancellation even though a token is available
+public async Task RunAsync(CancellationToken cancellationToken)
+    => await DoAsync(CancellationToken.None);
+
+// ✅ Fixed
+public async Task RunAsync(CancellationToken cancellationToken)
+    => await DoAsync(cancellationToken);
+```
+
+### CC013: `Thread.Sleep` in Async Code
+
+```csharp
+// ❌ Warning CC013 - blocks the thread and ignores cancellation
+public async Task RunAsync(CancellationToken ct)
+{
+    Thread.Sleep(1000);
+}
+
+// ✅ Fixed
+public async Task RunAsync(CancellationToken ct)
+{
+    await Task.Delay(1000, ct);
+}
+```
+
+### CC014: Undisposed `CancellationTokenSource`
+
+```csharp
+// ❌ Warning CC014 - the source's timer/handle leak
+var cts = new CancellationTokenSource();
+await DoAsync(cts.Token);
+
+// ✅ Fixed
+using var cts = new CancellationTokenSource();
+await DoAsync(cts.Token);
+```
+
+### CC015: Blocking on Async Code
+
+```csharp
+// ❌ Warning CC015 - can deadlock and discards cancellation
+public async Task<int> RunAsync()
+    => GetValueAsync().Result;
+
+// ✅ Fixed
+public async Task<int> RunAsync()
+    => await GetValueAsync();
+```
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:

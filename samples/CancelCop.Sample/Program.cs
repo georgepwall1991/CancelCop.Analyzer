@@ -15,6 +15,12 @@
 // CC005_HandlerPatterns.cs     - MediatR/Controller handlers need CancellationToken
 // CC006_ParameterPosition.cs   - CancellationToken should be the last parameter
 // CC009_LoopCancellation.cs    - Loops should check for cancellation
+// CC010_AsyncEnumerable.cs     - await foreach should flow a CancellationToken
+// CC011_EnumeratorCancellation.cs - Async-iterator token needs [EnumeratorCancellation]
+// CC012_ExplicitNone.cs        - Avoid CancellationToken.None when a token is in scope
+// CC013_BlockingSleep.cs       - Avoid Thread.Sleep in async code
+// CC014_UndisposedTokenSource.cs  - CancellationTokenSource should be disposed
+// CC015_BlockingOnAsync.cs     - Avoid blocking on async code (sync-over-async)
 //
 // VIEWING WARNINGS:
 // -----------------

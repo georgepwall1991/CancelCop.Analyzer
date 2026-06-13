@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-06-13
+
+### Documentation
+
+- Added per-rule README "Quick Examples" sections and sample-project files for the six newer rules
+  (CC010–CC015), each showing a violation and its fix. The packaged README now documents every
+  shipped rule with a runnable example, and `samples/CancelCop.Sample` demonstrates them on build.
+
 ## [1.10.0] - 2026-06-13
 
 ### Added

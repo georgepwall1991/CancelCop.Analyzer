@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-13 (refreshed through the v1.10.0 hardening loop)
+Reviewed: 2026-06-13 (refreshed through the v1.10.1 hardening loop)
 
 A deliberately harsh health audit for the fifteen implemented CancelCop rule IDs (CC001–CC006, CC009–CC015).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -140,6 +140,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.10.1: docs/samples only — added README per-rule example sections and
+  `samples/CancelCop.Sample` files for CC010–CC015 (each a violation + fix). No analyzer change;
+  256 tests unchanged, sample project compiles (intended CC010–CC015 warnings on build).
 - v1.10.0: 256 tests (248 + 8 for new rule CC015: 5 analyzer — Result/Wait/GetAwaiter-GetResult
   positives, sync-method and non-task negatives — and 3 fixer: each form → await). Green locally.
 - v1.9.0: 248 tests (239 + 9 for new rule CC014: 7 analyzer — never-disposed and linked-source
