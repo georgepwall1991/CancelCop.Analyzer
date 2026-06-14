@@ -560,6 +560,42 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticWaitToReadDrainLoop_ProducesNoDiagnostics()
+    {
+        // The WaitToReadAsync/TryRead drain pattern: outer await WaitToReadAsync(token), inner TryRead
+        // loop with a cancellation check and token-flowing handling. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+internal sealed class Drainer
+{
+    public async Task RunAsync(ChannelReader<int> reader, CancellationToken cancellationToken)
+    {
+        while (await reader.WaitToReadAsync(cancellationToken))
+        {
+            while (reader.TryRead(out var item))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await HandleAsync(item, cancellationToken);
+            }
+        }
+    }
+
+    private Task HandleAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticWaitUntilCancelled_ProducesNoDiagnostics()
     {
         // Awaiting an infinite Task.Delay with the token to block until cancellation, with OCE handled
