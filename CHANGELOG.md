@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.39] - 2026-06-14
+
+### Tests
+
+- Added Fix All correctness tests for the two line-inserting fixers, completing Fix All coverage for
+  every fixer in the analyzer: CC009 (two `foreach` loops both get a `ThrowIfCancellationRequested()`
+  guard line) and CC019 (two `catch` blocks both get an `is OperationCanceledException` rethrow guard).
+  Confirms the inserted-line indentation and ordering stay correct under a batch fix.
+
 ## [1.23.38] - 2026-06-14
 
 ### Tests

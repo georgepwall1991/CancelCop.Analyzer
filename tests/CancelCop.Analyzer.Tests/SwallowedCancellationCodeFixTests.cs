@@ -20,6 +20,57 @@ public class TestClass
 ";
 
     [Fact]
+    public async Task FixAll_TwoCatches_BothGetRethrowGuard()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        {|#0:catch|} (Exception ex)
+        {
+            _ = ex;
+        }
+
+        try { await DoAsync(); }
+        {|#1:catch|} (Exception ex)
+        {
+            _ = ex;
+        }
+    }
+}";
+
+        var fixedCode = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        catch (Exception ex)
+        {
+            if (ex is OperationCanceledException)
+                throw;
+            _ = ex;
+        }
+
+        try { await DoAsync(); }
+        catch (Exception ex)
+        {
+            if (ex is OperationCanceledException)
+                throw;
+            _ = ex;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC019").WithLocation(0),
+                VerifyCS.Diagnostic("CC019").WithLocation(1),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task NamedException_AddsRethrowGuard()
     {
         var test = Harness + @"

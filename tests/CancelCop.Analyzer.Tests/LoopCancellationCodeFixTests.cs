@@ -11,6 +11,63 @@ namespace CancelCop.Analyzer.Tests;
 public class LoopCancellationCodeFixTests
 {
     [Fact]
+    public async Task FixAll_TwoForeachLoops_BothGetThrowIfCancellationRequested()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(List<int> items, CancellationToken cancellationToken)
+    {
+        {|#0:foreach|} (var item in items)
+        {
+            await Task.Delay(100, cancellationToken);
+        }
+
+        {|#1:foreach|} (var item in items)
+        {
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+}";
+
+        var fixedCode = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(List<int> items, CancellationToken cancellationToken)
+    {
+        foreach (var item in items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(100, cancellationToken);
+        }
+
+        foreach (var item in items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC009").WithLocation(0).WithArguments("cancellationToken"),
+                VerifyCS.Diagnostic("CC009").WithLocation(1).WithArguments("cancellationToken"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task ForEachLoop_AddsThrowIfCancellationRequested()
     {
         var test = @"
