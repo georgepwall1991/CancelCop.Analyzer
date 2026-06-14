@@ -560,6 +560,43 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticArrayPoolRentReturn_ProducesNoDiagnostics()
+    {
+        // Renting a buffer from ArrayPool, reading into it with a token-flowing ReadAsync, returning it
+        // in finally. No analyzer fires.
+        var code = @"
+using System;
+using System.Buffers;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class PooledReader
+{
+    public async Task<int> ReadAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(1024);
+        try
+        {
+            return await stream.ReadAsync(buffer.AsMemory(0, 1024), cancellationToken);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticTransactionCommitRollback_ProducesNoDiagnostics()
     {
         // await using a transaction, commit on success, rollback then rethrow on failure. The catch-all
