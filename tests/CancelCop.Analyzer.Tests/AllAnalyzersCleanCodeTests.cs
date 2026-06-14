@@ -560,6 +560,50 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticBoundedConcurrencyFanOut_ProducesNoDiagnostics()
+    {
+        // Throttled fan-out: a SemaphoreSlim limits concurrency, each task awaits WaitAsync(token),
+        // works, and Releases in finally; WhenAll-joined. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ThrottledRunner
+{
+    public async Task RunAsync(IEnumerable<int> items, CancellationToken cancellationToken)
+    {
+        using var gate = new SemaphoreSlim(4);
+        var tasks = items.Select(async item =>
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                await ProcessAsync(item, cancellationToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+    }
+
+    private Task ProcessAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticPeriodicTimerLoop_ProducesNoDiagnostics()
     {
         // A PeriodicTimer tick loop: WaitForNextTickAsync(token) as the condition, an explicit
