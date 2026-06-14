@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.31] - 2026-06-14
+
+### Tests
+
+- Pinned three more edge cases: CC021 stays quiet when `RequestAborted` is observed via a local
+  alias; CC017 treats a stopping token passed to a constructor as observed; CC027 documents its
+  precision boundary (an aliased task local is not flagged — only the direct-receiver case is).
+
 ## [1.23.30] - 2026-06-14
 
 ### Tests

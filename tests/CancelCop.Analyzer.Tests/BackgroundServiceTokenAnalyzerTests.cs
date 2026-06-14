@@ -107,6 +107,32 @@ public class NotAService
     }
 
     [Fact]
+    public async Task ExecuteAsync_PassesTokenToConstructor_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+
+public class Worker : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var loop = new Loop(stoppingToken);
+        await loop.RunAsync();
+    }
+}
+
+public class Loop
+{
+    public Loop(CancellationToken token) { }
+    public Task RunAsync() => Task.CompletedTask;
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_PassesTokenToHelper_ShouldNotReportDiagnostic()
     {
         var test = @"

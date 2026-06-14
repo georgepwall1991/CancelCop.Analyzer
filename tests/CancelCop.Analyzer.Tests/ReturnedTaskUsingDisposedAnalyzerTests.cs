@@ -76,6 +76,27 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReturnAliasedTaskLocal_ShouldNotReportDiagnostic()
+    {
+        // CC027 deliberately flags only the direct-receiver case (return resource.DoAsync();). An
+        // aliased task local is a precision boundary — not flagged, to stay high-confidence.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        var task = resource.DoAsync();
+        return task;
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ReturnTaskFromNonUsingResource_ShouldNotReportDiagnostic()
     {
         var test = @"

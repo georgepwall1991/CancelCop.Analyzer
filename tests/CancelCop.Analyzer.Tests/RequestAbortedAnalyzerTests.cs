@@ -63,6 +63,28 @@ public class Middleware
     }
 
     [Fact]
+    public async Task Method_ObservesRequestAbortedViaAlias_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public class Middleware
+{
+    private Task SaveAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        var token = context.RequestAborted;
+        await SaveAsync(token);
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Method_PassesContextOn_ShouldNotReportDiagnostic()
     {
         var test = @"
