@@ -21,6 +21,33 @@ public class HttpClientAnalyzerTests
     }
 
     [Fact]
+    public async Task PatchAsync_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
+    {
+        // PatchAsync(uri, content) has a CancellationToken overload, so it is flagged like the other
+        // HttpClient verbs.
+        var test = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public async Task<HttpResponseMessage> SendAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        return await _httpClient.{|#0:PatchAsync|}(""https://api.example.com"", content);
+    }
+}";
+
+        var expected = new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("PatchAsync", "cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task GetStringAsync_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
     {
         var test = @"
