@@ -560,6 +560,37 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSwitchExpressionReturningTasks_ProducesNoDiagnostics()
+    {
+        // A non-async method that returns a Task selected by a switch expression, each arm flowing the
+        // token. No await (so CC016 N/A), token passed on each arm. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class Dispatcher
+{
+    public Task HandleAsync(int command, CancellationToken cancellationToken) => command switch
+    {
+        0 => ReadAsync(cancellationToken),
+        1 => WriteAsync(cancellationToken),
+        _ => Task.CompletedTask,
+    };
+
+    private Task ReadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task WriteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticManualAsyncEnumerator_ProducesNoDiagnostics()
     {
         // Manual enumeration: GetAsyncEnumerator(token) (token flowed), await using disposal, a
