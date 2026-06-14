@@ -247,6 +247,47 @@ internal sealed class NestedService
     }
 
     [Fact]
+    public async Task NonAsyncUsingPatterns_ProduceNoDiagnostics()
+    {
+        // A non-async method that reads a using resource synchronously into a completed task, and
+        // one that awaits it (async), must both be clean — CC027 only flags the deferred-receiver
+        // case.
+        var code = @"
+using System;
+using System.Threading.Tasks;
+
+internal sealed class Resource : IDisposable
+{
+    public void Dispose() { }
+    public int Value => 0;
+    public Task<int> LoadAsync() => Task.FromResult(0);
+}
+
+internal sealed class ResourceService
+{
+    private Task<int> ReadValueAsync()
+    {
+        using var resource = new Resource();
+        return Task.FromResult(resource.Value);
+    }
+
+    private async Task<int> LoadAsync()
+    {
+        using var resource = new Resource();
+        return await resource.LoadAsync();
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task ExoticSyntaxWithTokens_ProducesNoDiagnostics()
     {
         // Expression-bodied members, a switch expression returning a Task, and a non-async

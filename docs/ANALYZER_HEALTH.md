@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.3 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.4 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -156,6 +156,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.4: 353 tests (352 + 1 CC027 non-async `using` clean-code FP guard). Green locally.
 - v1.23.3: 352 tests (350 + 2 CC001 FP fix — an `async Task Main` entry point is no longer flagged).
   Green locally.
 - v1.23.2: 350 tests (349 + 1 CC014 FP fix — `cts?.Dispose()` null-conditional disposal is now

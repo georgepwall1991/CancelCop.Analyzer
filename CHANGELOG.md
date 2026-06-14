@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.4] - 2026-06-14
+
+### Tests
+
+- Added a non-async `using`-pattern case to the cross-analyzer FP guard: a method that reads a using
+  resource synchronously into a completed task (`return Task.FromResult(resource.Value);`) and one
+  that awaits it both produce zero diagnostics — locking in that CC027 only flags the
+  deferred-receiver case.
+
 ## [1.23.3] - 2026-06-14
 
 ### Fixed
