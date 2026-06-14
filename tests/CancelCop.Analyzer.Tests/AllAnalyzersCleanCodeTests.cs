@@ -560,6 +560,36 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticTokenRegisterCleanup_ProducesNoDiagnostics()
+    {
+        // Registering a cancellation callback and awaiting a TaskCompletionSource is a common bridge to
+        // callback-based APIs; the registration is disposed via await using. No analyzer may fire.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class BridgeService
+{
+    public async Task<int> WaitForSignalAsync(CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource<int>();
+        await using (cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken)))
+        {
+            return await tcs.Task;
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticProgressReportingLoop_ProducesNoDiagnostics()
     {
         // A progress-reporting loop: cancellation check each iteration, token-flowing await, and
