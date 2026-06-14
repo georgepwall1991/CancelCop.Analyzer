@@ -1,3 +1,11 @@
+## Release 1.24.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC028 | Usage | Warning | Avoid blocking System.IO.File calls in async code; use the async counterpart
+
 ## Release 1.23.0
 
 ### New Rules

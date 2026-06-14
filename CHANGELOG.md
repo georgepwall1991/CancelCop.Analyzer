@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-06-14
+
+### Added
+
+- **CC028** (Warning): flags a blocking synchronous `System.IO.File` call (`ReadAllText`,
+  `ReadAllBytes`, `ReadAllLines`, `WriteAllText`, `WriteAllBytes`, `WriteAllLines`, `AppendAllText`,
+  `AppendAllLines`) made inside async code when an `<name>Async` counterpart exists. This rounds out
+  the blocking-in-async family alongside CC013 (`Thread.Sleep`), CC015 (`Task.Wait`/`.Result`) and
+  CC026 (`SemaphoreSlim.Wait`). Analyzer-only; the async counterpart also accepts a `CancellationToken`.
+  Includes README rule-table row + Quick Example and a sample (`CC028_BlockingFileIo.cs`).
+
 ## [1.23.45] - 2026-06-14
 
 ### Tests
