@@ -493,6 +493,44 @@ internal sealed class FileService
     }
 
     [Fact]
+    public async Task IdiomaticRawStreamAndHttpClient_ProduceNoDiagnostics()
+    {
+        // Raw Stream async I/O (ReadAsync/WriteAsync/CopyToAsync) and HttpClient.SendAsync, all
+        // threading the in-scope token, are the canonical correct shapes — no rule may fire.
+        var code = @"
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class TransferService
+{
+    public async Task CopyAsync(Stream input, Stream output, byte[] buffer, CancellationToken cancellationToken)
+    {
+        int read = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+        await output.WriteAsync(buffer, 0, read, cancellationToken);
+        await input.CopyToAsync(output, cancellationToken);
+        await output.FlushAsync(cancellationToken);
+    }
+
+    public async Task<string> FetchAsync(HttpClient client, HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var response = await client.SendAsync(request, cancellationToken);
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncStreamWriter_ProducesNoDiagnostics()
     {
         // The async StreamWriter counterparts are the shape CC028 steers toward. WriteAsync(string)

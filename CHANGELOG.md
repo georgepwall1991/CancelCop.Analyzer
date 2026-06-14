@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.2] - 2026-06-14
+
+### Tests
+
+- Added a clean-code FP guard covering the canonical raw-`Stream` async I/O shapes
+  (`ReadAsync`/`WriteAsync`/`CopyToAsync`/`FlushAsync`) and `HttpClient.SendAsync` /
+  `HttpContent.ReadAsStringAsync`, all threading the in-scope token. Confirms no analyzer over-fires on
+  the most common real-world async I/O patterns.
+
 ## [1.27.1] - 2026-06-14
 
 ### Fixed
