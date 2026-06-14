@@ -64,6 +64,20 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CatchException_RethrowsExplicitly_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        catch (Exception ex) { throw ex; }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CatchException_WithFilter_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

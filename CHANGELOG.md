@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.27] - 2026-06-14
+
+### Tests
+
+- Pinned three more edge cases: CC016 treats a token passed to a constructor as used; CC019 stays
+  quiet when the catch rethrows via `throw ex;`; CC012 flags `new Worker(CancellationToken.None)`
+  (explicit object creation) when a token is in scope.
+
 ## [1.23.26] - 2026-06-14
 
 ### Tests

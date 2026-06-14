@@ -86,6 +86,31 @@ public class TestClass : IRunner
     }
 
     [Fact]
+    public async Task TokenUsedInConstructorArgument_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public Holder(CancellationToken token) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        var holder = new Holder(cancellationToken);
+        await Task.Delay(1000);
+        _ = holder;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TokenUsedInsideLambda_ShouldNotReportDiagnostic()
     {
         var test = @"
