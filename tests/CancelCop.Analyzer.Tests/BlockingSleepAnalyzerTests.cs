@@ -177,4 +177,27 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task ThreadSleep_InSyncLocalFunctionInsideAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        // The async-context check stops at the first function boundary, so a Thread.Sleep inside a
+        // synchronous local function is not flagged even when the enclosing method is async — the
+        // local-function counterpart of the sync-lambda negative above.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        void Blocking() => Thread.Sleep(1000);
+        Blocking();
+        await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
 }

@@ -499,7 +499,7 @@ internal static class CancellationTokenHelpers
             var typesMatch = true;
             for (var i = 0; i < nonTokenParameters.Length; i++)
             {
-                if (!SymbolEqualityComparer.Default.Equals(
+                if (!ParameterTypesEquivalent(
                         nonTokenParameters[i].Type, boundParameters[i].Type))
                 {
                     typesMatch = false;
@@ -562,7 +562,7 @@ internal static class CancellationTokenHelpers
             var typesMatch = true;
             for (var i = 0; i < nonTokenParameters.Length; i++)
             {
-                if (!SymbolEqualityComparer.Default.Equals(
+                if (!ParameterTypesEquivalent(
                         nonTokenParameters[i].Type, boundParameters[i].Type))
                 {
                     typesMatch = false;
@@ -575,5 +575,38 @@ internal static class CancellationTokenHelpers
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Compares two parameter types from sibling overloads' <c>OriginalDefinition</c>s for
+    /// overload-matching. Identical to <see cref="SymbolEqualityComparer.Default"/> except that two
+    /// generic type parameters are treated as equivalent when they share an ordinal and kind — each
+    /// overload of a generic method owns a distinct type-parameter symbol, so a plain symbol comparison
+    /// would wrongly reject <c>FooAsync&lt;T&gt;(T)</c> against <c>FooAsync&lt;T&gt;(T, CancellationToken)</c>.
+    /// Array and constructed generic types are compared structurally so the rule applies through them.
+    /// </summary>
+    private static bool ParameterTypesEquivalent(ITypeSymbol a, ITypeSymbol b)
+    {
+        if (a is ITypeParameterSymbol pa && b is ITypeParameterSymbol pb)
+            return pa.Ordinal == pb.Ordinal && pa.TypeParameterKind == pb.TypeParameterKind;
+
+        if (a is IArrayTypeSymbol aa && b is IArrayTypeSymbol ab)
+            return aa.Rank == ab.Rank && ParameterTypesEquivalent(aa.ElementType, ab.ElementType);
+
+        if (a is INamedTypeSymbol na && b is INamedTypeSymbol nb && na.IsGenericType && nb.IsGenericType)
+        {
+            if (!SymbolEqualityComparer.Default.Equals(na.OriginalDefinition, nb.OriginalDefinition))
+                return false;
+            if (na.TypeArguments.Length != nb.TypeArguments.Length)
+                return false;
+            for (var i = 0; i < na.TypeArguments.Length; i++)
+            {
+                if (!ParameterTypesEquivalent(na.TypeArguments[i], nb.TypeArguments[i]))
+                    return false;
+            }
+            return true;
+        }
+
+        return SymbolEqualityComparer.Default.Equals(a, b);
     }
 }

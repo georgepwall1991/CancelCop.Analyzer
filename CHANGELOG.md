@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.7] - 2026-06-14
+
+### Fixed
+
+- **CC002 / CC003 / CC004** regression from 1.27.1: the type-compatible overload match used symbol
+  identity for parameter types, which silently dropped *generic* overload pairs — each overload of a
+  generic method owns a distinct type-parameter symbol, so `FooAsync<T>(T)` no longer matched
+  `FooAsync<T>(T, CancellationToken)` and the rule went quiet. Parameter types are now compared with an
+  ordinal-aware equivalence (type parameters equal by ordinal + kind; arrays and constructed generics
+  compared structurally), restoring propagation on generic methods while keeping the 1.27.1 fix for
+  genuinely incompatible overloads.
+
 ## [1.27.6] - 2026-06-14
 
 ### Tests

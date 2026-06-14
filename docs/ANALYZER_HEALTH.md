@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.6 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.7 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,6 +168,11 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.7: 458 tests (457 + 1 CC002 generic-overload-pair regression pin). Green locally. **Fixed a
+  regression from 1.27.1:** the type-compatible overload match now compares parameter types with an
+  ordinal-aware equivalence (`ParameterTypesEquivalent`), so generic overload pairs like
+  `FooAsync<T>(T)` / `FooAsync<T>(T, CancellationToken)` fire again (distinct per-overload type-param
+  symbols were wrongly treated as different types).
 - v1.27.6: 457 tests (456 + 1 clean-code FP guard: library-style async — ConfigureAwait(false),
   ValueTask, await using with a token-flowing factory, TaskCompletionSource). Green locally.
 - v1.27.5: 456 tests (455 + 1 CC028 FP guard: in-memory `StringWriter` stays quiet — not in the

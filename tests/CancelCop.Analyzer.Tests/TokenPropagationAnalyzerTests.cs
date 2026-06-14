@@ -55,6 +55,34 @@ public class TestClass
     }
 
     [Fact]
+    public async Task GenericOverloadPair_WithTokenInScope_ShouldReportDiagnostic()
+    {
+        // Each overload of a generic method owns a distinct type-parameter symbol, so the
+        // type-compatible overload match must compare type parameters by ordinal (not symbol identity)
+        // — otherwise CC002 would miss FooAsync<T>(T) when FooAsync<T>(T, CancellationToken) exists.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task FooAsync<T>(T item) => Task.CompletedTask;
+    public Task FooAsync<T>(T item, CancellationToken ct) => Task.CompletedTask;
+
+    public async Task RunAsync<T>(T item, CancellationToken cancellationToken)
+    {
+        await {|#0:FooAsync|}(item);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("FooAsync", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task TaskDelay_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
     {
         var test = @"
