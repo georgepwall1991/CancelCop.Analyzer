@@ -28,6 +28,7 @@
 // CC024_AsyncVoidLambda.cs     - Avoid async lambdas converted to Action
 // CC025_AwaitUsing.cs          - Prefer await using for IAsyncDisposable
 // CC026_BlockingSemaphore.cs   - Avoid SemaphoreSlim.Wait() in async code
+// CC027_PrematureDisposal.cs   - Returned task uses a disposed using resource
 // (CC017/CC018/CC020/CC021 are framework-specific; see their analyzer tests.)
 //
 // VIEWING WARNINGS:

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.23] - 2026-06-14
+
+### Documentation
+
+- Added a `samples/CancelCop.Sample` file for CC027 (premature disposal), completing sample parity
+  for the non-framework rules. A clean sample build confirms it fires on the violation.
+
 ## [1.23.22] - 2026-06-14
 
 ### Documentation
