@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.24.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.25.0 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.25.0: 429 tests (426 + 3 CC028 code-fix tests incl. Fix-All). Green locally. CC028 now has a code
+  fix (`File.<name>` → `await File.<name>Async(..., token)`); README fix mark ✅.
 - v1.24.0: 426 tests (420 + 6 for NEW rule CC028). Green locally. CC028 (Warning, analyzer-only) flags
   blocking `System.IO.File` read/write/append helpers in async code when an `<name>Async` counterpart
   exists — extends the blocking-in-async family (CC013/CC015/CC026). 28 rules now: CC001-006, CC009-028.

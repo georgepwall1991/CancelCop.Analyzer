@@ -47,6 +47,11 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     public const string DiagnosticId = "CC028";
 
     /// <summary>
+    /// Property key used to pass the in-scope token parameter name (if any) to the code fix provider.
+    /// </summary>
+    public const string TokenNameProperty = "TokenName";
+
+    /// <summary>
     /// The blocking <c>System.IO.File</c> methods that have a documented async counterpart.
     /// </summary>
     private static readonly ImmutableHashSet<string> BlockingFileMethods = ImmutableHashSet.Create(
@@ -109,6 +114,14 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, memberAccess.Name.GetLocation(), methodName));
+        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+            invocation, context.SemanticModel);
+
+        var properties = ImmutableDictionary<string, string?>.Empty;
+        if (tokenParameter != null)
+            properties = properties.Add(TokenNameProperty, tokenParameter.Name);
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            Rule, memberAccess.Name.GetLocation(), properties, methodName));
     }
 }

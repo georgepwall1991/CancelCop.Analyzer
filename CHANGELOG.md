@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-06-14
+
+### Added
+
+- **CC028 code fix**: rewrites a blocking `File.<name>(...)` call to `await File.<name>Async(..., token)`,
+  flowing the in-scope `CancellationToken` when one is available (and falling back to the token-less
+  async overload otherwise). Fix All supported. CC028's README fix mark is now ✅.
+
 ## [1.24.0] - 2026-06-14
 
 ### Added

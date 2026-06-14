@@ -57,7 +57,7 @@ Install-Package CancelCop.Analyzer
 | **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
 | **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
 | **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
-| **CC028** | Avoid blocking `System.IO.File` calls in async code; use the async counterpart | Warning | ❌ |
+| **CC028** | Avoid blocking `System.IO.File` calls in async code; use the async counterpart | Warning | ✅ |
 
 ## Quick Examples
 
