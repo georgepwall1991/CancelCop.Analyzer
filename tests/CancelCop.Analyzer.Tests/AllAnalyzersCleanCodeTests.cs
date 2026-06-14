@@ -560,6 +560,41 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticTaskRunCpuOffload_ProducesNoDiagnostics()
+    {
+        // Offloading CPU-bound work with Task.Run, passing the token to Task.Run and checking it inside
+        // the compute loop. No analyzer fires (the lambda returns a value, so CC024 does not apply).
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ComputeService
+{
+    public Task<long> SumAsync(int n, CancellationToken cancellationToken)
+    {
+        return Task.Run(() =>
+        {
+            long total = 0;
+            for (int i = 0; i < n; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                total += i;
+            }
+            return total;
+        }, cancellationToken);
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticRecursiveAsyncTraversal_ProducesNoDiagnostics()
     {
         // A recursive async tree walk: cancellation check on entry, token flowed into the recursive
