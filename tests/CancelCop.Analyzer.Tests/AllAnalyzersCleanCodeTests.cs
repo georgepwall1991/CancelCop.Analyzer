@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticTryWriteProducerLoop_ProducesNoDiagnostics()
+    {
+        // A producer using the non-blocking TryWrite into an unbounded channel, with a per-iteration
+        // cancellation check and cooperative yield, then Complete. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+internal sealed class TryWriteProducer
+{
+    public async Task ProduceAsync(Channel<int> channel, int count, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            channel.Writer.TryWrite(i);
+            await Task.Yield();
+        }
+        channel.Writer.Complete();
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSoftCancelReturningDefault_ProducesNoDiagnostics()
     {
         // Catching OperationCanceledException specifically (not a broad catch) to return a sentinel on
