@@ -89,6 +89,29 @@ public class Worker : BackgroundService
     }
 
     [Fact]
+    public async Task ExecuteAsync_ObservesStoppingTokenInsideLambda_ShouldNotReportDiagnostic()
+    {
+        // The token is referenced from a nested lambda; the shared reference walk descends into it, so
+        // the stopping token counts as observed and CC017 stays quiet.
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+
+public class Worker : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        Func<Task> work = async () => await Task.Delay(1000, stoppingToken);
+        await work();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task NonBackgroundService_ExecuteAsync_ShouldNotReportDiagnostic()
     {
         var test = @"
