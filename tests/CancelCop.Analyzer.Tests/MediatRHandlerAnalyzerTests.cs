@@ -48,6 +48,25 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
     }
 
     [Fact]
+    public async Task PlainHandleMethod_NotImplementingIRequestHandler_ShouldNotReportDiagnostic()
+    {
+        // CC005A is gated to MediatR.IRequestHandler implementations, so a class that merely has a
+        // method named Handle is not flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class NotAHandler
+{
+    public async Task Handle(string request)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task RequestHandler_WithCancellationToken_ShouldNotReportDiagnostic()
     {
         var test = @"

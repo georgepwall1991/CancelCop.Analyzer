@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.21] - 2026-06-14
+
+### Tests
+
+- Pinned a CC005A non-false-positive: a class that merely has a method named `Handle` (not a
+  `MediatR.IRequestHandler` implementation) is not flagged.
+
 ## [1.23.20] - 2026-06-14
 
 ### Tests
