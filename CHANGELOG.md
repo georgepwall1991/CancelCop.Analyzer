@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.7] - 2026-06-14
+
+### Documentation
+
+- Refreshed stale packaged-README sections: "Project Quality" (test count 111 → 350+, mentions the
+  cross-analyzer FP guard), "Roadmap" (the originally-planned rules have shipped as CC012/CC016/CC023;
+  now 27 rules), and "Supported Frameworks" (added SignalR, hosted services, gRPC, async streams,
+  middleware).
+
 ## [1.23.6] - 2026-06-14
 
 ### Tests

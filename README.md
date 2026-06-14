@@ -436,18 +436,24 @@ dotnet_diagnostic.CC006.severity = warning
 ## Supported Frameworks
 
 - **.NET 6.0+** (including .NET 8, .NET 9, .NET 10)
-- **ASP.NET Core** (Controllers and Minimal APIs)
+- **ASP.NET Core** (Controllers, Minimal APIs, SignalR hubs, middleware via `HttpContext.RequestAborted`)
+- **Hosted services** (`BackgroundService.ExecuteAsync`)
+- **gRPC** (`ServerCallContext.CancellationToken`)
 - **Entity Framework Core** (all async methods)
 - **HttpClient** (all async methods)
 - **MediatR** (IRequestHandler implementations)
+- **Async streams** (`IAsyncEnumerable<T>`, `[EnumeratorCancellation]`)
 - **ValueTask** and **ValueTask<T>** return types
 
 ## Project Quality
 
-- **111 unit tests** with comprehensive coverage
+- **350+ unit tests** with comprehensive coverage, plus a cross-analyzer false-positive guard that
+  runs every analyzer over idiomatic code (core, framework, nested-scope, exotic-syntax) and asserts
+  zero diagnostics
 - **Test-Driven Development** approach
 - Built on official **Microsoft Roslyn APIs**
-- Follows **.NET Analyzer best practices**
+- Follows **.NET Analyzer best practices** (every rule documented, release-tracked, and covered by
+  `RuleCatalogTests` drift guards)
 
 ## Building from Source
 
@@ -506,11 +512,12 @@ Key points:
 
 ## Roadmap
 
-See [NEXT_STEPS.md](NEXT_STEPS.md) for planned features:
-- CC007: Detect `CancellationToken.None` usage
-- CC008: Detect unused CancellationToken parameters
-- CC010: Detect async void methods
-- CC006 code fix for parameter reordering
+CancelCop now ships **27 rules** spanning token presence, propagation, positioning, loop checks,
+async streams, blocking sync-over-async, resource lifecycle, async hygiene, and framework
+cancellation sources. The features originally planned here have shipped (under their final IDs):
+`CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →
+**CC023**. New rules are added opportunistically as common cancellation pitfalls surface; bug fixes
+and false-positive hardening continue each release.
 
 ## License
 
