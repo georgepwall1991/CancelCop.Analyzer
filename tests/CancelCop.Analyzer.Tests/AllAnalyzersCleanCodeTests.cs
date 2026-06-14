@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticConfiguredValueTaskAwait_ProducesNoDiagnostics()
+    {
+        // Awaiting a ValueTask<T> with ConfigureAwait(false), token flowed into the source. No analyzer
+        // fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface ISource
+{
+    ValueTask<int> ReadAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class Reader
+{
+    private readonly ISource _source;
+
+    public Reader(ISource source) => _source = source;
+
+    public async ValueTask<int> GetAsync(CancellationToken cancellationToken)
+        => await _source.ReadAsync(cancellationToken).ConfigureAwait(false);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncTemplateMethod_ProducesNoDiagnostics()
     {
         // An async template-method base: a public RunAsync threads the token through virtual/abstract
