@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.5] - 2026-06-14
+
+### Fixed
+
+- CC028's code fix now parenthesizes the inserted `await` when the blocking call is the receiver of a
+  further access, e.g. `File.ReadAllText(p).Trim()` → `(await File.ReadAllTextAsync(p, token)).Trim()`.
+  Previously it produced `await File.ReadAllTextAsync(p).Trim()`, which binds the `await` to the whole
+  chain and does not compile (`.Trim()` is on `Task<string>`). Mirrors the existing CC015 handling.
+
 ## [1.26.4] - 2026-06-14
 
 ### Docs

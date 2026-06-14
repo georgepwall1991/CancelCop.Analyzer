@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.26.4 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.26.5 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.26.5: 439 tests (438 + 1). Real fixer bug fixed: CC028 now parenthesizes the await when the
+  blocking call is a receiver (`File.ReadAllText(p).Trim()` → `(await ...Async(p, token)).Trim()`).
 - v1.26.4: 438 tests (sample-only: CC028 sample completed with the StreamReader before/after). Green locally.
 - v1.26.3: 438 tests (436 + 2 CC028 StreamReader-branch negatives: non-curated method, lookalike type).
   Green locally.

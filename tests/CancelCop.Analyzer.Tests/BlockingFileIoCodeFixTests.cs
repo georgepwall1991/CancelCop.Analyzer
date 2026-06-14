@@ -245,6 +245,46 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ResultUsedAsReceiver_ParenthesizesAwait()
+    {
+        // The blocking call is the receiver of `.Trim()`, so the await must be parenthesized:
+        // File.ReadAllText(p).Trim() -> (await File.ReadAllTextAsync(p, token)).Trim().
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = File.{|#0:ReadAllText|}(p).Trim();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = (await File.ReadAllTextAsync(p, cancellationToken)).Trim();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadAllText");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"
