@@ -560,6 +560,40 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSignalDrivenWorker_ProducesNoDiagnostics()
+    {
+        // A worker that waits on a SemaphoreSlim(0) signal each iteration, checks cancellation, and does
+        // token-flowing work. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class SignalWorker
+{
+    private readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await _signal.WaitAsync(cancellationToken);
+            await DrainAsync(cancellationToken);
+        }
+    }
+
+    private Task DrainAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticLazyTaskWithWaitAsync_ProducesNoDiagnostics()
     {
         // A shared Lazy<Task<T>> awaited cancelably per caller via Task.WaitAsync(token). The token is
