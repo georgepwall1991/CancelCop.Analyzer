@@ -560,6 +560,44 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticServerStreamingWriterLoop_ProducesNoDiagnostics()
+    {
+        // A server-streaming writer loop: cancellation check per iteration, token-flowing produce and
+        // write. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IStreamWriter<T>
+{
+    Task WriteAsync(T item, CancellationToken cancellationToken);
+}
+
+internal sealed class Streamer
+{
+    public async Task StreamAsync(IStreamWriter<int> writer, int count, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var value = await ProduceAsync(i, cancellationToken);
+            await writer.WriteAsync(value, cancellationToken);
+        }
+    }
+
+    private Task<int> ProduceAsync(int i, CancellationToken cancellationToken) => Task.FromResult(i);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticPaginationBatchLoop_ProducesNoDiagnostics()
     {
         // Page through a data source until a short page is returned, checking cancellation each page and
