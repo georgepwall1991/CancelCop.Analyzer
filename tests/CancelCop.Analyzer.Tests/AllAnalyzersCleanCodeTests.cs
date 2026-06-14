@@ -560,6 +560,35 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticLazyTaskWithWaitAsync_ProducesNoDiagnostics()
+    {
+        // A shared Lazy<Task<T>> awaited cancelably per caller via Task.WaitAsync(token). The token is
+        // observed (CC016 satisfied) and the method has a token param (CC001 satisfied). No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class SharedInitializer
+{
+    private readonly Lazy<Task<string>> _shared = new(() => LoadAsync());
+
+    public Task<string> GetAsync(CancellationToken cancellationToken)
+        => _shared.Value.WaitAsync(cancellationToken);
+
+    private static Task<string> LoadAsync() => Task.FromResult(string.Empty);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticBoundedConcurrencyFanOut_ProducesNoDiagnostics()
     {
         // Throttled fan-out: a SemaphoreSlim limits concurrency, each task awaits WaitAsync(token),
