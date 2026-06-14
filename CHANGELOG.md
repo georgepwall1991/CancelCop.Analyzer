@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.44] - 2026-06-14
+
+### Tests
+
+- Pinned CC012's fix on a named argument: `DoAsync(token: CancellationToken.None)` rewrites to
+  `DoAsync(token: cancellationToken)`, confirming the `token:` name-colon survives (the fix replaces
+  only the expression node, never the whole argument).
+
 ## [1.23.43] - 2026-06-14
 
 ### Tests

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.43 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.44 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.44: 419 tests (418 + 1 CC012 named-argument fix pin: `token:` name-colon preserved). Green locally.
 - v1.23.43: 418 tests (416 + 2 CC001 surface-area pins: `internal` clean, public async in a `record`
   flagged). Green locally.
 - v1.23.42: 416 tests (414 + 2 CC015 parenthesized-await-as-receiver correctness pins). Green locally.

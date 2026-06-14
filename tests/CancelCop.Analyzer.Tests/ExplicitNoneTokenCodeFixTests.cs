@@ -11,6 +11,44 @@ namespace CancelCop.Analyzer.Tests;
 public class ExplicitNoneTokenCodeFixTests
 {
     [Fact]
+    public async Task NamedArgument_KeepsNameColonAndSwapsToken()
+    {
+        // The fix replaces only the expression node, so the `token:` name-colon must survive:
+        // `token: CancellationToken.None` -> `token: cancellationToken`.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task DoAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync(token: {|#0:CancellationToken.None|});
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task DoAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync(token: cancellationToken);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC012").WithLocation(0)
+            .WithArguments("CancellationToken.None", "cancellationToken");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task FixAll_TwoNoneArguments_BothReplaced()
     {
         var test = @"
