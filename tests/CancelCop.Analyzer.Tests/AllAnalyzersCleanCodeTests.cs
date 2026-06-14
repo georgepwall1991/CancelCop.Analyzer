@@ -560,6 +560,44 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticGracefulCancellationHandling_ProducesNoDiagnostics()
+    {
+        // Catching OperationCanceledException specifically to run cleanup and then rethrow is the
+        // correct graceful-shutdown shape — CC019 (which targets broad swallowing catches) must not fire.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class GracefulService
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DoWorkAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            await CleanupAsync();
+            throw;
+        }
+    }
+
+    private Task DoWorkAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task CleanupAsync() => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncEnumerableTransformPipeline_ProducesNoDiagnostics()
     {
         // An async-iterator that transforms another async stream: [EnumeratorCancellation] on its token
