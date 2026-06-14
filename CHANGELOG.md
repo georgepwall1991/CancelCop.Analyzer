@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.1] - 2026-06-14
+
+### Fixed
+
+- **CC002 / CC003 / CC004** no longer fire (with a non-compiling fix) when the only
+  `CancellationToken`-accepting overload has incompatible parameters. Firing now requires an overload
+  whose non-token parameters match the call's *by type*, so e.g. `await writer.WriteAsync(text)` —
+  whose token overloads take `ReadOnlyMemory<char>`/`StringBuilder`, not `string` — is left alone
+  instead of being "fixed" to the invalid `WriteAsync(text, cancellationToken)`. (The named-argument
+  lookup keeps its count/first-overload fallback; only the firing gate is tightened.)
+
+### Tests / Samples
+
+- Added a clean-code FP guard pinning that idiomatic async `StreamWriter` usage
+  (`await writer.WriteAsync(text)` + `await writer.FlushAsync(cancellationToken)`) produces zero
+  diagnostics across all analyzers — the shape CC028 (v1.27.0) steers toward.
+- Extended the CC028 sample with a `StreamWriter.Write`/`Flush` violation and its `WriteAsync`/
+  `FlushAsync` fix, demonstrating the new write-side coverage.
+
 ## [1.27.0] - 2026-06-14
 
 ### Added

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,6 +168,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.1: 451 tests (449 + 1 CC002 incompatible-token-overload FP guard + 1 idiomatic async
+  `StreamWriter` clean-code guard). Green locally. **Real FP fix:** CC002/CC003/CC004 now require a
+  *type-compatible* token overload before firing (via the new
+  `CancellationTokenHelpers.GetTypeCompatibleTokenParameterName`), so a same-name token overload with
+  different parameters (e.g. `StreamWriter.WriteAsync(string)`, whose token overload takes
+  `ReadOnlyMemory<char>`) no longer produces a non-compiling propagation fix. Also extended the CC028
+  sample with a `StreamWriter` violation + fix (sample-only).
 - v1.27.0: 448 tests (443 + 5 CC028 StreamWriter coverage: 3 analyzer — `Write`/`Flush` fire,
   sync-method negative — and 2 fixer — `Flush()`→`await FlushAsync(token)` (token-taking overload),
   `Write(string)`→`await WriteAsync(text)` (no token, no token overload)). Green locally. CC028 extended

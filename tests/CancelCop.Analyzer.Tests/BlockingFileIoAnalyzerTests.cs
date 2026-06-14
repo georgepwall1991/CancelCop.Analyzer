@@ -299,6 +299,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamWriterOverloadWithoutSignatureMatchedAsync_ShouldNotReportDiagnostic()
+    {
+        // StreamWriter declares Write(ReadOnlySpan<char>), but its only span-shaped async overload is
+        // WriteAsync(ReadOnlyMemory<char>, CancellationToken) — a different first-parameter type. A
+        // name-only "WriteAsync" lookup would wrongly flag this and the fixer would emit a non-compiling
+        // 'await writer.WriteAsync(span)'. The v1.27.0 parameter-signature match must keep it quiet.
+        var test = @"
+using System;
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer)
+    {
+        writer.Write(""abc"".AsSpan());
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task LookalikeFileType_ShouldNotReportDiagnostic()
     {
         // A user-defined 'File' type is not System.IO.File, so it must stay clean.

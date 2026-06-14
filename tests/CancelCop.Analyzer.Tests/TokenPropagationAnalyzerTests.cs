@@ -33,6 +33,28 @@ public class TestClass
     }
 
     [Fact]
+    public async Task IncompatibleTokenOverload_ShouldNotReportDiagnostic()
+    {
+        // StreamWriter.WriteAsync(string) has no WriteAsync(string, CancellationToken) overload — its
+        // token overloads take ReadOnlyMemory<char>/StringBuilder. Appending the in-scope token would
+        // not compile, so CC002 must require a type-compatible overload and stay quiet here.
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text, CancellationToken cancellationToken)
+    {
+        await writer.WriteAsync(text);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TaskDelay_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
     {
         var test = @"

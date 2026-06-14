@@ -245,8 +245,11 @@ internal static class CancellationTokenHelpers
         if (IsWithinExpressionTree(invocation, context.SemanticModel))
             return;
 
-        // Check if there's an overload that accepts a CancellationToken
-        var overloadTokenName = GetOverloadTokenParameterName(methodSymbol);
+        // Only fire when there is an overload whose non-token parameters match this call's by type, so
+        // appending the in-scope token produces a call that actually compiles. A merely-same-name token
+        // overload with different parameters (e.g. StreamWriter.WriteAsync(string), whose token overload
+        // takes ReadOnlyMemory<char>) would otherwise yield a non-compiling fix.
+        var overloadTokenName = GetTypeCompatibleTokenParameterName(methodSymbol);
         if (overloadTokenName == null)
             return;
 
@@ -509,5 +512,68 @@ internal static class CancellationTokenHelpers
         }
 
         return countMatch ?? fallback;
+    }
+
+    /// <summary>
+    /// Returns the token parameter name of an overload whose non-token parameters match the bound
+    /// call's parameters by type — the only overload to which the in-scope token can be appended so
+    /// the resulting call still compiles — or <c>null</c> when none exists.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="GetOverloadTokenParameterName"/>, this never falls back to a count-only or
+    /// first-token-bearing overload, so the propagation rules (CC002/CC003/CC004) do not fire when the
+    /// only token-accepting overload has incompatible parameters. For example,
+    /// <c>StreamWriter.WriteAsync(string)</c> has no <c>WriteAsync(string, CancellationToken)</c> — its
+    /// token overloads take <c>ReadOnlyMemory&lt;char&gt;</c>/<c>StringBuilder</c> — so appending a token
+    /// to a <c>WriteAsync(text)</c> call would not compile; this returns <c>null</c> and the rule stays
+    /// quiet.
+    /// </remarks>
+    public static string? GetTypeCompatibleTokenParameterName(IMethodSymbol methodSymbol)
+    {
+        var containingType = methodSymbol.ContainingType;
+        if (containingType == null)
+            return null;
+
+        var method = (methodSymbol.ReducedFrom ?? methodSymbol).OriginalDefinition;
+
+        // Case B: the bound overload itself declares a CancellationToken parameter the call omitted
+        // (e.g. `query.ToListAsync()` binding to `ToListAsync(..., CancellationToken = default)`).
+        // Supplying the token binds to this same overload, so the fix always compiles.
+        var ownToken = method.Parameters.FirstOrDefault(p => IsCancellationToken(p.Type));
+        if (ownToken != null)
+            return ownToken.Name;
+
+        // Case A: a sibling overload whose non-token parameters match this call's parameters by type
+        // (e.g. `Task.Delay(100)` → `Task.Delay(int, CancellationToken)`).
+        var boundParameters = method.Parameters;
+
+        foreach (var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>())
+        {
+            var tokenParameter = overload.Parameters.FirstOrDefault(p => IsCancellationToken(p.Type));
+            if (tokenParameter == null)
+                continue;
+
+            var nonTokenParameters = overload.Parameters
+                .Where(p => !IsCancellationToken(p.Type))
+                .ToImmutableArray();
+            if (nonTokenParameters.Length != boundParameters.Length)
+                continue;
+
+            var typesMatch = true;
+            for (var i = 0; i < nonTokenParameters.Length; i++)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(
+                        nonTokenParameters[i].Type, boundParameters[i].Type))
+                {
+                    typesMatch = false;
+                    break;
+                }
+            }
+
+            if (typesMatch)
+                return tokenParameter.Name;
+        }
+
+        return null;
     }
 }

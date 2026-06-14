@@ -11,9 +11,11 @@
 // CC013 (Thread.Sleep), CC015 (Task.Wait/.Result) and CC026 (SemaphoreSlim.Wait).
 //
 // THE RULE:
-// - Flags a well-known blocking System.IO method that has an <name>Async
-//   counterpart, called inside async code: the System.IO.File read/write/append
-//   helpers, and StreamReader.ReadToEnd()/ReadLine().
+// - Flags a well-known blocking System.IO method that has a signature-compatible
+//   <name>Async counterpart, called inside async code: the System.IO.File
+//   read/write/append helpers, StreamReader.ReadToEnd()/ReadLine(), and
+//   StreamWriter.Write/WriteLine/Flush. The token is only flowed when the matched
+//   async overload accepts one.
 // =============================================================================
 
 using System.IO;
@@ -53,5 +55,20 @@ public class CC028_BlockingFileIo
     public async Task<string> DrainGood(StreamReader reader, CancellationToken cancellationToken)
     {
         return await reader.ReadToEndAsync(cancellationToken);
+    }
+
+    // VIOLATION (CC028 warns here too — StreamWriter.Write/Flush block in async code)
+    public async Task PersistBad(StreamWriter writer, string text)
+    {
+        writer.Write(text);
+        writer.Flush();
+        await Task.Yield();
+    }
+
+    // FIXED — WriteAsync(string) has no token overload; FlushAsync flows the token
+    public async Task PersistGood(StreamWriter writer, string text, CancellationToken cancellationToken)
+    {
+        await writer.WriteAsync(text);
+        await writer.FlushAsync(cancellationToken);
     }
 }
