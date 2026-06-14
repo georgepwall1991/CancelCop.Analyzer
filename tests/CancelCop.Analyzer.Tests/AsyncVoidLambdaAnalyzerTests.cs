@@ -48,6 +48,25 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncLambda_AssignedToGenericAction_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register()
+    {
+        Action<int> handler = {|#0:async|} x => await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC024").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task AsyncLambda_AssignedToFuncTask_ShouldNotReportDiagnostic()
     {
         var test = @"

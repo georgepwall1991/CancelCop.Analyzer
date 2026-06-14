@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.28] - 2026-06-14
+
+### Tests
+
+- Pinned three more edge cases: CC015 flags `ValueTask<T>.GetAwaiter().GetResult()`; CC024 flags an
+  async lambda assigned to a generic `Action<T>`; CC010 fires for an `await foreach` inside a local
+  function that captures the enclosing token.
+
 ## [1.23.27] - 2026-06-14
 
 ### Tests
