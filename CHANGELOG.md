@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.41] - 2026-06-14
+
+### Tests
+
+- Pinned receiver-agnosticism for the blocking/lifecycle rules: CC015 flags `.Result` on a Task-typed
+  field, CC022 flags `Cancel()` on a `CancellationTokenSource` field, and CC026's fix carries a field
+  receiver (`_gate.Wait()` → `await _gate.WaitAsync(ct)`). Guards against a future regression that
+  only inspects parameter receivers.
+
 ## [1.23.40] - 2026-06-14
 
 ### Tests

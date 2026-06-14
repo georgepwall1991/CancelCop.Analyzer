@@ -11,6 +11,43 @@ namespace CancelCop.Analyzer.Tests;
 public class BlockingSemaphoreCodeFixTests
 {
     [Fact]
+    public async Task Wait_OnFieldSemaphore_CarriesReceiverAndAddsToken()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly SemaphoreSlim _gate = new SemaphoreSlim(1);
+
+    public async Task RunAsync(CancellationToken ct)
+    {
+        _gate.{|#0:Wait|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly SemaphoreSlim _gate = new SemaphoreSlim(1);
+
+    public async Task RunAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task FixAll_TwoWaits_BothBecomeAwaitWaitAsync()
     {
         var test = @"

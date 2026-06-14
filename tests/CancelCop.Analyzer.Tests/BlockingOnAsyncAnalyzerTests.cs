@@ -19,6 +19,29 @@ public class TestClass
 ";
 
     [Fact]
+    public async Task Result_OnFieldTask_ShouldReportDiagnostic()
+    {
+        // The rule is receiver-agnostic: `.Result` on a Task-typed field blocks just as a call result
+        // does. Guards against a future regression that only inspects invocation receivers.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task<int> _value = Task.FromResult(0);
+
+    public async Task<int> RunAsync()
+    {
+        await Task.Yield();
+        return _value.{|#0:Result|};
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Result");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Result_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = Harness + @"

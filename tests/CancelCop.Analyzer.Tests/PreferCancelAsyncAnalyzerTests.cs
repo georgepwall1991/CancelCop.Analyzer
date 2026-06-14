@@ -20,6 +20,30 @@ public class PreferCancelAsyncAnalyzerTests
     }
 
     [Fact]
+    public async Task Cancel_OnFieldSource_ShouldReportDiagnostic()
+    {
+        // Receiver-agnostic: a parameterless Cancel() on a CancellationTokenSource field is flagged
+        // exactly like one on a parameter.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public async Task StopAsync()
+    {
+        _cts.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = @"
