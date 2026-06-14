@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.18] - 2026-06-14
+
+### Added
+
+- `helpLinkUri` extended to CC022–CC027 — **every rule now carries a help link**. Added a
+  `RuleCatalogTests` drift guard (`EveryShippedRule_HasAHelpLink`) so any future rule without a
+  `helpLinkUri` fails the build.
+
 ## [1.23.17] - 2026-06-14
 
 ### Added

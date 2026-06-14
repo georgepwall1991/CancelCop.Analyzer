@@ -156,4 +156,15 @@ public class RuleCatalogTests
                 $"A code-fix provider targets '{fixableId}', which no shipped analyzer registers.");
         }
     }
+
+    [Fact]
+    public void EveryShippedRule_HasAHelpLink()
+    {
+        foreach (var descriptor in GetShippedDescriptors())
+        {
+            Assert.False(
+                string.IsNullOrEmpty(descriptor.HelpLinkUri),
+                $"{descriptor.Id} has no helpLinkUri; IDEs will not show a 'learn more' link for it.");
+        }
+    }
 }
