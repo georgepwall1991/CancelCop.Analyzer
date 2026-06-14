@@ -560,6 +560,36 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticWhenAnyTimeoutRace_ProducesNoDiagnostics()
+    {
+        // Racing real work against Task.Delay(timeout, token) with Task.WhenAny is a common soft-timeout
+        // pattern. Both tasks flow the token; WhenAny has no token overload, so CC002 must not ask.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class TimeoutRaceService
+{
+    public async Task<bool> RunAsync(Func<CancellationToken, Task> work, CancellationToken cancellationToken)
+    {
+        var workTask = work(cancellationToken);
+        var timeout = Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        var winner = await Task.WhenAny(workTask, timeout);
+        return winner == workTask;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticNestedAwaitUsing_ProducesNoDiagnostics()
     {
         // Two await using declarations over IAsyncDisposable resources whose factories flow the token,
