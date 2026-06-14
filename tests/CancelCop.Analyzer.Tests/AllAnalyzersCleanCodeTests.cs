@@ -288,6 +288,44 @@ internal sealed class ResourceService
     }
 
     [Fact]
+    public async Task IdiomaticResourceLifecycle_ProducesNoDiagnostics()
+    {
+        // A linked CTS disposed via `using`, an `await using` async-disposable, and `await CancelAsync`
+        // must all be clean across the lifecycle rules (CC014/CC022/CC025).
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class LifecycleService
+{
+    private sealed class AsyncResource : IAsyncDisposable
+    {
+        public Task UseAsync(CancellationToken token) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => default;
+    }
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        await using var resource = new AsyncResource();
+        await resource.UseAsync(cts.Token);
+
+        await cts.CancelAsync();
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task ExoticSyntaxWithTokens_ProducesNoDiagnostics()
     {
         // Expression-bodied members, a switch expression returning a Task, and a non-async

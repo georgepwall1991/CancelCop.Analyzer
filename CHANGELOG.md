@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.20] - 2026-06-14
+
+### Tests
+
+- Added a resource-lifecycle case to the cross-analyzer FP guard: a linked `CancellationTokenSource`
+  disposed via `using`, an `await using` async-disposable, and `await CancelAsync()` together produce
+  zero diagnostics (CC014/CC022/CC025 stay quiet on idiomatic resource management).
+
 ## [1.23.19] - 2026-06-14
 
 ### Tests
