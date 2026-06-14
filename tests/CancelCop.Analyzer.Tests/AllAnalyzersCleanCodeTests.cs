@@ -560,6 +560,48 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSpecificCatchWithAsyncCleanup_ProducesNoDiagnostics()
+    {
+        // try with token-flowing work, a specific (non-broad) catch, and async cleanup in finally.
+        // CC019 targets broad catches only, so it must not fire. No analyzer fires.
+        var code = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ResilientService
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DoWorkAsync(cancellationToken);
+        }
+        catch (IOException)
+        {
+            await CompensateAsync(cancellationToken);
+        }
+        finally
+        {
+            await FlushLogsAsync(cancellationToken);
+        }
+    }
+
+    private Task DoWorkAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task CompensateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task FlushLogsAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncValidationAggregation_ProducesNoDiagnostics()
     {
         // Running multiple async validators, each flowing the token, and aggregating their results with
