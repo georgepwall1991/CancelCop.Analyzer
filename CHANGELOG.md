@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.13] - 2026-06-14
+
+### Tests
+
+- Pinned a CC004 non-false-positive: a user-defined `GetAsync` on a type outside
+  `System.Net.Http.HttpClient` is not flagged (the rule is type-gated).
+
 ## [1.23.12] - 2026-06-14
 
 ### Tests

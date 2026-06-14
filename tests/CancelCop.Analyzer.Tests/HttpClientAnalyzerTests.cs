@@ -46,6 +46,35 @@ public class TestClass
     }
 
     [Fact]
+    public async Task LookAlikeGetAsync_OnNonHttpClientType_ShouldNotReportDiagnostic()
+    {
+        // CC004 is type-gated to System.Net.Http.HttpClient, so a user-defined GetAsync on an
+        // unrelated type must not be flagged.
+        var lookAlike = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MyApp
+{
+    public class MyClient
+    {
+        public Task GetAsync(string url) => Task.CompletedTask;
+        public Task GetAsync(string url, CancellationToken token) => Task.CompletedTask;
+    }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(MyApp.MyClient client, CancellationToken cancellationToken)
+    {
+        await client.GetAsync(""http://example.com"");
+    }
+}";
+
+        await CreateTest(lookAlike).RunAsync();
+    }
+
+    [Fact]
     public async Task GetStringAsync_WithToken_ShouldNotReportDiagnostic()
     {
         var test = @"
