@@ -51,7 +51,8 @@ public class HttpClientAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: Description);
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri);
 
     // HttpClient async methods that support CancellationToken
     private static readonly ImmutableHashSet<string> HttpClientAsyncMethods = ImmutableHashSet.Create(

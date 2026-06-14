@@ -52,7 +52,8 @@ public class EFCoreAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: Description);
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri);
 
     // Common EF Core async extension methods
     private static readonly ImmutableHashSet<string> EFCoreAsyncMethods = ImmutableHashSet.Create(

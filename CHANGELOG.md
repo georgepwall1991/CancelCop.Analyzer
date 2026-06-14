@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.14] - 2026-06-14
+
+### Added
+
+- Diagnostics now carry a `helpLinkUri` so IDEs (Visual Studio, Rider) show a clickable "learn more"
+  link on each diagnostic that opens the rule documentation. Applied to CC001–CC004 in this release;
+  the remaining rules follow in subsequent patches.
+
 ## [1.23.13] - 2026-06-14
 
 ### Tests
