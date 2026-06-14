@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.11 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.12 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.12: 359 tests (358 + 1 CC003 non-EF look-alike non-FP pin). Green locally.
 - v1.23.11: 358 tests (357 + 1 CC002 `Task.WhenAll`/`WhenAny` non-FP pin). Green locally.
 - v1.23.10: 357 tests (355 + 2 CC001/CC011 cascade — tokenless iterator → only CC001; unmarked-token
   iterator → only CC011). Green locally.

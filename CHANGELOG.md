@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.12] - 2026-06-14
+
+### Tests
+
+- Pinned a CC003 non-false-positive: a user-defined `ToListAsync` on a type outside
+  `Microsoft.EntityFrameworkCore` is not flagged as an EF Core call (the rule is namespace-gated).
+
 ## [1.23.11] - 2026-06-14
 
 ### Tests

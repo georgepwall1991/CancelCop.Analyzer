@@ -48,6 +48,38 @@ public class User { public int Id { get; set; } }";
     }
 
     [Fact]
+    public async Task LookAlikeToListAsync_OnNonEfType_ShouldNotReportDiagnostic()
+    {
+        // CC003 is gated to the Microsoft.EntityFrameworkCore namespace, so a user-defined
+        // ToListAsync on an unrelated type must not be flagged as an EF Core call.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using MyApp;
+
+namespace MyApp
+{
+    public class CustomQuery { }
+
+    public static class CustomExtensions
+    {
+        public static Task ToListAsync(this CustomQuery query) => Task.CompletedTask;
+        public static Task ToListAsync(this CustomQuery query, CancellationToken token) => Task.CompletedTask;
+    }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(CustomQuery query, CancellationToken cancellationToken)
+    {
+        await query.ToListAsync();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task FirstOrDefaultAsync_WithToken_ShouldNotReportDiagnostic()
     {
         var test = @"
