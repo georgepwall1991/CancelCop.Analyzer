@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.42] - 2026-06-14
+
+### Tests
+
+- Pinned CC015 fix correctness when the blocking access is itself a receiver: `GetAsync().Result.ToString()`
+  and `GetAsync().GetAwaiter().GetResult().ToString()` both rewrite to `(await GetAsync()).ToString()`,
+  confirming the parenthesized `await` binds before the trailing member access.
+
 ## [1.23.41] - 2026-06-14
 
 ### Tests

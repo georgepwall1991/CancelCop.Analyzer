@@ -20,6 +20,52 @@ public class TestClass
 ";
 
     [Fact]
+    public async Task ResultAsReceiver_ParenthesizesAwaitBeforeMemberAccess()
+    {
+        var test = Harness + @"
+    public async Task<string> RunAsync()
+    {
+        await Task.Yield();
+        return GetValueAsync().{|#0:Result|}.ToString();
+    }
+}";
+
+        var fixedCode = Harness + @"
+    public async Task<string> RunAsync()
+    {
+        await Task.Yield();
+        return (await GetValueAsync()).ToString();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Result");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task GetResultAsReceiver_ParenthesizesAwaitBeforeMemberAccess()
+    {
+        var test = Harness + @"
+    public async Task<string> RunAsync()
+    {
+        await Task.Yield();
+        return GetValueAsync().GetAwaiter().{|#0:GetResult|}().ToString();
+    }
+}";
+
+        var fixedCode = Harness + @"
+    public async Task<string> RunAsync()
+    {
+        await Task.Yield();
+        return (await GetValueAsync()).ToString();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".GetAwaiter().GetResult()");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task FixAll_TwoResults_BothBecomeAwait()
     {
         var test = Harness + @"

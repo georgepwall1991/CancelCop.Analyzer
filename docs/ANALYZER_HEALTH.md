@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.41 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.42 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.42: 416 tests (414 + 2 CC015 parenthesized-await-as-receiver correctness pins). Green locally.
 - v1.23.41: 414 tests (411 + 3 receiver-agnosticism pins: CC015 field `.Result`, CC022 field `Cancel()`,
   CC026 field-receiver fix). Green locally.
 - v1.23.40: 411 tests (409 + 2 FP-guard scenarios: modern C# shapes — primary-constructor class/record
