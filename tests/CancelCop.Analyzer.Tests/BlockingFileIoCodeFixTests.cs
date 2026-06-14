@@ -484,6 +484,43 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamWriterWriteLine_TokenInScope_BecomesAwaitWriteLineAsyncWithoutToken()
+    {
+        // WriteLineAsync(string) has no CancellationToken overload, so the fix flows no token.
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text, CancellationToken cancellationToken)
+    {
+        writer.{|#0:WriteLine|}(text);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text, CancellationToken cancellationToken)
+    {
+        await writer.WriteLineAsync(text);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("WriteLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task StreamWriterWrite_TokenInScope_BecomesAwaitWriteAsyncWithoutToken()
     {
         // StreamWriter.WriteAsync(string) has no CancellationToken overload, so even with a token in

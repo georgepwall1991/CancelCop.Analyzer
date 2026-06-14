@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.4] - 2026-06-14
+
+### Tests
+
+- Pinned CC028 firing and fixing `StreamWriter.WriteLine(string)` (analyzer + fixer): `StreamWriter`
+  overrides `WriteLine(string)` and offers a signature-compatible `WriteLineAsync(string)` (no token
+  overload), so the call is flagged and rewritten to `await writer.WriteLineAsync(text)` with no token.
+
 ## [1.27.3] - 2026-06-14
 
 ### Tests

@@ -282,6 +282,29 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamWriterWriteLine_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        // StreamWriter overrides WriteLine(string) (so the call's ContainingType is StreamWriter, not
+        // TextWriter) and offers a signature-compatible WriteLineAsync(string), so it is flagged.
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text)
+    {
+        writer.{|#0:WriteLine|}(text);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("WriteLine");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task StreamWriterWrite_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
