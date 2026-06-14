@@ -560,6 +560,48 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticBackgroundTaskLifecycle_ProducesNoDiagnostics()
+    {
+        // A start/stop background-task lifecycle: a field CTS (not flagged by CC014), CancelAsync on
+        // stop (CC022 satisfied), the stored task joined via WaitAsync(token), and a token-checked loop.
+        // No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class BackgroundRunner
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+    private Task? _running;
+
+    public void Start() => _running = RunLoopAsync(_cts.Token);
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _cts.CancelAsync();
+        if (_running is not null)
+            await _running.WaitAsync(cancellationToken);
+    }
+
+    private async Task RunLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await Task.Delay(1000, cancellationToken);
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticPerIterationAwaitUsing_ProducesNoDiagnostics()
     {
         // Opening and disposing an IAsyncDisposable per loop iteration via await using, with a
