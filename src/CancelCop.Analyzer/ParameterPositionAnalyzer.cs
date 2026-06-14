@@ -24,7 +24,8 @@ public class ParameterPositionAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
-        description: Description);
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

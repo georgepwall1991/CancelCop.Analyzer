@@ -24,7 +24,8 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: Description);
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri);
 
     // Minimal API mapping methods
     private static readonly ImmutableHashSet<string> MapMethods = ImmutableHashSet.Create(

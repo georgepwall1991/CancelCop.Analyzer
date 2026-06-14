@@ -52,7 +52,8 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
         Category,
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: Description);
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri);
 
     // HTTP method attributes
     private static readonly ImmutableHashSet<string> HttpMethodAttributes = ImmutableHashSet.Create(
