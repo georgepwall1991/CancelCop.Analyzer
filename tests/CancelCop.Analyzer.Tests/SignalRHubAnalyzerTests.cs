@@ -22,6 +22,28 @@ namespace Microsoft.AspNetCore.SignalR
 }";
 
     [Fact]
+    public async Task HubMethod_ReturningTaskOfT_WithoutToken_ShouldReportDiagnostic()
+    {
+        // A Task<T>-returning hub method is async-shaped just like a Task-returning one, so a missing
+        // token is flagged.
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
+
+public class ChatHub : Hub
+{
+    public async Task<string> {|#0:Echo|}(string message)
+    {
+        await Task.CompletedTask;
+        return message;
+    }
+}" + HubStub;
+
+        var expected = VerifyCS.Diagnostic("CC018").WithLocation(0).WithArguments("Echo");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task HubMethod_WithoutToken_ShouldReportDiagnostic()
     {
         var test = @"
