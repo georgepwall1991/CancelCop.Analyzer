@@ -9,7 +9,7 @@ namespace CancelCop.Analyzer;
 
 /// <summary>
 /// Analyzer that suggests <c>await using</c> over a plain <c>using</c> for an
-/// <see cref="System.IAsyncDisposable"/> resource in async code.
+/// <c>IAsyncDisposable</c> resource in async code.
 /// </summary>
 /// <remarks>
 /// <para>

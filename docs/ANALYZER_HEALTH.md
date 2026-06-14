@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.26.8 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.26.9 hardening loop)
 
-A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
+A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -32,16 +32,17 @@ Calibration notes:
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | CC001 | Public async method missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Public/protected async returning Task/ValueTask, excludes override/interface/extern signatures (v1.4.0), compilable fixer (using insertion, name-collision, `params`). Solid entry-point guard. |
 | CC002 | CancellationToken not propagated | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.2:** now walks lambdas in addition to local functions and the containing method, via the shared `CancellationTokenHelpers.FindEnclosingCancellationTokenParameter` (also used by CC009). Closes the lambda false negative its docs already promised; docs now match behaviour. Expression-tree lambdas (`Expression<TDelegate>`) are deliberately excluded — code there is non-executable data. |
-| CC003 | EF Core async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.3:** now uses the shared `FindEnclosingCancellationTokenParameter` scope walk (local functions, lambdas, containing method) plus CC002's expression-tree guard, closing the scope-gap false negative and aligning all four propagation rules on one walk. Namespace-gated to `Microsoft.EntityFrameworkCore`, overload-checked. No analyzer XML doc (P3). |
-| CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.3:** same shared scope walk + expression-tree guard as CC003. Type-gated to `System.Net.Http.HttpClient`, overload-checked. No analyzer XML doc (P3). |
-| CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses an inline token check instead of the shared helper. |
+| CC003 | EF Core async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.3:** now uses the shared `FindEnclosingCancellationTokenParameter` scope walk (local functions, lambdas, containing method) plus CC002's expression-tree guard, closing the scope-gap false negative and aligning all four propagation rules on one walk. Namespace-gated to `Microsoft.EntityFrameworkCore`, overload-checked. Class-level XML `<remarks>`/`<example>` doc present (v1.14.2). |
+| CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.3:** same shared scope walk + expression-tree guard as CC003. Type-gated to `System.Net.Http.HttpClient`, overload-checked. Class-level XML `<remarks>`/`<example>` doc present (v1.14.2). |
+| CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses the shared `HasCancellationTokenParameter`/`IsAsyncReturnType` helpers (moved off the hand-rolled checks in v1.14.3); only the `IRequestHandler.Handle` gating is rule-specific. |
 | CC005B | Controller action missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Heavily hardened in v1.4.0: public non-static, `ControllerBase`/`Controller` by namespace, inherited `[NonAction]`, MVC HTTP-method attribute by identity + subclass. Conservative and accurate. |
 | CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.4:** method-group handlers (`app.MapGet("/", Handler)`, `Handlers.Get`, local functions) are now analysed and fixed (token added to the referenced declaration, `= default`, same-document only). v1.4.1 gated the receiver on `IEndpointRouteBuilder`. Remaining false negative (pre-existing, low value): the unreduced static-call form (`EndpointRouteBuilderExtensions.MapGet(app, …)`). |
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC028 | Blocking `System.IO` read/write/append in async code | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.24.0 (new); fix v1.25.0:** flags a blocking synchronous `System.IO` helper inside async code (method/local function/lambda/anonymous method) only when an `<name>Async` counterpart exists on the type — `File` read/write/append (`ReadAllText`/`ReadAllBytes`/`ReadAllLines`, `WriteAll*`, `AppendAll*`) and `StreamReader.ReadToEnd`/`ReadLine` (generalised from `System.IO.File` to `System.IO` in v1.26.0). Fixer rewrites to `await …Async(…, token)`, flowing the in-scope token via `FindEnclosingCancellationTokenParameter` (added as a named arg when the call uses named args, await parenthesized when the result is a receiver/element/conditional access). Symbol-resolved + namespace-gated to `System.IO` (look-alike `File`/`StreamReader` ignored); only fires when the framework actually offers the async overload (`File.Exists`, `StreamReader.Peek` quiet), and only in async context via the shared `IsInAsyncFunction`. Fix-All batches across the type→method map. Rounds out the blocking-in-async family (CC013/CC015/CC026). |
 | CC027 | Returned task uses a disposed `using` resource | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.23.0 (new):** flags a non-async `Task`-returning method/local function whose `return` is a call on a `using`-declared local — the resource is disposed before the returned task completes (premature disposal). High confidence: only the receiver case is flagged (a synchronous read into a completed task like `Task.FromResult(resource.Value)` is not). Analyzer-only (fix = make async + await). |
-| CC026 | `SemaphoreSlim.Wait()` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.22.0 (new):** flags a parameterless `SemaphoreSlim.Wait()` inside async code (a classic deadlock source); fixer → `await gate.WaitAsync(token)` flowing the in-scope token. Timeout/token `Wait` overloads excluded. Symbol-resolved to `System.Threading.SemaphoreSlim`. |
+| CC026 | `SemaphoreSlim.Wait()` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.22.0 (new):** flags every `SemaphoreSlim.Wait()` overload (parameterless, timeout, token) inside async code — a classic deadlock source; fixer → `await gate.WaitAsync(…)`, carrying the original arguments through and injecting the in-scope token when `Wait()` was parameterless (v1.22.2). Symbol-resolved to `System.Threading.SemaphoreSlim`. |
 | CC025 | Prefer `await using` for `IAsyncDisposable` | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.21.0 (new):** flags a `using` statement/declaration (no `await`) over an `IAsyncDisposable` resource in async code; fixer prepends `await`. Both the declaration (`using var x = …`) and statement (`using (…)`) forms, expression and variable receivers. Info. |
 | CC024 | `async` lambda converted to `Action` | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.20.0 (new):** the lambda counterpart of CC023. Flags an `async` lambda whose converted delegate type is `System.Action`/`Action<…>` (binds as async void). Catches the `Parallel.ForEach(..., async x => …)` trap. `Func<Task>` and event-handler delegates are not `Action`, so excluded. Analyzer-only (the right delegate depends on the consuming API). |
 | CC023 | `async void` (non-event-handler) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.19.0 (new):** flags an `async void` method that is not an event handler (`(object, EventArgs)` shape, EventArgs subclasses included) and not externally-controlled; fixer changes `void`→`Task` + adds the Tasks import. Classic async anti-pattern (cf. VSTHRD100) — `async void` can't be awaited or cancelled and crashes on unhandled exceptions. |
@@ -63,7 +64,7 @@ Calibration notes:
 | Priority | Rules | Work |
 | --- | --- | --- |
 | High | None | No rule has a correctness defect severe enough to block a release. |
-| Medium | None | All P1/P2/P3 backlog items closed (through v1.14.3). |
+| Medium | None | No P0/P1 items open; two P2 (opportunistic) items remain — see backlog. |
 | Low | All 28 rules | Mature and FP-clean. Every rule is covered by a clean-code FP guard (`AllAnalyzersCleanCodeTests`) spanning core, framework (controllers/MediatR/SignalR/Minimal API/BackgroundService/gRPC), nested-scope, exotic-syntax, modern-C#-shape, async-File-I/O, and non-async `using` cases. Improve opportunistically. |
 
 The rule set has grown from the original 9 (CC001–CC006, CC009) to 28 (adding CC010–CC028 across the
@@ -154,8 +155,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   `EnableConcurrentExecution()` — correct and consistent.
 - Shared logic lives in `CancellationTokenHelpers`: `IsCancellationToken`, `IsAsyncReturnType`,
   `HasOverloadWithCancellationToken`, `IsSignatureExternallyControlled`, the
-  `FindEnclosingCancellationTokenParameter` scope walk (CC002/003/004/009/012/013/026),
-  `IsInAsyncFunction` (CC013/015/022/026), `IsParameterReferenced` (CC016/017),
+  `FindEnclosingCancellationTokenParameter` scope walk (CC002/003/004/009/010/012/013/026/028),
+  `IsInAsyncFunction` (CC013/015/022/025/026/028), `IsParameterReferenced` (CC016/017),
   `ReportIfTokenNotPropagated` (CC002/003/004), and `AccessesMember`/`ParameterEscapesAsArgument`
   (CC020/021). `CancellationTokenFixHelpers` shares the fixer plumbing (`InsertTokenParameter`,
   `AddUsing`). CC005A was moved onto the shared helpers in v1.14.3, so no analyzer hand-rolls a token
@@ -167,6 +168,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.26.9: 443 tests. Green locally. Code-quality fix: resolved three `CS1574` broken-cref build
+  warnings (CC010/CC011 `IAsyncEnumerable<T>`, CC025 `IAsyncDisposable` — unresolvable under the
+  `netstandard2.0` target); converted to `<c>` formatting so the analyzer assembly builds warning-free.
 - v1.26.8: 443 tests (442 + 1 CC028 async-local-function pin). Green locally. **28 rules, fully covered:
   every rule has a clean-code FP guard and every fixer has a Fix-All + receiver-correctness pin.**
 - v1.26.7: 442 tests (441 + 1 CC028 mixed-type Fix-All: File + StreamReader in one batch). Green locally.

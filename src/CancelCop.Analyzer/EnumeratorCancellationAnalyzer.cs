@@ -9,7 +9,7 @@ namespace CancelCop.Analyzer;
 
 /// <summary>
 /// Analyzer that detects an async iterator (a method or local function returning
-/// <see cref="System.Collections.Generic.IAsyncEnumerable{T}"/> with <c>yield</c>) whose
+/// <c>IAsyncEnumerable&lt;T&gt;</c> with <c>yield</c>) whose
 /// <c>CancellationToken</c> parameter is not annotated with
 /// <c>[EnumeratorCancellation]</c>.
 /// </summary>

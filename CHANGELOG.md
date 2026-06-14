@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.9] - 2026-06-14
+
+### Fixed
+
+- Resolved three `CS1574` build warnings: the class-doc `<see cref="…"/>` references to
+  `IAsyncEnumerable<T>` (CC010/CC011) and `IAsyncDisposable` (CC025) could not be resolved under the
+  `netstandard2.0` target. Converted them to `<c>…</c>` code formatting, matching how the other type
+  names in those doc blocks are written. The analyzer assembly now builds warning-free.
+
 ## [1.26.8] - 2026-06-14
 
 ### Tests

@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace CancelCop.Analyzer;
 
 /// <summary>
-/// Analyzer that detects <c>await foreach</c> over an <see cref="System.Collections.Generic.IAsyncEnumerable{T}"/>
+/// Analyzer that detects <c>await foreach</c> over an <c>IAsyncEnumerable&lt;T&gt;</c>
 /// that does not flow an in-scope <c>CancellationToken</c> via <c>.WithCancellation(token)</c>.
 /// </summary>
 /// <remarks>
