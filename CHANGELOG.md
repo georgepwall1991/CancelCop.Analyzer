@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.5] - 2026-06-14
+
+### Tests
+
+- Added a CC028 FP guard: an in-memory `StringWriter` (a `System.IO` `TextWriter` whose async methods
+  complete synchronously) is deliberately not in the curated type map, so its `Write`/`WriteLine` stay
+  quiet even in async code. Guards against a future naive broadening of the map.
+
 ## [1.27.4] - 2026-06-14
 
 ### Tests

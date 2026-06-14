@@ -305,6 +305,29 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StringWriter_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        // StringWriter is an in-memory TextWriter in System.IO — its async methods complete
+        // synchronously, so there is no benefit to switching. It is deliberately NOT in the curated
+        // map, so a StringWriter.Write/WriteLine must stay quiet even inside async code.
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StringWriter writer, string text)
+    {
+        writer.Write(text);
+        writer.WriteLine(text);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task StreamWriterWrite_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
