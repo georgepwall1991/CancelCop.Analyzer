@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.12] - 2026-06-14
+
+### Tests
+
+- Extended the cross-analyzer FP guard with MediatR and SignalR scenarios: a tokenized
+  `IRequestHandler.Handle` and a tokenized hub method satisfy CC005A / CC018 (and CC001) with zero
+  diagnostics. The property-token, framework, and handler rules are now all covered by clean-code
+  guards.
+
 ## [1.22.11] - 2026-06-14
 
 ### Tests

@@ -118,6 +118,54 @@ internal sealed class UsersController : Microsoft.AspNetCore.Mvc.ControllerBase
     }
 
     [Fact]
+    public async Task IdiomaticMediatRAndSignalRCode_ProducesNoDiagnostics()
+    {
+        // A MediatR handler and a SignalR hub method that both accept a token must satisfy CC005A /
+        // CC018 (and CC001) with zero diagnostics (faithful interface/base stubs).
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MediatR
+{
+    public interface IRequestHandler<TRequest, TResponse>
+    {
+        Task<TResponse> Handle(TRequest request, CancellationToken cancellationToken);
+    }
+}
+
+namespace Microsoft.AspNetCore.SignalR
+{
+    public abstract class Hub { }
+}
+
+internal sealed class GetValueHandler : MediatR.IRequestHandler<string, int>
+{
+    public async Task<int> Handle(string request, CancellationToken cancellationToken)
+    {
+        await Task.Delay(1, cancellationToken);
+        return 1;
+    }
+}
+
+internal sealed class ChatHub : Microsoft.AspNetCore.SignalR.Hub
+{
+    public async Task Send(string message, CancellationToken cancellationToken)
+    {
+        await Task.Delay(1, cancellationToken);
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task NestedScopesCapturingToken_ProduceNoDiagnostics()
     {
         // The shared scope walk must recognise the outer token captured by a local function and a
