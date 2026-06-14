@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.24] - 2026-06-14
+
+### Tests
+
+- Pinned that CC012 flags a **named** none-ish argument (`DoAsync(token: default)`) when a token is
+  in scope, not just positional ones.
+
 ## [1.23.23] - 2026-06-14
 
 ### Documentation

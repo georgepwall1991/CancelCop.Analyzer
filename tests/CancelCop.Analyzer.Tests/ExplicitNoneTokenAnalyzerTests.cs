@@ -99,6 +99,23 @@ public class TestClass
     }
 
     [Fact]
+    public async Task NamedDefaultArgument_WhenTokenInScope_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync(token: {|#0:default|});
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC012")
+            .WithLocation(0)
+            .WithArguments("default", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task None_WhenNoTokenInScope_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"
