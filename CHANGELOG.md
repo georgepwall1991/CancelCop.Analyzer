@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.11] - 2026-06-14
+
+### Tests
+
+- Pinned a key CC002 non-false-positive: `Task.WhenAll`/`Task.WhenAny` have no `CancellationToken`
+  overload, so these ubiquitous calls are never flagged for token propagation even with a token in
+  scope.
+
 ## [1.23.10] - 2026-06-14
 
 ### Tests

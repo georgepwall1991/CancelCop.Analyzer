@@ -10,6 +10,29 @@ namespace CancelCop.Analyzer.Tests;
 public class TokenPropagationAnalyzerTests
 {
     [Fact]
+    public async Task TaskWhenAll_WithTokenInScope_ShouldNotReportDiagnostic()
+    {
+        // Task.WhenAll/WhenAny have no CancellationToken overload, so this ubiquitous pattern must
+        // never be flagged for propagation.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task WorkAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await Task.WhenAll(WorkAsync(cancellationToken), WorkAsync(cancellationToken));
+        await Task.WhenAny(WorkAsync(cancellationToken), WorkAsync(cancellationToken));
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task TaskDelay_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
     {
         var test = @"
