@@ -11,6 +11,39 @@ namespace CancelCop.Analyzer.Tests;
 public class BlockingSleepCodeFixTests
 {
     [Fact]
+    public async Task FullyQualifiedThreadSleep_BecomesTaskDelayWithToken()
+    {
+        // The rule resolves Thread.Sleep by symbol, so the fully-qualified spelling is flagged too,
+        // and the fix replaces the whole invocation regardless of how the receiver was written.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(System.Threading.CancellationToken ct)
+    {
+        {|#0:System.Threading.Thread.Sleep(1000)|};
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(System.Threading.CancellationToken ct)
+    {
+        await Task.Delay(1000, ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task ThreadSleep_WithToken_BecomesTaskDelayWithToken()
     {
         var test = @"

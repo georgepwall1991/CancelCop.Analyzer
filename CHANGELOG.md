@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.45] - 2026-06-14
+
+### Tests
+
+- Pinned CC013's fix on a fully-qualified `System.Threading.Thread.Sleep(1000)` — flagged by symbol
+  and rewritten to `await Task.Delay(1000, ct)` regardless of how the receiver is spelled.
+
 ## [1.23.44] - 2026-06-14
 
 ### Tests
