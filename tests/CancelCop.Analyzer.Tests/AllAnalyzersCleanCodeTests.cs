@@ -560,6 +560,49 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticNestedAwaitUsing_ProducesNoDiagnostics()
+    {
+        // Two await using declarations over IAsyncDisposable resources whose factories flow the token,
+        // then token-flowing work. CC025 (already await using) and the rest must stay quiet.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IConnection : IAsyncDisposable { }
+internal interface ITransaction : IAsyncDisposable { }
+
+internal sealed class UnitOfWork
+{
+    private readonly Func<CancellationToken, ValueTask<IConnection>> _connect;
+    private readonly Func<IConnection, CancellationToken, ValueTask<ITransaction>> _begin;
+
+    public UnitOfWork(
+        Func<CancellationToken, ValueTask<IConnection>> connect,
+        Func<IConnection, CancellationToken, ValueTask<ITransaction>> begin)
+    {
+        _connect = connect;
+        _begin = begin;
+    }
+
+    public async Task RunAsync(Func<ITransaction, CancellationToken, Task> work, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connect(cancellationToken);
+        await using var transaction = await _begin(connection, cancellationToken);
+        await work(transaction, cancellationToken);
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticTokenRegisterCleanup_ProducesNoDiagnostics()
     {
         // Registering a cancellation callback and awaiting a TaskCompletionSource is a common bridge to
