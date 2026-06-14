@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.8] - 2026-06-14
+
+### Documentation
+
+- Replaced the badly-stale `NEXT_STEPS.md` (it stopped at the v1.3 era and listed already-shipped
+  rules as "future") with a concise current-state roadmap that summarizes the 27 rules by family and
+  points to CHANGELOG.md and docs/ANALYZER_HEALTH.md as the live trackers.
+
 ## [1.23.7] - 2026-06-14
 
 ### Documentation
