@@ -560,6 +560,43 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncTemplateMethod_ProducesNoDiagnostics()
+    {
+        // An async template-method base: a public RunAsync threads the token through virtual/abstract
+        // steps. No analyzer fires (overrides/abstracts are externally-controlled signatures).
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal abstract class ProcessorBase
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await BeforeAsync(cancellationToken);
+        await StepAsync(cancellationToken);
+    }
+
+    protected virtual Task BeforeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    protected abstract Task StepAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class ConcreteProcessor : ProcessorBase
+{
+    protected override async Task StepAsync(CancellationToken cancellationToken)
+        => await Task.Delay(10, cancellationToken);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncIteratorWithFinallyCleanup_ProducesNoDiagnostics()
     {
         // An async iterator that opens a resource, yields token-flowing results, and disposes in
