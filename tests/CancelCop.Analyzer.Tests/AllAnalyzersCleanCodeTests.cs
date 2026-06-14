@@ -560,6 +560,37 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticEntryGuardThenWork_ProducesNoDiagnostics()
+    {
+        // A fast-fail entry guard (ThrowIfCancellationRequested at the top) followed by token-flowing
+        // work. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class GuardedComputer
+{
+    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var prepared = await PrepareAsync(cancellationToken);
+        return await ComputeAsync(prepared, cancellationToken);
+    }
+
+    private Task<int> PrepareAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+    private Task<int> ComputeAsync(int input, CancellationToken cancellationToken) => Task.FromResult(input);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSwitchExpressionReturningTasks_ProducesNoDiagnostics()
     {
         // A non-async method that returns a Task selected by a switch expression, each arm flowing the
