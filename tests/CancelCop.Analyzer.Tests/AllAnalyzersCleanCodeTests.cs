@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticConfiguredAwaitUsing_ProducesNoDiagnostics()
+    {
+        // Library-style await using over a ConfiguredAsyncDisposable (ConfigureAwait(false) on the
+        // resource), with token-flowing work configured too. CC025 is satisfied (already await using).
+        // No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ConfiguredScopeService
+{
+    public async Task RunAsync(IAsyncDisposable resource, CancellationToken cancellationToken)
+    {
+        await using (resource.ConfigureAwait(false))
+        {
+            await DoWorkAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private Task DoWorkAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAccumulateTasksThenWhenAll_ProducesNoDiagnostics()
     {
         // Build a task list in a loop (per-iteration check, token-flowing starts), then await WhenAll.
