@@ -560,6 +560,45 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticDoWhilePollLoop_ProducesNoDiagnostics()
+    {
+        // A do/while poll-until-result loop: cancellation check in the body, token-flowing poll and
+        // delay, and the condition also observes the token. No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class Poller
+{
+    public async Task<string> WaitForResultAsync(CancellationToken cancellationToken)
+    {
+        string? result;
+        do
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            result = await PollAsync(cancellationToken);
+            if (result is null)
+                await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+        }
+        while (result is null && !cancellationToken.IsCancellationRequested);
+
+        return result ?? string.Empty;
+    }
+
+    private Task<string?> PollAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(""ok"");
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncGeneratorPaging_ProducesNoDiagnostics()
     {
         // An async generator that pages a source and yields items: [EnumeratorCancellation] token
