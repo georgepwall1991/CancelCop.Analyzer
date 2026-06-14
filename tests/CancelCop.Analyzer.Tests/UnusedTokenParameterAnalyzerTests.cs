@@ -29,6 +29,31 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncIterator_EnumeratorCancellationToken_NotReferencedInBody_ShouldNotReportDiagnostic()
+    {
+        // A [EnumeratorCancellation] token is delivered to the async-iterator enumerator (it receives a
+        // consumer's WithCancellation token), so it is observed even though the body never references
+        // it. CC016 must not flag it as dead.
+        var test = @"
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async IAsyncEnumerable<int> GetAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        yield return 1;
+        yield return 2;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsyncMethod_UsedToken_ShouldNotReportDiagnostic()
     {
         var test = @"

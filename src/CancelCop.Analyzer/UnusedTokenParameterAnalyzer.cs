@@ -26,7 +26,9 @@ namespace CancelCop.Analyzer;
 /// <b>What it detects:</b> a method/local function whose body performs asynchronous work (contains
 /// an <c>await</c>) and declares a <c>CancellationToken</c> parameter that is never referenced.
 /// Signatures dictated elsewhere (override, interface implementation, <c>extern</c>) are excluded —
-/// they cannot drop the parameter — as are bodies with no <c>await</c>.
+/// they cannot drop the parameter — as are bodies with no <c>await</c>. A token marked
+/// <c>[EnumeratorCancellation]</c> is also excluded: the async-iterator infrastructure delivers the
+/// caller's token to it, so it is observed even without a body reference (cf. CC011).
 /// </para>
 /// </remarks>
 /// <example>
@@ -117,6 +119,13 @@ public class UnusedTokenParameterAnalyzer : DiagnosticAnalyzer
             if (context.SemanticModel.GetDeclaredSymbol(parameter, context.CancellationToken) is not IParameterSymbol parameterSymbol)
                 continue;
 
+            // A token marked [EnumeratorCancellation] is consumed by the generated async-iterator
+            // enumerator (it receives the caller's WithCancellation token), so it is not dead even when
+            // the body never references it directly. CC011 is the rule that ensures this attribute is
+            // present.
+            if (HasEnumeratorCancellation(parameterSymbol))
+                continue;
+
             if (CancellationTokenHelpers.IsParameterReferenced(
                     body, parameterSymbol, context.SemanticModel, context.CancellationToken))
                 continue;
@@ -125,4 +134,14 @@ public class UnusedTokenParameterAnalyzer : DiagnosticAnalyzer
                 Rule, parameter.Identifier.GetLocation(), parameter.Identifier.Text));
         }
     }
+
+    /// <summary>
+    /// Returns true when the parameter carries
+    /// <c>System.Runtime.CompilerServices.EnumeratorCancellationAttribute</c> — the token is delivered
+    /// to it by the async-iterator infrastructure, so it is observed even without a body reference.
+    /// </summary>
+    private static bool HasEnumeratorCancellation(IParameterSymbol parameter) =>
+        parameter.GetAttributes().Any(a =>
+            a.AttributeClass?.Name == "EnumeratorCancellationAttribute" &&
+            a.AttributeClass.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices");
 }

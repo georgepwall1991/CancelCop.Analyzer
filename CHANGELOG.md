@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.11] - 2026-06-14
+
+### Fixed
+
+- **CC016** false positive: an async-iterator `CancellationToken` parameter marked
+  `[EnumeratorCancellation]` is no longer reported as "never used" when the body does not reference it
+  directly. The attribute wires the parameter to the generated `GetAsyncEnumerator(CancellationToken)`,
+  so a consumer's `.WithCancellation(token)` flows into it — it is observed, not dead. (CC011 is the
+  rule that ensures the attribute is present.)
+
 ## [1.27.10] - 2026-06-14
 
 ### Tests

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.10 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.11 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,6 +168,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.11: 464 tests (+1 CC016 FP guard). Green locally. **Real FP fix:** CC016 no longer flags an
+  async-iterator `CancellationToken` marked `[EnumeratorCancellation]` as unused — the attribute
+  delivers the consumer's `WithCancellation` token to it, so it is observed even without a body
+  reference (new `HasEnumeratorCancellation` guard, mirrors CC011's detection).
 - v1.27.10: 463 tests (+1 CC028 mixed 3-type Fix-All: File + StreamReader + StreamWriter in one
   batch). Green locally.
 - v1.27.9: 461 tests (+1 clean-code FP guard: linked-CTS timeout idiom — CreateLinkedTokenSource +
