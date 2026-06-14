@@ -65,6 +65,29 @@ public class GreeterService
     }
 
     [Fact]
+    public async Task GrpcMethod_ObservesTokenViaThrowIfCancellationRequested_ShouldNotReportDiagnostic()
+    {
+        // Observing the token by calling a method on it (ThrowIfCancellationRequested) is still an
+        // access of context.CancellationToken, so CC020 must stay quiet.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task<string> SayHello(string request, ServerCallContext context)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
+        await Task.Yield();
+        return ""hi"";
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GrpcMethod_ObservesTokenViaAlias_ShouldNotReportDiagnostic()
     {
         var test = @"
