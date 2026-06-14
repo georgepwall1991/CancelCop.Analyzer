@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.37] - 2026-06-14
+
+### Tests
+
+- Added Fix All correctness tests for the three token-propagation fixers: CC002 (two `Task.Delay`
+  calls both receive the in-scope token), CC003 (two EF Core `CountAsync` queries), and CC004 (two
+  `HttpClient.GetStringAsync` calls). Confirms the shared `ReportIfTokenNotPropagated` fixer appends
+  the token argument correctly when applied across multiple sites at once.
+
 ## [1.23.36] - 2026-06-14
 
 ### Tests

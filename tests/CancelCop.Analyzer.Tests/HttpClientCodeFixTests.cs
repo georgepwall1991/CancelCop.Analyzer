@@ -25,6 +25,52 @@ public class HttpClientCodeFixTests
     }
 
     [Fact]
+    public async Task FixAll_TwoCalls_BothGetTokenArgument()
+    {
+        var test = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
+    {
+        var a = await _httpClient.{|#0:GetStringAsync|}(""https://api.example.com/a"");
+        var b = await _httpClient.{|#1:GetStringAsync|}(""https://api.example.com/b"");
+        return a + b;
+    }
+}";
+
+        var fixedCode = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
+    {
+        var a = await _httpClient.GetStringAsync(""https://api.example.com/a"", cancellationToken);
+        var b = await _httpClient.GetStringAsync(""https://api.example.com/b"", cancellationToken);
+        return a + b;
+    }
+}";
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .WithLocation(0).WithArguments("GetStringAsync", "cancellationToken"),
+            new DiagnosticResult("CC004", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .WithLocation(1).WithArguments("GetStringAsync", "cancellationToken")).RunAsync();
+    }
+
+    [Fact]
     public async Task GetStringAsync_WithoutToken_AddsTokenParameter()
     {
         var test = @"

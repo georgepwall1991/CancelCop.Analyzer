@@ -10,6 +10,45 @@ namespace CancelCop.Analyzer.Tests;
 public class TokenPropagationCodeFixTests
 {
     [Fact]
+    public async Task FixAll_TwoDelays_BothGetTokenArgument()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        await Task.{|#0:Delay|}(100);
+        await Task.{|#1:Delay|}(200);
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100, cancellationToken);
+        await Task.Delay(200, cancellationToken);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC002").WithLocation(0).WithArguments("Delay", "cancellationToken"),
+                VerifyCS.Diagnostic("CC002").WithLocation(1).WithArguments("Delay", "cancellationToken"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task TaskDelay_WithoutToken_AddsTokenParameter()
     {
         var test = @"

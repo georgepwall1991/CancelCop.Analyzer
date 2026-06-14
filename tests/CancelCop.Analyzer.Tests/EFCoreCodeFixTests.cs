@@ -25,6 +25,56 @@ public class EFCoreCodeFixTests
     }
 
     [Fact]
+    public async Task FixAll_TwoQueries_BothGetTokenArgument()
+    {
+        var test = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public async Task<int> CountUsersAsync(CancellationToken cancellationToken)
+    {
+        DbSet<User> users = null;
+        var a = await users.{|#0:CountAsync|}();
+        var b = await users.{|#1:CountAsync|}();
+        return a + b;
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        var fixedCode = @"
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public async Task<int> CountUsersAsync(CancellationToken cancellationToken)
+    {
+        DbSet<User> users = null;
+        var a = await users.CountAsync(cancellationToken);
+        var b = await users.CountAsync(cancellationToken);
+        return a + b;
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .WithLocation(0).WithArguments("CountAsync", "cancellationToken"),
+            new DiagnosticResult("CC003", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .WithLocation(1).WithArguments("CountAsync", "cancellationToken")).RunAsync();
+    }
+
+    [Fact]
     public async Task FirstOrDefaultAsync_WithoutToken_AddsTokenParameter()
     {
         var test = @"
