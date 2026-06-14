@@ -560,6 +560,40 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSequentialWorkflow_ProducesNoDiagnostics()
+    {
+        // A multi-step async workflow threading the token through each step (validate, reserve, charge,
+        // confirm). No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class OrderWorkflow
+{
+    public async Task<bool> PlaceAsync(int orderId, CancellationToken cancellationToken)
+    {
+        await ValidateAsync(orderId, cancellationToken);
+        var reservation = await ReserveAsync(orderId, cancellationToken);
+        await ChargeAsync(reservation, cancellationToken);
+        return await ConfirmAsync(orderId, cancellationToken);
+    }
+
+    private Task ValidateAsync(int id, CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task<int> ReserveAsync(int id, CancellationToken cancellationToken) => Task.FromResult(id);
+    private Task ChargeAsync(int reservation, CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task<bool> ConfirmAsync(int id, CancellationToken cancellationToken) => Task.FromResult(true);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticGracefulCancellationHandling_ProducesNoDiagnostics()
     {
         // Catching OperationCanceledException specifically to run cleanup and then rethrow is the
