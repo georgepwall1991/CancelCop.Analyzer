@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticWaitUntilCancelled_ProducesNoDiagnostics()
+    {
+        // Awaiting an infinite Task.Delay with the token to block until cancellation, with OCE handled
+        // gracefully. The token is flowed; no analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class IdleHost
+{
+    public async Task WaitForShutdownAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        catch (TaskCanceledException)
+        {
+            // expected on shutdown
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAwaitForeachOverTokenizedProducer_ProducesNoDiagnostics()
     {
         // await foreach over a producer call that already received the token; CC010 must not also ask
