@@ -560,6 +560,50 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSubscriptionStreamConsume_ProducesNoDiagnostics()
+    {
+        // await using a subscription (IAsyncDisposable), then consuming its message stream with
+        // WithCancellation(token) and a per-item check. No analyzer fires.
+        var code = @"
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface ISubscription : IAsyncDisposable
+{
+    IAsyncEnumerable<string> Messages { get; }
+}
+
+internal sealed class Broker
+{
+    private readonly Func<string, CancellationToken, ValueTask<ISubscription>> _subscribe;
+
+    public Broker(Func<string, CancellationToken, ValueTask<ISubscription>> subscribe) => _subscribe = subscribe;
+
+    public async Task ListenAsync(string topic, CancellationToken cancellationToken)
+    {
+        await using var subscription = await _subscribe(topic, cancellationToken);
+        await foreach (var message in subscription.Messages.WithCancellation(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await HandleAsync(message, cancellationToken);
+        }
+    }
+
+    private Task HandleAsync(string message, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticEntryGuardThenWork_ProducesNoDiagnostics()
     {
         // A fast-fail entry guard (ThrowIfCancellationRequested at the top) followed by token-flowing
