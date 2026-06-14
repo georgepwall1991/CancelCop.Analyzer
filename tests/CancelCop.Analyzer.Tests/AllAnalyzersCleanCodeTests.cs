@@ -560,6 +560,42 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticGenericAsyncRepository_ProducesNoDiagnostics()
+    {
+        // A generic async method forwarding the token to a generic store. No analyzer fires (the token
+        // is used; CC002 sees the token already passed).
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IStore
+{
+    Task<T> LoadAsync<T>(int id, CancellationToken cancellationToken);
+}
+
+internal sealed class Repository
+{
+    private readonly IStore _store;
+
+    public Repository(IStore store) => _store = store;
+
+    public async Task<T> GetAsync<T>(int id, CancellationToken cancellationToken)
+    {
+        var entity = await _store.LoadAsync<T>(id, cancellationToken);
+        return entity;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticConfiguredValueTaskAwait_ProducesNoDiagnostics()
     {
         // Awaiting a ValueTask<T> with ConfigureAwait(false), token flowed into the source. No analyzer
