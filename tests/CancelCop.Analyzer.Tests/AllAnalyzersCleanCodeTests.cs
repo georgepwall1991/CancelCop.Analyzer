@@ -560,6 +560,57 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticChannelProducerConsumerPair_ProducesNoDiagnostics()
+    {
+        // A producer and a consumer running concurrently over a bounded channel, both flowing the token
+        // and Task.WhenAll-joined. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+internal sealed class Pipeline
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        var channel = Channel.CreateBounded<int>(10);
+        var producer = ProduceAsync(channel.Writer, cancellationToken);
+        var consumer = ConsumeAsync(channel.Reader, cancellationToken);
+        await Task.WhenAll(producer, consumer);
+    }
+
+    private async Task ProduceAsync(ChannelWriter<int> writer, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await writer.WriteAsync(i, cancellationToken);
+        }
+        writer.Complete();
+    }
+
+    private async Task ConsumeAsync(ChannelReader<int> reader, CancellationToken cancellationToken)
+    {
+        await foreach (var item in reader.ReadAllAsync(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await HandleAsync(item, cancellationToken);
+        }
+    }
+
+    private Task HandleAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticManualAsyncDisposalInFinally_ProducesNoDiagnostics()
     {
         // Manual try/finally with await resource.DisposeAsync() is a valid alternative to await using;
