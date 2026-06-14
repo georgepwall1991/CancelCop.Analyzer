@@ -560,6 +560,36 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticRegisterWithState_ProducesNoDiagnostics()
+    {
+        // The closure-free Register(callback, state) overload, registration disposed via await using,
+        // awaiting a TaskCompletionSource. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class SignalAwaiter
+{
+    public async Task<int> WaitAsync(CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource<int>();
+        await using (cancellationToken.Register(static s => ((TaskCompletionSource<int>)s!).TrySetCanceled(), tcs))
+        {
+            return await tcs.Task;
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticConfiguredAwaitUsing_ProducesNoDiagnostics()
     {
         // Library-style await using over a ConfiguredAsyncDisposable (ConfigureAwait(false) on the
