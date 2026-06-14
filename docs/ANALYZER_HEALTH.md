@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.2 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.3 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,6 +168,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.3: 453 tests (452 + 1 clean-code FP guard: `System.Threading.Channels` producer/consumer +
+  `Parallel.ForEachAsync`, all threading the token). Green locally. (Confirmed CC009 is deliberately
+  strict: an `await foreach` body still needs an explicit `ThrowIfCancellationRequested()` even when
+  its source flows the token — matches the existing positive tests.)
 - v1.27.2: 452 tests (451 + 1 clean-code FP guard: idiomatic raw-`Stream` async I/O +
   `HttpClient.SendAsync`/`ReadAsStringAsync`, all threading the token). Green locally.
 - v1.27.1: 451 tests (449 + 1 CC002 incompatible-token-overload FP guard + 1 idiomatic async

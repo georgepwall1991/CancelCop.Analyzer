@@ -493,6 +493,57 @@ internal sealed class FileService
     }
 
     [Fact]
+    public async Task IdiomaticChannelsAndParallelForEachAsync_ProduceNoDiagnostics()
+    {
+        // System.Threading.Channels and Parallel.ForEachAsync are core modern async patterns. A
+        // channel producer/consumer threading the token, and a ForEachAsync whose body awaits with the
+        // token, must not trip any rule — notably CC010 must stay quiet because ReadAllAsync(token)
+        // already flows a token into the async stream.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+internal sealed class PipelineService
+{
+    public async Task ProduceAsync(ChannelWriter<int> writer, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await writer.WriteAsync(i, cancellationToken);
+        }
+    }
+
+    public async Task ConsumeAsync(ChannelReader<int> reader, CancellationToken cancellationToken)
+    {
+        await foreach (var item in reader.ReadAllAsync(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(item, cancellationToken);
+        }
+    }
+
+    public async Task FanOutAsync(IEnumerable<int> items, CancellationToken cancellationToken)
+    {
+        await Parallel.ForEachAsync(items, cancellationToken, async (item, token) =>
+        {
+            await Task.Delay(item, token);
+        });
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticRawStreamAndHttpClient_ProduceNoDiagnostics()
     {
         // Raw Stream async I/O (ReadAsync/WriteAsync/CopyToAsync) and HttpClient.SendAsync, all

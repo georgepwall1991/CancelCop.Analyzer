@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.3] - 2026-06-14
+
+### Tests
+
+- Added a clean-code FP guard covering `System.Threading.Channels` (a `ChannelWriter.WriteAsync` /
+  `ChannelReader.ReadAllAsync` producer/consumer) and `Parallel.ForEachAsync`, all threading the
+  in-scope token. Confirms no analyzer over-fires on these core modern async patterns. (The
+  `await foreach` body keeps an explicit `ThrowIfCancellationRequested()` — CC009 is deliberately
+  strict and requires it even when the loop's source/body already flow the token.)
+
 ## [1.27.2] - 2026-06-14
 
 ### Tests
