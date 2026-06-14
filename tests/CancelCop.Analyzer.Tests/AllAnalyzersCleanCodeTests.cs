@@ -560,6 +560,46 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticRecursiveAsyncTraversal_ProducesNoDiagnostics()
+    {
+        // A recursive async tree walk: cancellation check on entry, token flowed into the recursive
+        // call and the per-node await. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class Node
+{
+    public IEnumerable<Node> Children { get; } = new List<Node>();
+}
+
+internal sealed class TreeWalker
+{
+    public async Task VisitAsync(Node node, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await ProcessAsync(node, cancellationToken);
+        foreach (var child in node.Children)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await VisitAsync(child, cancellationToken);
+        }
+    }
+
+    private Task ProcessAsync(Node node, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticValueTaskCacheFastPath_ProducesNoDiagnostics()
     {
         // A ValueTask-returning method with a synchronous cache fast-path and a token-flowing slow path.
