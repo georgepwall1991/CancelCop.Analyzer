@@ -21,6 +21,45 @@ public class PreferCancelAsyncCodeFixTests
     }
 
     [Fact]
+    public async Task FixAll_TwoCancels_BothBecomeAwaitCancelAsync()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource cts)
+    {
+        cts.{|#0:Cancel|}();
+        cts.{|#1:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource cts)
+    {
+        await cts.CancelAsync();
+        await cts.CancelAsync();
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0),
+            new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(1))
+            .RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_BecomesAwaitCancelAsync()
     {
         var test = @"

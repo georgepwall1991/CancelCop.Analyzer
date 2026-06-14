@@ -28,6 +28,43 @@ public class AsyncResource : System.IDisposable, System.IAsyncDisposable
     }
 
     [Fact]
+    public async Task FixAll_TwoUsings_BothBecomeAwaitUsing()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        {|#0:using|} var a = new AsyncResource();
+        {|#1:using|} var b = new AsyncResource();
+        await Task.Yield();
+    }
+}" + Resources;
+
+        var fixedCode = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        await using var a = new AsyncResource();
+        await using var b = new AsyncResource();
+        await Task.Yield();
+    }
+}" + Resources;
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0),
+            new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(1))
+            .RunAsync();
+    }
+
+    [Fact]
     public async Task UsingDeclaration_BecomesAwaitUsing()
     {
         var test = @"

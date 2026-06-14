@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.35] - 2026-06-14
+
+### Tests
+
+- Added Fix All correctness tests for three in-place fixers: CC010 (two `await foreach` sources both
+  wrapped in `.WithCancellation`), CC022 (two `Cancel()` both become `await CancelAsync()`), and
+  CC025 (two `using` both become `await using`).
+
 ## [1.23.34] - 2026-06-14
 
 ### Tests

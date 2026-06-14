@@ -21,6 +21,53 @@ public class AsyncEnumerableCancellationCodeFixTests
     }
 
     [Fact]
+    public async Task FixAll_TwoForeach_BothWrapped()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ConsumeAsync(IAsyncEnumerable<int> a, IAsyncEnumerable<int> b, CancellationToken cancellationToken)
+    {
+        await foreach (var x in {|#0:a|})
+        {
+        }
+        await foreach (var y in {|#1:b|})
+        {
+        }
+    }
+}";
+
+        var fixedCode = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ConsumeAsync(IAsyncEnumerable<int> a, IAsyncEnumerable<int> b, CancellationToken cancellationToken)
+    {
+        await foreach (var x in a.WithCancellation(cancellationToken))
+        {
+        }
+        await foreach (var y in b.WithCancellation(cancellationToken))
+        {
+        }
+    }
+}";
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC010", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("cancellationToken"),
+            new DiagnosticResult("CC010", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("cancellationToken"))
+            .RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitForeach_WrapsSourceInWithCancellation()
     {
         var test = @"
