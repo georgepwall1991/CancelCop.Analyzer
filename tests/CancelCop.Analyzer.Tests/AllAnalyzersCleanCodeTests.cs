@@ -560,6 +560,37 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSharedReadinessTask_ProducesNoDiagnostics()
+    {
+        // Awaiting a shared readiness Task field before doing token-flowing work. Awaiting a Task field
+        // needs no token; the subsequent query flows it. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ReadyService
+{
+    private readonly Task _ready = Task.CompletedTask;
+
+    public async Task<int> GetAsync(CancellationToken cancellationToken)
+    {
+        await _ready;
+        return await QueryAsync(cancellationToken);
+    }
+
+    private Task<int> QueryAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticHeterogeneousWhenAll_ProducesNoDiagnostics()
     {
         // Awaiting two differently-typed tasks together by starting both (token-flowing) and awaiting
