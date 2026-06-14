@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.2] - 2026-06-14
+
+### Tests
+
+- Broadened CC028 fix coverage across the curated method map: `StreamReader.ReadLine()` →
+  `await reader.ReadLineAsync(token)` and `File.AppendAllText(...)` → `await File.AppendAllTextAsync(..., token)`.
+
 ## [1.26.1] - 2026-06-14
 
 ### Docs

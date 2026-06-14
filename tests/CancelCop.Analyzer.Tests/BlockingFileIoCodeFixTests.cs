@@ -171,6 +171,80 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamReaderReadLine_WithToken_BecomesAwaitReadLineAsyncWithToken()
+    {
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var line = reader.{|#0:ReadLine|}();
+        _ = line;
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var line = await reader.ReadLineAsync(cancellationToken);
+        _ = line;
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task AppendAllText_WithToken_BecomesAwaitAppendAllTextAsyncWithToken()
+    {
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, CancellationToken cancellationToken)
+    {
+        File.{|#0:AppendAllText|}(path, ""line"");
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, CancellationToken cancellationToken)
+    {
+        await File.AppendAllTextAsync(path, ""line"", cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("AppendAllText");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"
