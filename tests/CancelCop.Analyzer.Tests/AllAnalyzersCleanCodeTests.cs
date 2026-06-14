@@ -560,6 +560,37 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticTwoTokenLinkedSource_ProducesNoDiagnostics()
+    {
+        // Linking two external tokens with a using-declared CreateLinkedTokenSource and flowing the
+        // combined token. CC014 (using var disposal) and the rest stay quiet.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class CombinedService
+{
+    private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
+
+    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+        return await ComputeAsync(linked.Token);
+    }
+
+    private Task<int> ComputeAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncStreamAggregation_ProducesNoDiagnostics()
     {
         // Consuming an injected IAsyncEnumerable with .WithCancellation(token) and aggregating. CC010
