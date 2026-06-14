@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.9] - 2026-06-14
+
+### Tests
+
+- Pinned a critical CC024 non-false-positive: `Task.Run(async () => ...)` binds the async lambda to
+  `Task.Run`'s `Func<Task>` overload (not `Action`), so this extremely common pattern is never
+  flagged.
+
 ## [1.23.8] - 2026-06-14
 
 ### Documentation

@@ -66,6 +66,25 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncLambda_InTaskRun_ShouldNotReportDiagnostic()
+    {
+        // Task.Run binds an async lambda to its Func<Task> overload, not Action — this extremely
+        // common pattern must never be flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register()
+    {
+        Task.Run(async () => await Task.Yield());
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task SyncLambda_AssignedToAction_ShouldNotReportDiagnostic()
     {
         var test = @"
