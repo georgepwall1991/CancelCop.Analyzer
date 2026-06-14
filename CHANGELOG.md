@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.34] - 2026-06-14
+
+### Tests
+
+- Added Fix All correctness tests for three more fixers: CC014 (two undisposed sources both become
+  `using`), CC023 (two `async void` methods both become `Task`, import added once), and CC012 (two
+  none-ish arguments both replaced with the in-scope token).
+
 ## [1.23.33] - 2026-06-14
 
 ### Tests

@@ -11,6 +11,49 @@ namespace CancelCop.Analyzer.Tests;
 public class ExplicitNoneTokenCodeFixTests
 {
     [Fact]
+    public async Task FixAll_TwoNoneArguments_BothReplaced()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task DoAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync({|#0:CancellationToken.None|});
+        await DoAsync({|#1:default|});
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task DoAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync(cancellationToken);
+        await DoAsync(cancellationToken);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC012").WithLocation(0).WithArguments("CancellationToken.None", "cancellationToken"),
+                VerifyCS.Diagnostic("CC012").WithLocation(1).WithArguments("default", "cancellationToken"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task None_ReplacedWithInScopeToken()
     {
         var test = @"

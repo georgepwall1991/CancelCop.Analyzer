@@ -11,6 +11,49 @@ namespace CancelCop.Analyzer.Tests;
 public class UndisposedTokenSourceCodeFixTests
 {
     [Fact]
+    public async Task FixAll_TwoSources_BothBecomeUsing()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken outer)
+    {
+        var {|#0:a|} = new CancellationTokenSource();
+        var {|#1:b|} = new CancellationTokenSource();
+        await Task.Delay(1, a.Token);
+        await Task.Delay(1, b.Token);
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken outer)
+    {
+        using var a = new CancellationTokenSource();
+        using var b = new CancellationTokenSource();
+        await Task.Delay(1, a.Token);
+        await Task.Delay(1, b.Token);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("a"),
+                VerifyCS.Diagnostic("CC014").WithLocation(1).WithArguments("b"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task AddsUsingDeclaration()
     {
         var test = @"

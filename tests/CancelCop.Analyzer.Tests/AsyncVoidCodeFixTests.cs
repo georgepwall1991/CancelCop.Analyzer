@@ -11,6 +11,38 @@ namespace CancelCop.Analyzer.Tests;
 public class AsyncVoidCodeFixTests
 {
     [Fact]
+    public async Task FixAll_TwoAsyncVoidMethods_AddImportOnce()
+    {
+        var test = @"
+using System;
+
+public class TestClass
+{
+    public async void {|#0:A|}() => await System.Threading.Tasks.Task.CompletedTask;
+    public async void {|#1:B|}() => await System.Threading.Tasks.Task.CompletedTask;
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task A() => await System.Threading.Tasks.Task.CompletedTask;
+    public async Task B() => await System.Threading.Tasks.Task.CompletedTask;
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC023").WithLocation(0).WithArguments("A"),
+                VerifyCS.Diagnostic("CC023").WithLocation(1).WithArguments("B"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task AsyncVoid_BecomesAsyncTask_AndAddsImport()
     {
         var test = @"
