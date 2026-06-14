@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.10] - 2026-06-14
+
+### Tests
+
+- Extended the CC028 mixed-type Fix All test to all three curated `System.IO` types in one batch
+  (`File.ReadAllText` + `StreamReader.ReadToEnd` + `StreamWriter.Write`), pinning that the v1.27.0
+  write-side coverage participates in batch fixing.
+
 ## [1.27.9] - 2026-06-14
 
 ### Tests

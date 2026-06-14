@@ -407,6 +407,51 @@ public class TestClass
     }
 
     [Fact]
+    public async Task FixAll_FileStreamReaderAndStreamWriter_AllBecomeAsync()
+    {
+        // Fix All must batch across all three curated System.IO types in one pass, including the
+        // write-side StreamWriter added in 1.27.0 (whose WriteAsync(string) flows no token).
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, StreamReader reader, StreamWriter writer, CancellationToken cancellationToken)
+    {
+        var a = File.{|#0:ReadAllText|}(path);
+        var b = reader.{|#1:ReadToEnd|}();
+        writer.{|#2:Write|}(a + b);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, StreamReader reader, StreamWriter writer, CancellationToken cancellationToken)
+    {
+        var a = await File.ReadAllTextAsync(path, cancellationToken);
+        var b = await reader.ReadToEndAsync(cancellationToken);
+        await writer.WriteAsync(a + b);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("ReadAllText"),
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("ReadToEnd"),
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(2).WithArguments("Write")).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"

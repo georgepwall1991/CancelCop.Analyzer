@@ -200,4 +200,31 @@ public class TestClass
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task ThreadSleep_InAsyncLocalFunction_ShouldReportDiagnostic()
+    {
+        // The async-context check descends into nested async functions, so a Thread.Sleep inside an
+        // async local function is flagged — the local-function counterpart of the async-lambda positive.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure()
+    {
+        async Task RunAsync()
+        {
+            {|#0:Thread.Sleep(1000)|};
+            await Task.Yield();
+        }
+
+        _ = RunAsync();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }
