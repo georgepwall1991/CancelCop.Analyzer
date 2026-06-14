@@ -62,12 +62,13 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
             return document;
 
         // Append the in-scope token (when available) after the original arguments; the async
-        // File.*Async overloads take the CancellationToken as the last parameter.
+        // File.*Async overloads take the CancellationToken (named 'cancellationToken') as the last
+        // parameter. AddTokenArgument keeps the call valid when the original used named arguments.
         var argumentList = invocation.ArgumentList.WithoutTrivia();
         if (tokenName != null)
         {
-            argumentList = argumentList.AddArguments(
-                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName)));
+            argumentList = CancellationTokenFixHelpers.AddTokenArgument(
+                argumentList, tokenName, "cancellationToken");
         }
 
         var asyncName = memberAccess.Name.Identifier.Text + "Async";

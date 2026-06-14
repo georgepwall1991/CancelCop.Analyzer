@@ -93,6 +93,46 @@ public class TestClass
     }
 
     [Fact]
+    public async Task NamedArgument_AddsTokenAsNamedArgument()
+    {
+        // A positional token after a named argument is a compile error (CS8323), so when the original
+        // call uses a named argument the token must be added as `cancellationToken: token`.
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = File.{|#0:ReadAllText|}(path: p);
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = await File.ReadAllTextAsync(path: p, cancellationToken: cancellationToken);
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadAllText");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"

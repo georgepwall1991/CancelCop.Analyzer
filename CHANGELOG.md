@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.25.1] - 2026-06-14
+
+### Fixed
+
+- CC028's code fix is now named-argument-safe: when the original `File.<name>(...)` call uses a named
+  argument, the token is added as `cancellationToken: token` (via the shared `AddTokenArgument` helper)
+  rather than appended positionally, which would have produced invalid code (CS8323).
+
 ## [1.25.0] - 2026-06-14
 
 ### Added
