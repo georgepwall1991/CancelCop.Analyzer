@@ -28,6 +28,25 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StaticAsyncVoid_ShouldReportDiagnostic()
+    {
+        // static does not make a method an event handler, so a static async void is still flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public static async void {|#0:ProcessAsync|}()
+    {
+        await Task.CompletedTask;
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC023").WithLocation(0).WithArguments("ProcessAsync");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ProtectedAsyncVoid_ShouldReportDiagnostic()
     {
         var test = @"
