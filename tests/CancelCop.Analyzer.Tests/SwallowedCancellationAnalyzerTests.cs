@@ -78,6 +78,23 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CatchException_RethrowsWrapped_ShouldNotReportDiagnostic()
+    {
+        // A catch that throws a new exception wrapping the caught one is treated as a rethrow: a
+        // `throw` statement is present, so CC019 conservatively stays quiet (Info rule, low FP — it does
+        // not try to judge whether wrapping changes the cancellation semantics).
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        catch (Exception ex) { throw new InvalidOperationException(""wrap"", ex); }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CatchException_WithFilter_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"
