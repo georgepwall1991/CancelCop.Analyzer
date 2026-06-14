@@ -421,4 +421,91 @@ internal sealed class GreeterService : GreeterBase
 
         await test.RunAsync();
     }
+
+    [Fact]
+    public async Task ModernCSharpShapes_ProduceNoDiagnostics()
+    {
+        // Primary-constructor class and record struct, a file-scoped namespace, and an expression-bodied
+        // async method that propagates a primary-constructor token must all stay clean. The shared scope
+        // walk covers primary constructors, so the propagation rules see the captured token.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Modern;
+
+internal sealed class Worker(CancellationToken lifetime)
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(1, cancellationToken);
+        await TickAsync();
+    }
+
+    private async Task TickAsync() => await Task.Delay(1, lifetime);
+}
+
+internal record struct Job(int Id)
+{
+    public async Task<int> ProcessAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(1, cancellationToken);
+        return Id;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task PatternMatchingAndGenerics_ProduceNoDiagnostics()
+    {
+        // A switch statement with awaited arms, a generic async method, and a pattern-matched catch
+        // filter that lets cancellation propagate must not trip any analyzer when the token is threaded.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class Dispatcher
+{
+    public async Task<T> RouteAsync<T>(int kind, T value, CancellationToken cancellationToken)
+    {
+        switch (kind)
+        {
+            case 0:
+                await Task.Delay(1, cancellationToken);
+                break;
+            default:
+                await Task.Delay(2, cancellationToken);
+                break;
+        }
+
+        try
+        {
+            await Task.Delay(1, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _ = ex;
+        }
+
+        return value;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
 }

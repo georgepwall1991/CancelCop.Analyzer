@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.39 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.40 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.40: 411 tests (409 + 2 FP-guard scenarios: modern C# shapes — primary-constructor class/record
+  struct + file-scoped namespace; pattern matching / generics — switch arms, generic async, catch
+  filter). Green locally. No FPs surfaced.
 - v1.23.39: 409 tests (407 + 2 Fix-All tests for the line-inserting fixers: CC009 loop-guard, CC019
   rethrow-guard). Green locally. **Fix All is now pinned for every fixer in the analyzer** — presence/
   handler, propagation, in-place, import-adding, and line-inserting alike.

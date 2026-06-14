@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.40] - 2026-06-14
+
+### Tests
+
+- Added two false-positive guard scenarios for modern C# shapes: primary-constructor classes/records
+  with a file-scoped namespace (token captured from a primary constructor and propagated through an
+  expression-bodied async method), and pattern matching / generics (a `switch` with awaited arms, a
+  generic async method, and a `when (ex is not OperationCanceledException)` catch filter). All 27
+  analyzers stay silent — confirming the scope walk and rule gating handle these shapes.
+
 ## [1.23.39] - 2026-06-14
 
 ### Tests
