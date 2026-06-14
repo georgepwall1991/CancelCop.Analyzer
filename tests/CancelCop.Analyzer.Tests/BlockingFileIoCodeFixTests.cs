@@ -445,4 +445,79 @@ public class TestClass
             new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("ReadAllText"),
             new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("WriteAllText")).RunAsync();
     }
+
+    [Fact]
+    public async Task StreamWriterFlush_WithToken_BecomesAwaitFlushAsyncWithToken()
+    {
+        // FlushAsync has a CancellationToken overload, so the in-scope token is flowed.
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, CancellationToken cancellationToken)
+    {
+        writer.{|#0:Flush|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, CancellationToken cancellationToken)
+    {
+        await writer.FlushAsync(cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("Flush");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task StreamWriterWrite_TokenInScope_BecomesAwaitWriteAsyncWithoutToken()
+    {
+        // StreamWriter.WriteAsync(string) has no CancellationToken overload, so even with a token in
+        // scope the fix must not add one — the analyzer's signature match reports takesToken = false.
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text, CancellationToken cancellationToken)
+    {
+        writer.{|#0:Write|}(text);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text, CancellationToken cancellationToken)
+    {
+        await writer.WriteAsync(text);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("Write");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }

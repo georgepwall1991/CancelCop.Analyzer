@@ -57,7 +57,7 @@ Install-Package CancelCop.Analyzer
 | **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
 | **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
 | **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
-| **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`) in async code; use the async counterpart | Warning | ✅ |
+| **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`) in async code; use the async counterpart | Warning | ✅ |
 
 ## Quick Examples
 
@@ -442,7 +442,7 @@ public async Task<byte[]> ReadAsync(string path)
 // ❌ Warning CC028 - blocks the thread for the whole disk read
 public async Task<string> LoadAsync(string path)
 {
-    var text = File.ReadAllText(path);   // also flags StreamReader.ReadToEnd()/ReadLine()
+    var text = File.ReadAllText(path);   // also flags StreamReader.ReadToEnd()/ReadLine() and StreamWriter.Write/WriteLine/Flush
     await Task.Yield();
     return text;
 }

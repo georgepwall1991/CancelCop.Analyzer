@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-06-14
+
+### Added
+
+- **CC028** now also flags the write side of `System.IO`: `StreamWriter.Write` / `WriteLine` / `Flush`
+  in async code (the symmetric complement to the already-covered `StreamReader.ReadToEnd`/`ReadLine`).
+
+### Changed
+
+- **CC028** detection is hardened: instead of a name-only `<name>Async` lookup, it now requires a
+  *signature-compatible* async counterpart — an overload whose parameters equal the blocking call's,
+  optionally plus one trailing `CancellationToken`. This guarantees the rewrite always compiles
+  (e.g. `StreamWriter.Write(bool)`, which has no async form, is no longer a candidate), and the fixer
+  only flows the in-scope token when the matched overload actually accepts one (so
+  `StreamWriter.Write(string)` becomes `await writer.WriteAsync(text)` with no spurious token, while
+  `Flush()` becomes `await writer.FlushAsync(cancellationToken)`).
+
 ## [1.26.9] - 2026-06-14
 
 ### Fixed

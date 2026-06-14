@@ -10,8 +10,9 @@ namespace CancelCop.Analyzer;
 
 /// <summary>
 /// Analyzer that detects a blocking synchronous <c>System.IO</c> call (<c>File</c> read/write/append
-/// helpers, or <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>) inside async code when an async
-/// counterpart (<c>&lt;name&gt;Async</c>) exists.
+/// helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, or <c>StreamWriter.Write</c>/<c>WriteLine</c>/
+/// <c>Flush</c>) inside async code when a signature-compatible async counterpart (<c>&lt;name&gt;Async</c>)
+/// exists.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,9 +29,11 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a call to one of the well-known blocking <c>System.IO</c> methods
-/// (<c>File</c> read/write/append helpers, or <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>) that has
-/// an <c>&lt;name&gt;Async</c> counterpart, made inside an <c>async</c> method, local function, lambda,
-/// or anonymous method.
+/// (<c>File</c> read/write/append helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, or
+/// <c>StreamWriter.Write</c>/<c>WriteLine</c>/<c>Flush</c>) that has a signature-compatible
+/// <c>&lt;name&gt;Async</c> counterpart, made inside an <c>async</c> method, local function, lambda,
+/// or anonymous method. Overloads without an async form (e.g. <c>StreamWriter.Write(bool)</c>) are not
+/// flagged, so the rewrite always compiles.
 /// </para>
 /// </remarks>
 /// <example>
@@ -67,6 +70,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 "AppendAllText", "AppendAllLines")),
             new KeyValuePair<string, ImmutableHashSet<string>>("StreamReader", ImmutableHashSet.Create(
                 "ReadToEnd", "ReadLine")),
+            new KeyValuePair<string, ImmutableHashSet<string>>("StreamWriter", ImmutableHashSet.Create(
+                "Write", "WriteLine", "Flush")),
         });
 
     private static readonly LocalizableString Title = "Avoid blocking I/O in async code";
@@ -113,9 +118,12 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             !blockingMethods.Contains(methodName))
             return;
 
-        // Only flag when the framework in use actually offers the async counterpart, so the suggestion
-        // is always actionable.
-        if (!containingType.GetMembers(methodName + "Async").Any())
+        // Only flag when the framework in use actually offers a signature-compatible async counterpart,
+        // so the suggested fix always compiles. A counterpart matches when its parameters equal the
+        // blocking call's parameters, optionally followed by a single trailing CancellationToken. The
+        // overloads vary by type and target framework (e.g. StreamWriter.Write(bool) has no async form),
+        // so this signature check — not a name-only lookup — is what keeps the rewrite valid.
+        if (!HasAsyncCounterpart(containingType, method, methodName + "Async", out var asyncTakesToken))
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
@@ -124,11 +132,67 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
             invocation, context.SemanticModel);
 
+        // Only ask the fixer to flow the token when the matched async overload actually accepts one;
+        // adding a token argument to a tokenless overload (e.g. StreamWriter.WriteAsync(string)) would
+        // not compile.
         var properties = ImmutableDictionary<string, string?>.Empty;
-        if (tokenParameter != null)
+        if (asyncTakesToken && tokenParameter != null)
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
         context.ReportDiagnostic(Diagnostic.Create(
             Rule, memberAccess.Name.GetLocation(), properties, methodName));
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> declares an overload named
+    /// <paramref name="asyncName"/> whose parameters match the blocking call's parameters, optionally
+    /// followed by a single trailing <c>CancellationToken</c>. A token-taking overload is preferred;
+    /// <paramref name="takesToken"/> reports whether the chosen match accepts the token.
+    /// </summary>
+    private static bool HasAsyncCounterpart(
+        INamedTypeSymbol type, IMethodSymbol sync, string asyncName, out bool takesToken)
+    {
+        takesToken = false;
+        var found = false;
+
+        foreach (var candidate in type.GetMembers(asyncName).OfType<IMethodSymbol>())
+        {
+            if (!ParametersMatch(sync.Parameters, candidate.Parameters, out var candidateTakesToken))
+                continue;
+
+            found = true;
+            if (candidateTakesToken)
+            {
+                takesToken = true;
+                return true;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="async"/> equals <paramref name="sync"/> (by parameter
+    /// type, in order), or equals it followed by one trailing <c>CancellationToken</c>
+    /// (<paramref name="takesToken"/> set accordingly).
+    /// </summary>
+    private static bool ParametersMatch(
+        ImmutableArray<IParameterSymbol> sync, ImmutableArray<IParameterSymbol> async, out bool takesToken)
+    {
+        takesToken = false;
+
+        if (async.Length == sync.Length + 1 &&
+            CancellationTokenHelpers.IsCancellationToken(async[sync.Length].Type))
+            takesToken = true;
+        else if (async.Length != sync.Length)
+            return false;
+
+        for (var i = 0; i < sync.Length; i++)
+        {
+            if (!SymbolEqualityComparer.Default.Equals(sync[i].Type, async[i].Type))
+                return false;
+        }
+
+        return true;
     }
 }

@@ -240,6 +240,65 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamWriterWrite_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer, string text)
+    {
+        writer.{|#0:Write|}(text);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("Write");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task StreamWriterFlush_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter writer)
+    {
+        writer.{|#0:Flush|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("Flush");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task StreamWriterWrite_InSyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+
+public class TestClass
+{
+    public void Run(StreamWriter writer, string text)
+    {
+        writer.Write(text);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task LookalikeFileType_ShouldNotReportDiagnostic()
     {
         // A user-defined 'File' type is not System.IO.File, so it must stay clean.
