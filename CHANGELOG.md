@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.43] - 2026-06-14
+
+### Tests
+
+- Pinned two CC001 surface-area behaviors: an `internal` async method stays clean (accessibility FP
+  guard — only the public/protected surface is flagged), and a public async method on a `record` is
+  flagged (type-kind-agnostic positive case).
+
 ## [1.23.42] - 2026-06-14
 
 ### Tests

@@ -100,6 +100,48 @@ public class TestClass
     }
 
     [Fact]
+    public async Task InternalAsyncMethod_WithoutCancellationToken_ShouldNotReportDiagnostic()
+    {
+        // CC001 only targets the public surface (public/protected). An internal async method is not
+        // externally callable, so it must stay clean — a guard against over-firing on accessibility.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    internal async Task ProcessDataAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task PublicAsyncMethodInRecord_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        // CC001 is type-kind-agnostic: a public async method on a record is part of the public surface
+        // and must be flagged just like one on a class.
+        var test = @"
+using System.Threading.Tasks;
+
+public record Query
+{
+    public async Task {|#0:RunAsync|}()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC001")
+            .WithLocation(0)
+            .WithArguments("RunAsync");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task PublicAsyncMethodReturningTaskOfT_WithoutCancellationToken_ShouldReportDiagnostic()
     {
         var test = @"
