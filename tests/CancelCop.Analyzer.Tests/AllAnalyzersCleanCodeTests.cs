@@ -560,6 +560,46 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticReceiveLoop_ProducesNoDiagnostics()
+    {
+        // A message receive loop: condition checks the token, ReceiveAsync and handling both flow it.
+        // No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IChannel
+{
+    Task<string?> ReceiveAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class Listener
+{
+    public async Task RunAsync(IChannel channel, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var message = await channel.ReceiveAsync(cancellationToken);
+            if (message is null)
+                break;
+
+            await HandleAsync(message, cancellationToken);
+        }
+    }
+
+    private Task HandleAsync(string message, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticTaskRunCpuOffload_ProducesNoDiagnostics()
     {
         // Offloading CPU-bound work with Task.Run, passing the token to Task.Run and checking it inside
