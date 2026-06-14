@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.26] - 2026-06-14
+
+### Tests
+
+- Pinned three more edge cases: CC022 and CC026 fire inside an `async` lambda (not just methods), and
+  CC023 flags a `protected async void` method (not only `public`).
+
 ## [1.23.25] - 2026-06-14
 
 ### Tests

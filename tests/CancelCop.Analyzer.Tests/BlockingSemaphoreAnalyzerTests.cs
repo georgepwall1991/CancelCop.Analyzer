@@ -30,6 +30,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Wait_InAsyncLambda_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register(SemaphoreSlim gate)
+    {
+        Func<Task> f = async () =>
+        {
+            gate.{|#0:Wait|}();
+            await Task.Yield();
+        };
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Wait_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"

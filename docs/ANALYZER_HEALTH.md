@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.25 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.26 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.26: 371 tests (368 + 3 edge pins: CC022/CC026 in an async lambda, CC023 protected async
+  void). Green locally.
 - v1.23.25: 368 tests (365 + 3 edge pins: CC013 static-import Sleep, CC015 `ValueTask<T>.Result`,
   CC014 target-typed `new` CTS). Green locally.
 - v1.23.24: 365 tests (364 + 1 CC012 named-argument coverage). Green locally.

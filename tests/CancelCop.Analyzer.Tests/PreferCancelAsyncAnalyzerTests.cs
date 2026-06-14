@@ -40,6 +40,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Cancel_InAsyncLambda_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register(CancellationTokenSource cts)
+    {
+        Func<Task> f = async () =>
+        {
+            cts.{|#0:Cancel|}();
+            await Task.Yield();
+        };
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"

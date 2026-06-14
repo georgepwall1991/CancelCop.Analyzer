@@ -28,6 +28,24 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ProtectedAsyncVoid_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    protected async void {|#0:ProcessAsync|}()
+    {
+        await Task.CompletedTask;
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC023").WithLocation(0).WithArguments("ProcessAsync");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task EventHandler_ShouldNotReportDiagnostic()
     {
         var test = @"
