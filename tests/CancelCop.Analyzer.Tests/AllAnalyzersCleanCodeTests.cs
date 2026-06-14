@@ -560,6 +560,49 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncLazyInitialization_ProducesNoDiagnostics()
+    {
+        // Async double-checked lazy init guarded by a SemaphoreSlim: WaitAsync(token), re-check, init,
+        // Release in finally. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class LazyService
+{
+    private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
+    private string? _value;
+
+    public async Task<string> GetAsync(CancellationToken cancellationToken)
+    {
+        if (_value is not null)
+            return _value;
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            _value ??= await LoadAsync(cancellationToken);
+            return _value;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private Task<string> LoadAsync(CancellationToken cancellationToken) => Task.FromResult(string.Empty);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticWhenAnyTimeoutRace_ProducesNoDiagnostics()
     {
         // Racing real work against Task.Delay(timeout, token) with Task.WhenAny is a common soft-timeout
