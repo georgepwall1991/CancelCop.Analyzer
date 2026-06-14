@@ -560,6 +560,41 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAccumulateTasksThenWhenAll_ProducesNoDiagnostics()
+    {
+        // Build a task list in a loop (per-iteration check, token-flowing starts), then await WhenAll.
+        // No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class BatchStarter
+{
+    public async Task RunAsync(IEnumerable<int> items, CancellationToken cancellationToken)
+    {
+        var tasks = new List<Task>();
+        foreach (var item in items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            tasks.Add(ProcessAsync(item, cancellationToken));
+        }
+        await Task.WhenAll(tasks);
+    }
+
+    private Task ProcessAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticTryWriteProducerLoop_ProducesNoDiagnostics()
     {
         // A producer using the non-blocking TryWrite into an unbounded channel, with a per-iteration
