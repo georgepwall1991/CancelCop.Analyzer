@@ -560,6 +560,41 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAwaitForeachWithEarlyBreak_ProducesNoDiagnostics()
+    {
+        // await foreach with WithCancellation(token), a per-item check, and an early break after a cap.
+        // No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class TopNCollector
+{
+    public async Task<List<int>> TakeAsync(IAsyncEnumerable<int> source, int max, CancellationToken cancellationToken)
+    {
+        var result = new List<int>();
+        await foreach (var item in source.WithCancellation(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            result.Add(item);
+            if (result.Count >= max)
+                break;
+        }
+        return result;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticGenericAsyncRepository_ProducesNoDiagnostics()
     {
         // A generic async method forwarding the token to a generic store. No analyzer fires (the token
