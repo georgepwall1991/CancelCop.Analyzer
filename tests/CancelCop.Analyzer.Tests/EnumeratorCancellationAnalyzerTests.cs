@@ -44,6 +44,32 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncIterator_WithUnmarkedDefaultedToken_ShouldReportDiagnostic()
+    {
+        // A default value does not mark the parameter; WithCancellation still cannot deliver a token to
+        // an unmarked iterator parameter, so CC011 fires.
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async IAsyncEnumerable<int> ReadAsync(CancellationToken {|#0:token|} = default)
+    {
+        yield return 1;
+        await Task.CompletedTask;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC011", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("token", "ReadAsync");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task AsyncIterator_WithMarkedToken_ShouldNotReportDiagnostic()
     {
         var test = @"
