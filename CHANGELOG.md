@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-06-14
+
+### Changed
+
+- **CC028** now also flags blocking `StreamReader.ReadToEnd()` and `StreamReader.ReadLine()` (in
+  addition to the `System.IO.File` read/write/append helpers), rewriting them to
+  `await reader.ReadToEndAsync(token)` / `await reader.ReadLineAsync(token)`. The diagnostic message
+  generalised from `File.<name>` to `<name>`; the rule remains Warning with a code fix.
+
 ## [1.25.2] - 2026-06-14
 
 ### Tests

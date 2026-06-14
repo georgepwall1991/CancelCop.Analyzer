@@ -133,6 +133,44 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamReaderReadToEnd_WithToken_BecomesAwaitReadToEndAsyncWithToken()
+    {
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var text = reader.{|#0:ReadToEnd|}();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var text = await reader.ReadToEndAsync(cancellationToken);
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadToEnd");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"

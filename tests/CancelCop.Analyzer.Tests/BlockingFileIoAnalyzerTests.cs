@@ -124,6 +124,45 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamReaderReadToEnd_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(StreamReader reader)
+    {
+        var text = reader.{|#0:ReadToEnd|}();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadToEnd");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task StreamReaderReadLine_InSyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+
+public class TestClass
+{
+    public string Run(StreamReader reader)
+    {
+        return reader.ReadLine();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task LookalikeFileType_ShouldNotReportDiagnostic()
     {
         // A user-defined 'File' type is not System.IO.File, so it must stay clean.

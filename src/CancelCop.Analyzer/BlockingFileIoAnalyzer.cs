@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -8,8 +9,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace CancelCop.Analyzer;
 
 /// <summary>
-/// Analyzer that detects a blocking synchronous <c>System.IO.File</c> call inside async code when an
-/// async counterpart (<c>File.&lt;name&gt;Async</c>) exists.
+/// Analyzer that detects a blocking synchronous <c>System.IO</c> call (<c>File</c> read/write/append
+/// helpers, or <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>) inside async code when an async
+/// counterpart (<c>&lt;name&gt;Async</c>) exists.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,9 +27,10 @@ namespace CancelCop.Analyzer;
 /// (<c>Task.Wait</c>/<c>.Result</c>) and CC026 (<c>SemaphoreSlim.Wait</c>).
 /// </para>
 /// <para>
-/// <b>What it detects:</b> a call to one of the well-known blocking <c>System.IO.File</c> methods
-/// (read/write/append helpers) that has an <c>&lt;name&gt;Async</c> counterpart, made inside an
-/// <c>async</c> method, local function, lambda, or anonymous method.
+/// <b>What it detects:</b> a call to one of the well-known blocking <c>System.IO</c> methods
+/// (<c>File</c> read/write/append helpers, or <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>) that has
+/// an <c>&lt;name&gt;Async</c> counterpart, made inside an <c>async</c> method, local function, lambda,
+/// or anonymous method.
 /// </para>
 /// </remarks>
 /// <example>
@@ -52,21 +55,23 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     public const string TokenNameProperty = "TokenName";
 
     /// <summary>
-    /// The blocking <c>System.IO.File</c> methods that have a documented async counterpart.
+    /// The blocking <c>System.IO</c> methods (keyed by declaring type) that have a documented async
+    /// counterpart of the form <c>&lt;name&gt;Async</c>.
     /// </summary>
-    private static readonly ImmutableHashSet<string> BlockingFileMethods = ImmutableHashSet.Create(
-        "ReadAllText",
-        "ReadAllBytes",
-        "ReadAllLines",
-        "WriteAllText",
-        "WriteAllBytes",
-        "WriteAllLines",
-        "AppendAllText",
-        "AppendAllLines");
+    private static readonly ImmutableDictionary<string, ImmutableHashSet<string>> BlockingMethodsByType =
+        ImmutableDictionary.CreateRange(new[]
+        {
+            new KeyValuePair<string, ImmutableHashSet<string>>("File", ImmutableHashSet.Create(
+                "ReadAllText", "ReadAllBytes", "ReadAllLines",
+                "WriteAllText", "WriteAllBytes", "WriteAllLines",
+                "AppendAllText", "AppendAllLines")),
+            new KeyValuePair<string, ImmutableHashSet<string>>("StreamReader", ImmutableHashSet.Create(
+                "ReadToEnd", "ReadLine")),
+        });
 
-    private static readonly LocalizableString Title = "Avoid blocking File I/O in async code";
-    private static readonly LocalizableString MessageFormat = "Blocking 'File.{0}' in async code; use 'File.{0}Async'";
-    private static readonly LocalizableString Description = "Synchronous System.IO.File calls block the thread in async code; use the async counterpart, which also accepts a CancellationToken.";
+    private static readonly LocalizableString Title = "Avoid blocking I/O in async code";
+    private static readonly LocalizableString MessageFormat = "Blocking '{0}' in async code; use '{0}Async'";
+    private static readonly LocalizableString Description = "Synchronous System.IO calls block the thread in async code; use the async counterpart, which also accepts a CancellationToken.";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -96,19 +101,21 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             return;
 
         var methodName = memberAccess.Name.Identifier.Text;
-        if (!BlockingFileMethods.Contains(methodName))
-            return;
 
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;
 
-        if (method.ContainingType?.Name != "File" ||
-            method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.IO")
+        var containingType = method.ContainingType;
+        if (containingType?.ContainingNamespace?.ToDisplayString() != "System.IO")
+            return;
+
+        if (!BlockingMethodsByType.TryGetValue(containingType.Name, out var blockingMethods) ||
+            !blockingMethods.Contains(methodName))
             return;
 
         // Only flag when the framework in use actually offers the async counterpart, so the suggestion
         // is always actionable.
-        if (!method.ContainingType.GetMembers(methodName + "Async").Any())
+        if (!containingType.GetMembers(methodName + "Async").Any())
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))

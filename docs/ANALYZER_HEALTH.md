@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.25.2 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.26.0 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.26.0: 434 tests (431 + 3 CC028 StreamReader coverage: analyzer fire/clean + fixer). Green locally.
+  CC028 generalised from `System.IO.File` to `System.IO` (now also `StreamReader.ReadToEnd`/`ReadLine`);
+  message format `File.<name>` → `<name>`. Type→method map is self-limiting via GetMembers(name+"Async").
 - v1.25.2: 431 tests (430 + 1 CC028 cross-analyzer clean FP-guard: idiomatic async File I/O). Green locally.
 - v1.25.1: 430 tests (429 + 1 CC028 named-argument fixer safety pin). Green locally. CC028 fixer uses
   the shared `AddTokenArgument` helper so a named-arg call stays valid (`cancellationToken: token`).
