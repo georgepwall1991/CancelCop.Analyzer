@@ -45,6 +45,28 @@ public class Worker : BackgroundService
     }
 
     [Fact]
+    public async Task ExpressionBodiedExecuteAsync_IgnoresStoppingToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+
+public class Worker : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken {|#0:stoppingToken|}) => RunForeverAsync();
+
+    private Task RunForeverAsync() => Task.CompletedTask;
+}";
+
+        var expected = new DiagnosticResult("CC017", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("stoppingToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ObservesStoppingToken_ShouldNotReportDiagnostic()
     {
         var test = @"

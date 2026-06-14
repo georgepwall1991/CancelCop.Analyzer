@@ -95,6 +95,24 @@ public class NotAHub
     }
 
     [Fact]
+    public async Task StaticHubMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
+
+public class ChatHub : Hub
+{
+    public static async Task Broadcast(string message)
+    {
+        await Task.CompletedTask;
+    }
+}" + HubStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task PrivateHubMethod_ShouldNotReportDiagnostic()
     {
         var test = @"

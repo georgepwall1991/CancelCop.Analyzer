@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.30] - 2026-06-14
+
+### Tests
+
+- Pinned three framework-rule edge cases: CC017 flags an expression-bodied `ExecuteAsync` that
+  ignores its stopping token; CC020 stays quiet when the token is observed via a local alias
+  (`var token = context.CancellationToken;`); CC018 does not flag a `static` hub method.
+
 ## [1.23.29] - 2026-06-14
 
 ### Tests

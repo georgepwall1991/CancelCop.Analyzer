@@ -65,6 +65,29 @@ public class GreeterService
     }
 
     [Fact]
+    public async Task GrpcMethod_ObservesTokenViaAlias_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    private Task SaveAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task<string> SayHello(string request, ServerCallContext context)
+    {
+        var token = context.CancellationToken;
+        await SaveAsync(token);
+        return ""hi"";
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GrpcMethod_PassesContextOn_ShouldNotReportDiagnostic()
     {
         var test = @"
