@@ -493,6 +493,38 @@ internal sealed class FileService
     }
 
     [Fact]
+    public async Task IdiomaticLinkedTokenSourceTimeout_ProducesNoDiagnostics()
+    {
+        // The canonical 'combine the caller's token with a timeout' idiom: a using-declared linked CTS,
+        // CancelAfter, and the linked token passed on. CC014 (disposal) is satisfied by `using var`,
+        // CC002 by passing linked.Token, and CC022 must not confuse CancelAfter with Cancel().
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class TimeoutService
+{
+    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        linked.CancelAfter(TimeSpan.FromSeconds(5));
+        return await ComputeAsync(linked.Token);
+    }
+
+    private Task<int> ComputeAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticLibraryStyleAsync_ProducesNoDiagnostics()
     {
         // Library-style async: ConfigureAwait(false) on every await, a ValueTask-returning method, an

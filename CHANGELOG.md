@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.9] - 2026-06-14
+
+### Tests
+
+- Added a clean-code FP guard for the linked-`CancellationTokenSource` timeout idiom
+  (`CreateLinkedTokenSource(token)` + `CancelAfter` + passing `linked.Token`), confirming CC014
+  (disposal via `using var`), CC002 (token passed on), and CC022 (`CancelAfter` ≠ `Cancel()`) all stay
+  quiet.
+
 ## [1.27.8] - 2026-06-14
 
 ### Tests
