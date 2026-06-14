@@ -560,6 +560,54 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticPaginationBatchLoop_ProducesNoDiagnostics()
+    {
+        // Page through a data source until a short page is returned, checking cancellation each page and
+        // flowing the token into the fetch and per-item handling. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class BatchProcessor
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        const int pageSize = 100;
+        int page = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var items = await FetchPageAsync(page, pageSize, cancellationToken);
+            foreach (var item in items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await HandleAsync(item, cancellationToken);
+            }
+
+            if (items.Count < pageSize)
+                break;
+
+            page++;
+        }
+    }
+
+    private Task<IReadOnlyList<int>> FetchPageAsync(int page, int size, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<int>>(new List<int>());
+
+    private Task HandleAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticEventToTaskBridge_ProducesNoDiagnostics()
     {
         // Bridging an event to a Task: subscribe, register cancellation on the TCS, await, unsubscribe
