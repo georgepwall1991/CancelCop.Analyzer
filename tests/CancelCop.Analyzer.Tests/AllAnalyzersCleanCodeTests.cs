@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncStreamAggregation_ProducesNoDiagnostics()
+    {
+        // Consuming an injected IAsyncEnumerable with .WithCancellation(token) and aggregating. CC010
+        // (token flowed) and the rest stay quiet.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class AggregationService
+{
+    public async Task<int> SumAsync(IAsyncEnumerable<int> source, CancellationToken cancellationToken)
+    {
+        int total = 0;
+        await foreach (var value in source.WithCancellation(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            total += value;
+        }
+        return total;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticReceiveLoop_ProducesNoDiagnostics()
     {
         // A message receive loop: condition checks the token, ReceiveAsync and handling both flow it.
