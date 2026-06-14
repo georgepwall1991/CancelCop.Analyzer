@@ -22,6 +22,33 @@ public class ControllerAnalyzerTests
     }
 
     [Fact]
+    public async Task ControllerAction_HttpPatch_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        // [HttpPatch] is an MVC HTTP-method attribute like the others, so a tokenless action carrying
+        // it is flagged.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpPatch]
+    public async Task<IActionResult> {|#0:PatchUser|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("PatchUser");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task ControllerAction_HttpGet_WithoutCancellationToken_ShouldReportDiagnostic()
     {
         var test = @"
