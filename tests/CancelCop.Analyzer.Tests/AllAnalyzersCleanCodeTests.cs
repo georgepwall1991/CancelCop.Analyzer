@@ -560,6 +560,44 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSemaphoreGatedSection_ProducesNoDiagnostics()
+    {
+        // The canonical async mutual-exclusion pattern: await WaitAsync(token), work in try, Release in
+        // finally. CC026 (no blocking Wait), CC002, and the rest must stay quiet.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class GatedService
+{
+    private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
+
+    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await ComputeAsync(cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private Task<int> ComputeAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticWhenAllFanOut_ProducesNoDiagnostics()
     {
         // Fan-out with Task.WhenAll over a LINQ projection that threads the token into each task.
