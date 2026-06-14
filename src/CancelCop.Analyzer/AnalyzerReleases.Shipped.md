@@ -1,3 +1,11 @@
+## Release 1.23.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC027 | Usage | Warning | Returned task uses a disposed using resource
+
 ## Release 1.22.0
 
 ### New Rules

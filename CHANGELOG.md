@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-06-14
+
+### Added
+
+- **New rule CC027 — a returned task must not use a disposed `using` resource.** A `using`
+  declaration disposes its resource when the method returns; if the method returns a task produced
+  by calling that resource (`return resource.DoAsync();`), the resource is disposed while the task is
+  still running, so the caller awaits an operation on a disposed object. CC027 flags a non-`async`
+  `Task`/`ValueTask`-returning method or local function where a `return` expression is a call whose
+  left-most receiver is a `using`-declared local. High confidence by design: only the receiver case
+  is flagged — a resource read synchronously into a completed task (e.g.
+  `Task.FromResult(resource.Value)`) is not. The fix is to make the method `async` and `await` the
+  call. Pinned by 5 new tests.
+
 ## [1.22.13] - 2026-06-14
 
 ### Tests

@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.22.13 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.0 hardening loop)
 
-A deliberately harsh health audit for the twenty-six implemented CancelCop rule IDs (CC001–CC006, CC009–CC026).
+A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new):** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC027 | Returned task uses a disposed `using` resource | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.23.0 (new):** flags a non-async `Task`-returning method/local function whose `return` is a call on a `using`-declared local — the resource is disposed before the returned task completes (premature disposal). High confidence: only the receiver case is flagged (a synchronous read into a completed task like `Task.FromResult(resource.Value)` is not). Analyzer-only (fix = make async + await). |
 | CC026 | `SemaphoreSlim.Wait()` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.22.0 (new):** flags a parameterless `SemaphoreSlim.Wait()` inside async code (a classic deadlock source); fixer → `await gate.WaitAsync(token)` flowing the in-scope token. Timeout/token `Wait` overloads excluded. Symbol-resolved to `System.Threading.SemaphoreSlim`. |
 | CC025 | Prefer `await using` for `IAsyncDisposable` | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.21.0 (new):** flags a `using` statement/declaration (no `await`) over an `IAsyncDisposable` resource in async code; fixer prepends `await`. Both the declaration (`using var x = …`) and statement (`using (…)`) forms, expression and variable receivers. Info. |
 | CC024 | `async` lambda converted to `Action` | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.20.0 (new):** the lambda counterpart of CC023. Flags an `async` lambda whose converted delegate type is `System.Action`/`Action<…>` (binds as async void). Catches the `Parallel.ForEach(..., async x => …)` trap. `Func<Task>` and event-handler delegates are not `Action`, so excluded. Analyzer-only (the right delegate depends on the consuming API). |
@@ -155,6 +156,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.0: 348 tests (343 + 5 for new rule CC027: return-task-from-using-resource positive;
+  completed-task-read, non-using-resource, async-await, unrelated-return negatives). Green locally.
 - v1.22.13: 343 tests (342 + 1 Minimal API clean-code FP guard). Every rule, including all framework
   rules, is now covered by a clean-code FP guard. Green locally.
 - v1.22.12: 342 tests (341 + 1 MediatR/SignalR clean-code FP guard — tokenized handler + hub method

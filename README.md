@@ -56,6 +56,7 @@ Install-Package CancelCop.Analyzer
 | **CC024** | Avoid `async` lambdas converted to `Action` | Warning | ❌ |
 | **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
 | **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
+| **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
 
 ## Quick Examples
 

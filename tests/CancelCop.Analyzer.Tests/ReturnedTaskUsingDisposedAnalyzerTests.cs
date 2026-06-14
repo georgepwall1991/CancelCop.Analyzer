@@ -1,0 +1,111 @@
+using Microsoft.CodeAnalysis.CSharp.Testing;
+using Microsoft.CodeAnalysis.Testing;
+using Xunit;
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerVerifier<
+    CancelCop.Analyzer.ReturnedTaskUsingDisposedAnalyzer,
+    Microsoft.CodeAnalysis.Testing.DefaultVerifier>;
+
+namespace CancelCop.Analyzer.Tests;
+
+public class ReturnedTaskUsingDisposedAnalyzerTests
+{
+    private const string Resource = @"
+public sealed class Resource : System.IDisposable
+{
+    public void Dispose() { }
+    public System.Threading.Tasks.Task<int> DoAsync() => System.Threading.Tasks.Task.FromResult(0);
+    public int Value => 0;
+}";
+
+    [Fact]
+    public async Task ReturnTaskFromUsingResource_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        return {|#0:resource.DoAsync()|};
+    }
+}" + Resource;
+
+        var expected = VerifyCS.Diagnostic("CC027").WithLocation(0).WithArguments("resource");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ReturnCompletedTaskReadingResource_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        return Task.FromResult(resource.Value);
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReturnTaskFromNonUsingResource_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        var resource = new Resource();
+        return resource.DoAsync();
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncMethod_AwaitsResource_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        return await resource.DoAsync();
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ReturnUnrelatedTask_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        resource.DoAsync();
+        return Task.FromResult(0);
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+}
