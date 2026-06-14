@@ -560,6 +560,50 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticManualAsyncDisposalInFinally_ProducesNoDiagnostics()
+    {
+        // Manual try/finally with await resource.DisposeAsync() is a valid alternative to await using;
+        // CC025 (which targets `using` forms) and the rest stay quiet.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IConnection : IAsyncDisposable
+{
+    Task<int> ReadAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class ManualDisposeService
+{
+    private readonly Func<CancellationToken, ValueTask<IConnection>> _connect;
+
+    public ManualDisposeService(Func<CancellationToken, ValueTask<IConnection>> connect) => _connect = connect;
+
+    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    {
+        var connection = await _connect(cancellationToken);
+        try
+        {
+            return await connection.ReadAsync(cancellationToken);
+        }
+        finally
+        {
+            await connection.DisposeAsync();
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticServerStreamingWriterLoop_ProducesNoDiagnostics()
     {
         // A server-streaming writer loop: cancellation check per iteration, token-flowing produce and
