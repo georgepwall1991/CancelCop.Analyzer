@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.37 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.38 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.38: 407 tests (404 + 3 Fix-All tests for the add-token handler fixers: CC005B, CC005C, CC018).
+  Green locally. Fix All now pinned for every fixer family: presence/handler (CC001, CC005B/C, CC018),
+  propagation (CC002-CC004), and the in-place/import-adding fixers (CC010-CC015, CC022, CC023, CC025,
+  CC026). Only the line-inserting fixers (CC009 loop-guard, CC019 rethrow-guard) remain single-site only.
 - v1.23.37: 404 tests (401 + 3 Fix-All tests for the propagation fixers: CC002, CC003, CC004). Green
   locally. Fix All is now pinned for every multi-site fixer: CC001-CC004, CC010-CC015, CC022, CC023,
   CC025, CC026.

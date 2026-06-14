@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.38] - 2026-06-14
+
+### Tests
+
+- Added Fix All correctness tests for the add-token handler fixers across all three handler families:
+  CC005B (two controller actions), CC005C (two Minimal API endpoint lambdas), and CC018 (two SignalR
+  Hub methods). Confirms `HandlerPatternCodeFixProvider` and `MinimalApiCodeFixProvider` insert the
+  token parameter at every flagged site when run as a batch fix.
+
 ## [1.23.37] - 2026-06-14
 
 ### Tests

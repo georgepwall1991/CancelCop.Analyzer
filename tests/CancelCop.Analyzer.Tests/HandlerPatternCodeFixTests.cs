@@ -60,6 +60,68 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
     }
 
     [Fact]
+    public async Task FixAll_TwoControllerActions_BothGetTokenParameter()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> {|#0:GetUsers|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> {|#1:GetAdmins|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAdmins(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var test2 = new CSharpCodeFixTest<ControllerAnalyzer, HandlerPatternCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("Microsoft.AspNetCore.Mvc.Core", "2.2.5"))),
+        };
+
+        test2.ExpectedDiagnostics.Add(new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("GetUsers"));
+        test2.ExpectedDiagnostics.Add(new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(1).WithArguments("GetAdmins"));
+        await test2.RunAsync();
+    }
+
+    [Fact]
     public async Task ControllerAction_WithoutToken_AddsTokenParameter()
     {
         var test = @"
