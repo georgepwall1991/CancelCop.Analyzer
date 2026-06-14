@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.17] - 2026-06-14
+
+### Added
+
+- `helpLinkUri` extended to CC016–CC021 (continuing the rollout).
+
 ## [1.23.16] - 2026-06-14
 
 ### Added
