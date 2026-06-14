@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.7] - 2026-06-14
+
+### Tests
+
+- Added a mixed-type CC028 Fix All test (a `File` helper and a `StreamReader.ReadToEnd()` rewritten in
+  one batch), confirming the batch fixer spans the generalized `System.IO` type map.
+
 ## [1.26.6] - 2026-06-14
 
 ### Tests

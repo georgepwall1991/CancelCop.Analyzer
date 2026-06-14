@@ -363,6 +363,50 @@ public class TestClass
     }
 
     [Fact]
+    public async Task FixAll_MixedFileAndStreamReader_BothBecomeAsync()
+    {
+        // Fix All must rewrite across the generalized type map in one batch: a File helper and a
+        // StreamReader read in the same method.
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, StreamReader reader, CancellationToken cancellationToken)
+    {
+        var a = File.{|#0:ReadAllText|}(path);
+        var b = reader.{|#1:ReadToEnd|}();
+        _ = a + b;
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, StreamReader reader, CancellationToken cancellationToken)
+    {
+        var a = await File.ReadAllTextAsync(path, cancellationToken);
+        var b = await reader.ReadToEndAsync(cancellationToken);
+        _ = a + b;
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(
+            test,
+            fixedCode,
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("ReadAllText"),
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("ReadToEnd")).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"
