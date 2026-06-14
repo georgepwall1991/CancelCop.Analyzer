@@ -560,6 +560,37 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticWhenAllThenLinqAggregate_ProducesNoDiagnostics()
+    {
+        // Fan-out with WhenAll (token flowed per task), then LINQ aggregation over the materialized
+        // results. WhenAll has no token overload (CC002 quiet). No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class StatsService
+{
+    public async Task<int> TotalAsync(IEnumerable<int> ids, CancellationToken cancellationToken)
+    {
+        var results = await Task.WhenAll(ids.Select(id => SizeAsync(id, cancellationToken)));
+        return results.Where(r => r > 0).Sum();
+    }
+
+    private Task<int> SizeAsync(int id, CancellationToken cancellationToken) => Task.FromResult(id);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAwaitForeachWithEarlyBreak_ProducesNoDiagnostics()
     {
         // await foreach with WithCancellation(token), a per-item check, and an early break after a cap.
