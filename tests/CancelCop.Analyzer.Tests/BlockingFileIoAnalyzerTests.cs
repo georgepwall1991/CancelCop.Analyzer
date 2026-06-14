@@ -68,6 +68,35 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReadAllText_InAsyncLocalFunction_ShouldReportDiagnostic()
+    {
+        // The async-context gate covers nested async functions, so a blocking File call inside an
+        // async local function is flagged.
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure(string path)
+    {
+        async Task LoadAsync()
+        {
+            var text = File.{|#0:ReadAllText|}(path);
+            _ = text;
+            await Task.Yield();
+        }
+
+        _ = LoadAsync();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadAllText");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task ReadAllText_InSyncMethod_ShouldNotReportDiagnostic()
     {
         // The blocking-in-async family only fires inside async code.

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.26.7 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.26.8 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.26.8: 443 tests (442 + 1 CC028 async-local-function pin). Green locally. **28 rules, fully covered:
+  every rule has a clean-code FP guard and every fixer has a Fix-All + receiver-correctness pin.**
 - v1.26.7: 442 tests (441 + 1 CC028 mixed-type Fix-All: File + StreamReader in one batch). Green locally.
 - v1.26.6: 441 tests (439 + 2 CC028 parenthesization branches: element access, conditional access).
   Green locally.

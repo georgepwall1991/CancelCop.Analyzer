@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.8] - 2026-06-14
+
+### Tests
+
+- Pinned CC028 firing inside an async local function (nested async context), completing the
+  async-context coverage for the rule.
+
 ## [1.26.7] - 2026-06-14
 
 ### Tests
