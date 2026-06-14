@@ -88,6 +88,32 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Cancel_InAsyncLocalFunction_ShouldReportDiagnostic()
+    {
+        // The async-context check covers nested async local functions, like the lambda case.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure(CancellationTokenSource cts)
+    {
+        async Task StopAsync()
+        {
+            cts.{|#0:Cancel|}();
+            await Task.Yield();
+        }
+
+        _ = StopAsync();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
