@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticCooperativeYieldLoop_ProducesNoDiagnostics()
+    {
+        // A loop that yields cooperatively with Task.Yield() (no token overload, so CC002 is quiet),
+        // a per-iteration cancellation check, and token-flowing work. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class CooperativeWorker
+{
+    public async Task RunAsync(int count, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
+            await StepAsync(i, cancellationToken);
+        }
+    }
+
+    private Task StepAsync(int i, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticArrayPoolRentReturn_ProducesNoDiagnostics()
     {
         // Renting a buffer from ArrayPool, reading into it with a token-flowing ReadAsync, returning it
