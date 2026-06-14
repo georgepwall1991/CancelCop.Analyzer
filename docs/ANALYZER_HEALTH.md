@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.21 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.22 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.22: docs only — added the missing CC027 README Quick Examples section (all 27 rules now have
+  one). 364 tests unchanged.
 - v1.23.21: 364 tests (363 + 1 CC005A non-handler look-alike non-FP pin). Green locally.
 - v1.23.20: 363 tests (362 + 1 resource-lifecycle clean-code FP guard). Green locally.
 - v1.23.19: 362 tests (361 + 1 CC005C→CC002 cascade pin). Green locally.

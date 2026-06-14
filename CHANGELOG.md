@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.22] - 2026-06-14
+
+### Documentation
+
+- Added the missing CC027 "Quick Examples" section to the packaged README, restoring per-rule
+  example parity (all 27 rules now have a violation-and-fix snippet).
+
 ## [1.23.21] - 2026-06-14
 
 ### Tests

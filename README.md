@@ -417,6 +417,24 @@ public async Task RunAsync(SemaphoreSlim gate, CancellationToken ct)
 }
 ```
 
+### CC027: Returned Task Uses a Disposed `using` Resource
+
+```csharp
+// ❌ Warning CC027 - the stream is disposed before the returned task completes
+public Task<byte[]> ReadAsync(string path)
+{
+    using var stream = File.OpenRead(path);
+    return ReadAllBytesAsync(stream);
+}
+
+// ✅ Fixed - make the method async so the resource lives until completion
+public async Task<byte[]> ReadAsync(string path)
+{
+    using var stream = File.OpenRead(path);
+    return await ReadAllBytesAsync(stream);
+}
+```
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
