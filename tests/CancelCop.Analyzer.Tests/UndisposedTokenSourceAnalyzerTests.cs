@@ -125,6 +125,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AssignedToField_ShouldNotReportDiagnostic()
+    {
+        // A CTS stored in a field escapes the method's scope — ownership (and disposal) moves to the
+        // instance, so CC014 must not flag the local.
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    private CancellationTokenSource _cts;
+
+    public void Init()
+    {
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+    }
+
+    public void Dispose() => _cts.Dispose();
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task PassedAsArgument_ShouldNotReportDiagnostic()
     {
         var test = @"

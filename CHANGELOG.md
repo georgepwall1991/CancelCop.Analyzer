@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.17] - 2026-06-14
+
+### Tests
+
+- Added a CC014 escape-analysis pin: a locally-created `CancellationTokenSource` assigned to a field
+  (ownership moves to the instance) is not flagged as undisposed — complements the existing returned /
+  passed-as-argument / captured-by-lambda escape negatives.
+
+## [1.27.14] - 2026-06-14
+
+### Tests
+
+- Pinned CC015 firing on `.Result` inside a static async method (static-context coverage).
+
+## [1.27.13] - 2026-06-14
+
+### Tests
+
+- Pinned CC013 firing on `Thread.Sleep` inside a static async method (static-context coverage).
+
 ## [1.27.12] - 2026-06-14
 
 ### Tests
