@@ -560,6 +560,45 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticParallelForEachAsyncWithOptions_ProducesNoDiagnostics()
+    {
+        // Parallel.ForEachAsync with a ParallelOptions carrying the token (and MaxDegreeOfParallelism);
+        // the async body converts to a Func<...ValueTask> (not Action), so CC024 stays quiet. No
+        // analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ParallelImporter
+{
+    public async Task RunAsync(IEnumerable<int> items, CancellationToken cancellationToken)
+    {
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = 4,
+            CancellationToken = cancellationToken,
+        };
+
+        await Parallel.ForEachAsync(items, options, async (item, token) =>
+        {
+            await ProcessAsync(item, token);
+        });
+    }
+
+    private ValueTask ProcessAsync(int item, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticConditionalAwait_ProducesNoDiagnostics()
     {
         // A partially-async method: one branch returns synchronously, the other awaits token-flowing
