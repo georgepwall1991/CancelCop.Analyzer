@@ -493,6 +493,41 @@ internal sealed class FileService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncIteratorProducer_ProducesNoDiagnostics()
+    {
+        // A correctly-written async-stream producer: [EnumeratorCancellation] token, a loop with an
+        // explicit cancellation check, and awaited work flowing the token. It must satisfy CC011 (the
+        // attribute), CC016 (the token is consumed by the iterator), CC009 (the loop check), and CC001
+        // (it has a token) — i.e. zero diagnostics across every analyzer.
+        var code = @"
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class StreamProducer
+{
+    public async IAsyncEnumerable<int> ProduceAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(10, cancellationToken);
+            yield return i;
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticLinkedTokenSourceTimeout_ProducesNoDiagnostics()
     {
         // The canonical 'combine the caller's token with a timeout' idiom: a using-declared linked CTS,

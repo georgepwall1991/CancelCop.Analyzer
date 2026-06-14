@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.12] - 2026-06-14
+
+### Tests
+
+- Added a cross-cutting clean-code guard for the canonical async-stream producer (an
+  `[EnumeratorCancellation]` iterator with a cancellation-checked loop flowing the token), confirming
+  it is clean across every analyzer — CC011 (attribute), CC016 (token consumed by the iterator, per the
+  1.27.11 fix), CC009 (loop check), and CC001 (has a token).
+
 ## [1.27.11] - 2026-06-14
 
 ### Fixed
