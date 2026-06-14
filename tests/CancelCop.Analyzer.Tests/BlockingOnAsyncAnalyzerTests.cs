@@ -19,6 +19,29 @@ public class TestClass
 ";
 
     [Fact]
+    public async Task Result_InSyncLocalFunctionInsideAsync_ShouldNotReportDiagnostic()
+    {
+        // The async-context check stops at the first function boundary, so `.Result` inside a
+        // synchronous local function nested in an async method is correctly not flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task<int> GetValueAsync() => Task.FromResult(0);
+
+    public async Task RunAsync()
+    {
+        int Block() => GetValueAsync().Result;
+        _ = Block();
+        await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Result_OnFieldTask_ShouldReportDiagnostic()
     {
         // The rule is receiver-agnostic: `.Result` on a Task-typed field blocks just as a call result
