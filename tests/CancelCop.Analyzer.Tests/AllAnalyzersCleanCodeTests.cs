@@ -560,6 +560,47 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSwitchStatementWithAwaitedBranches_ProducesNoDiagnostics()
+    {
+        // A switch statement whose branches each await a token-flowing operation. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal enum Command { Read, Write, Delete }
+
+internal sealed class CommandHandler
+{
+    public async Task<int> HandleAsync(Command command, CancellationToken cancellationToken)
+    {
+        switch (command)
+        {
+            case Command.Read:
+                return await ReadAsync(cancellationToken);
+            case Command.Write:
+                await WriteAsync(cancellationToken);
+                return 0;
+            default:
+                await DeleteAsync(cancellationToken);
+                return -1;
+        }
+    }
+
+    private Task<int> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+    private Task WriteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private Task DeleteAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSpecificCatchWithAsyncCleanup_ProducesNoDiagnostics()
     {
         // try with token-flowing work, a specific (non-broad) catch, and async cleanup in finally.
