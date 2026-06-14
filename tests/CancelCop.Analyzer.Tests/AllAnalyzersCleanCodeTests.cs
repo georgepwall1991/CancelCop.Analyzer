@@ -560,6 +560,38 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticHeterogeneousWhenAll_ProducesNoDiagnostics()
+    {
+        // Awaiting two differently-typed tasks together by starting both (token-flowing) and awaiting
+        // each after a combined WhenAll. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class CompositeLoader
+{
+    public async Task<(int, string)> LoadAsync(CancellationToken cancellationToken)
+    {
+        var countTask = CountAsync(cancellationToken);
+        var nameTask = NameAsync(cancellationToken);
+        await Task.WhenAll(countTask, nameTask);
+        return (await countTask, await nameTask);
+    }
+
+    private Task<int> CountAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+    private Task<string> NameAsync(CancellationToken cancellationToken) => Task.FromResult(string.Empty);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSwitchStatementWithAwaitedBranches_ProducesNoDiagnostics()
     {
         // A switch statement whose branches each await a token-flowing operation. No analyzer fires.
@@ -861,6 +893,7 @@ internal sealed class DownloadService
         // A manual buffered copy loop: cancellation check per chunk, ReadAsync/WriteAsync both flow the
         // token. No analyzer fires.
         var code = @"
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -871,7 +904,7 @@ internal sealed class CopyService
     {
         var buffer = new byte[81920];
         int read;
-        while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
+        while ((read = await input.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
