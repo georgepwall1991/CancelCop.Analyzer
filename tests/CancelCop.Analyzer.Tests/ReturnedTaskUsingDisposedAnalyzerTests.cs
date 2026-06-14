@@ -37,6 +37,27 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReturnTaskFromUsingStatementResource_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        using (var resource = new Resource())
+        {
+            return {|#0:resource.DoAsync()|};
+        }
+    }
+}" + Resource;
+
+        var expected = VerifyCS.Diagnostic("CC027").WithLocation(0).WithArguments("resource");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ReturnCompletedTaskReadingResource_ShouldNotReportDiagnostic()
     {
         var test = @"

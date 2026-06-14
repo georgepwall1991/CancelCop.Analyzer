@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -156,6 +156,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.1: 349 tests (348 + 1 CC027 using-statement coverage — `using (var r = ...) { return r... }`
+  is flagged too). Green locally.
 - v1.23.0: 348 tests (343 + 5 for new rule CC027: return-task-from-using-resource positive;
   completed-task-read, non-using-resource, async-await, unrelated-return negatives). Green locally.
 - v1.22.13: 343 tests (342 + 1 Minimal API clean-code FP guard). Every rule, including all framework

@@ -97,13 +97,22 @@ public class ReturnedTaskUsingDisposedAnalyzer : DiagnosticAnalyzer
                 context.SemanticModel.GetTypeInfo(returnType, context.CancellationToken).Type))
             return;
 
-        // Collect the `using` declaration locals that belong to this body (not a nested function).
+        // Collect the locals declared by a `using` (declaration or statement) that belong to this
+        // body (not a nested function). Both forms dispose the resource before the returned task
+        // completes.
         var usingLocals = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var declaration in DescendantsInOwnScope(body).OfType<LocalDeclarationStatementSyntax>())
+        foreach (var node in DescendantsInOwnScope(body))
         {
-            if (declaration.UsingKeyword.IsKind(SyntaxKind.None))
+            VariableDeclarationSyntax? usingDeclaration = node switch
+            {
+                LocalDeclarationStatementSyntax local when !local.UsingKeyword.IsKind(SyntaxKind.None) => local.Declaration,
+                UsingStatementSyntax usingStatement => usingStatement.Declaration,
+                _ => null,
+            };
+            if (usingDeclaration == null)
                 continue;
-            foreach (var variable in declaration.Declaration.Variables)
+
+            foreach (var variable in usingDeclaration.Variables)
             {
                 if (context.SemanticModel.GetDeclaredSymbol(variable, context.CancellationToken) is ILocalSymbol local)
                     usingLocals.Add(local);

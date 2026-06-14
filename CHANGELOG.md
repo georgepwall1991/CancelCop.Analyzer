@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.1] - 2026-06-14
+
+### Fixed
+
+- **CC027** now also covers the `using` *statement* form, not just `using` declarations:
+  `using (var r = ...) { return r.DoAsync(); }` disposes `r` before the returned task completes just
+  as `using var r = ...; return r.DoAsync();` does. Pinned by 1 new test.
+
 ## [1.23.0] - 2026-06-14
 
 ### Added
