@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.28 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.29 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.29: 380 tests (377 + 3 edge pins: CC013 in `async delegate`, CC015/CC026 in an async local
+  function). Green locally.
 - v1.23.28: 377 tests (374 + 3 edge pins: CC015 ValueTask GetResult, CC024 `Action<T>`, CC010 in a
   capturing local function). Green locally.
 - v1.23.27: 374 tests (371 + 3 edge pins: CC016 ctor-arg use, CC019 `throw ex;` rethrow, CC012

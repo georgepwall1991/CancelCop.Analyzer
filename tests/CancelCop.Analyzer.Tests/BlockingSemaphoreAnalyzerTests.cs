@@ -54,6 +54,31 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Wait_InAsyncLocalFunction_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Outer(SemaphoreSlim gate)
+    {
+        async Task LocalAsync()
+        {
+            gate.{|#0:Wait|}();
+            await Task.Yield();
+        }
+
+        _ = LocalAsync();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Wait_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.29] - 2026-06-14
+
+### Tests
+
+- Pinned the blocking rules across every async function kind: CC013 fires in an `async delegate`
+  anonymous method, and CC015/CC026 fire inside an `async` local function (exercising the shared
+  `IsInAsyncFunction` for methods, local functions, lambdas, and anonymous methods).
+
 ## [1.23.28] - 2026-06-14
 
 ### Tests

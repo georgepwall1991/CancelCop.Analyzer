@@ -113,6 +113,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ThreadSleep_InAsyncAnonymousMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Register()
+    {
+        Func<Task> f = async delegate
+        {
+            {|#0:Thread.Sleep(1000)|};
+            await Task.Yield();
+        };
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ThreadSleep_InSyncLambdaInsideAsyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
