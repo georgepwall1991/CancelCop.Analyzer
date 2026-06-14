@@ -148,8 +148,16 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
             // cts.Dispose() / cts.DisposeAsync()
             if (parent is MemberAccessExpressionSyntax memberAccess &&
                 memberAccess.Expression == reference &&
-                (memberAccess.Name.Identifier.Text == "Dispose" ||
-                 memberAccess.Name.Identifier.Text == "DisposeAsync"))
+                IsDisposeName(memberAccess.Name.Identifier.Text))
+            {
+                return true;
+            }
+
+            // cts?.Dispose() / cts?.DisposeAsync() — the null-conditional form.
+            if (parent is ConditionalAccessExpressionSyntax conditional &&
+                conditional.Expression == reference &&
+                conditional.WhenNotNull is InvocationExpressionSyntax { Expression: MemberBindingExpressionSyntax binding } &&
+                IsDisposeName(binding.Name.Identifier.Text))
             {
                 return true;
             }
@@ -168,4 +176,6 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
 
         return false;
     }
+
+    private static bool IsDisposeName(string name) => name is "Dispose" or "DisposeAsync";
 }

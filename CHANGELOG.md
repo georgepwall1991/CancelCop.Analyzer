@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.2] - 2026-06-14
+
+### Fixed
+
+- **CC014 false positive:** a `CancellationTokenSource` disposed through the null-conditional
+  `cts?.Dispose()` (or `cts?.DisposeAsync()`) was still flagged as undisposed — the analyzer only
+  recognised the plain `cts.Dispose()` member access, not the `ConditionalAccessExpression` form. It
+  now treats both as disposal. Pinned by 1 new test.
+
 ## [1.23.1] - 2026-06-14
 
 ### Fixed

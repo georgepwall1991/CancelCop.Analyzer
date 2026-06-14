@@ -68,6 +68,25 @@ public class TestClass
     }
 
     [Fact]
+    public async Task DisposedViaNullConditional_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        cts?.Dispose();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Returned_ShouldNotReportDiagnostic()
     {
         var test = @"
