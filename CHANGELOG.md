@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.4] - 2026-06-14
+
+### Docs
+
+- Completed the CC028 sample (`CC028_BlockingFileIo.cs`) with a `StreamReader.ReadToEnd()` →
+  `await reader.ReadToEndAsync(token)` before/after, matching the rule's broadened scope.
+
 ## [1.26.3] - 2026-06-14
 
 ### Tests

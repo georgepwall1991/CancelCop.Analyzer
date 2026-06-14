@@ -11,8 +11,9 @@
 // CC013 (Thread.Sleep), CC015 (Task.Wait/.Result) and CC026 (SemaphoreSlim.Wait).
 //
 // THE RULE:
-// - Flags a well-known blocking System.IO.File method (read/write/append helpers)
-//   that has an <name>Async counterpart, called inside async code.
+// - Flags a well-known blocking System.IO method that has an <name>Async
+//   counterpart, called inside async code: the System.IO.File read/write/append
+//   helpers, and StreamReader.ReadToEnd()/ReadLine().
 // =============================================================================
 
 using System.IO;
@@ -38,5 +39,19 @@ public class CC028_BlockingFileIo
     public async Task<string> LoadGood(string path, CancellationToken cancellationToken)
     {
         return await File.ReadAllTextAsync(path, cancellationToken);
+    }
+
+    // VIOLATION (CC028 warns here too — StreamReader.ReadToEnd blocks)
+    public async Task<string> DrainBad(StreamReader reader)
+    {
+        var text = reader.ReadToEnd();
+        await Task.Yield();
+        return text;
+    }
+
+    // FIXED
+    public async Task<string> DrainGood(StreamReader reader, CancellationToken cancellationToken)
+    {
+        return await reader.ReadToEndAsync(cancellationToken);
     }
 }
