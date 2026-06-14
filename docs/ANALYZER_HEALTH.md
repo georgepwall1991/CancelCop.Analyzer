@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.3x hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.173 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,6 +168,17 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.173: 625 tests, green locally. **Capstone of the second 100-iteration hardening loop.** This
+  run landed three real bug fixes — **CC002/003/004 incompatible-overload FP** (type-compatible token
+  overload required, with ordinal-aware generic matching), **CC016 `[EnumeratorCancellation]` FP**, and
+  the **CC016/CC014/CC027 escape/receiver** confirmations — plus CC028 write-side coverage
+  (`StreamWriter.Write`/`WriteLine`/`Flush`), and a large, diverse battery of cross-analyzer clean-code
+  FP guards in `AllAnalyzersCleanCodeTests` covering real-world async shapes (raw Stream I/O, HttpClient
+  streaming, Channels producer/consumer + WaitToReadAsync, Parallel.ForEachAsync, PeriodicTimer,
+  retry/backoff, semaphore-gated and bounded-concurrency sections, async generators/transform pipelines,
+  background-task lifecycle, transaction commit/rollback, ArrayPool, Lazy<Task>, and more). The analyzer
+  remains feature-complete and FP-clean; every rule has a clean-code guard and every fixer has
+  Fix-All + receiver-correctness coverage.
 - v1.27.3x: ~477 tests, green locally. This hardening loop landed three real bug fixes, now reflected
   in the scorecard above: **CC002/003/004 incompatible-overload FP** (require a type-compatible token
   overload; ordinal-aware generic match), **CC016 `[EnumeratorCancellation]` FP** (excluded), plus the

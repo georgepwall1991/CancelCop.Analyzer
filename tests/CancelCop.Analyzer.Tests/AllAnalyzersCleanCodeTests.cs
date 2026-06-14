@@ -560,6 +560,50 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticEtlIngestionPipeline_ProducesNoDiagnostics()
+    {
+        // Capstone: a realistic ETL pipeline combining await foreach over a token-flowing source
+        // (CC010), a per-item cancellation check (CC009), token-flowing transform/write/flush (CC002),
+        // an entry guard, and token-flowing transform/write/flush (CC002). Every analyzer must stay silent.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface ISink
+{
+    Task WriteAsync(int value, CancellationToken cancellationToken);
+    Task FlushAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class IngestionService
+{
+    public async Task IngestAsync(IAsyncEnumerable<int> source, ISink sink, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await foreach (var raw in source.WithCancellation(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var transformed = await TransformAsync(raw, cancellationToken);
+            await sink.WriteAsync(transformed, cancellationToken);
+        }
+
+        await sink.FlushAsync(cancellationToken);
+    }
+
+    private Task<int> TransformAsync(int raw, CancellationToken cancellationToken) => Task.FromResult(raw * 2);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticRegisterWithState_ProducesNoDiagnostics()
     {
         // The closure-free Register(callback, state) overload, registration disposed via await using,
