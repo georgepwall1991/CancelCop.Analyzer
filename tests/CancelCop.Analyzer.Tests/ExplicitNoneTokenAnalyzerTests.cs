@@ -38,6 +38,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task None_InAsyncLocalFunction_WhenTokenInScope_ShouldReportDiagnostic()
+    {
+        // The token is in scope of a nested async local function via the shared scope walk, so an
+        // explicit None bound to a token parameter there is flagged too.
+        var test = Harness + @"
+    public void Configure(CancellationToken cancellationToken)
+    {
+        async Task RunAsync()
+        {
+            await DoAsync({|#0:CancellationToken.None|});
+        }
+
+        _ = RunAsync();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC012")
+            .WithLocation(0)
+            .WithArguments("CancellationToken.None", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task DefaultLiteral_WhenTokenInScope_ShouldReportDiagnostic()
     {
         var test = Harness + @"
