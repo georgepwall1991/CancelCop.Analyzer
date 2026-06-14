@@ -560,6 +560,42 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticValueTaskCacheFastPath_ProducesNoDiagnostics()
+    {
+        // A ValueTask-returning method with a synchronous cache fast-path and a token-flowing slow path.
+        // The token is observed (slow path), so CC016 must not fire, and nothing else should either.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class CachingService
+{
+    private readonly Dictionary<int, string> _cache = new();
+
+    public async ValueTask<string> GetAsync(int key, CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue(key, out var cached))
+            return cached;
+
+        var value = await LoadAsync(key, cancellationToken);
+        _cache[key] = value;
+        return value;
+    }
+
+    private Task<string> LoadAsync(int key, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticHttpPollingLoop_ProducesNoDiagnostics()
     {
         // A poll-until-cancelled loop: condition checks the token, the HTTP call and the delay both flow
