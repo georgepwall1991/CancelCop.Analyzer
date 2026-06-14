@@ -560,6 +560,57 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncIteratorWithFinallyCleanup_ProducesNoDiagnostics()
+    {
+        // An async iterator that opens a resource, yields token-flowing results, and disposes in
+        // finally. [EnumeratorCancellation] (CC011), loop check (CC009), token-flowing work. No analyzer
+        // fires.
+        var code = @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface ICursor : IAsyncDisposable
+{
+    Task<int> NextAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class CursorReader
+{
+    private readonly Func<CancellationToken, ValueTask<ICursor>> _open;
+
+    public CursorReader(Func<CancellationToken, ValueTask<ICursor>> open) => _open = open;
+
+    public async IAsyncEnumerable<int> ReadAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var cursor = await _open(cancellationToken);
+        try
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return await cursor.NextAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            await cursor.DisposeAsync();
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticParallelForEachAsyncWithOptions_ProducesNoDiagnostics()
     {
         // Parallel.ForEachAsync with a ParallelOptions carrying the token (and MaxDegreeOfParallelism);
