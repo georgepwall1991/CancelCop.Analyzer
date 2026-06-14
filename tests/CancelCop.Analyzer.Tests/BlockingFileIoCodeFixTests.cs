@@ -285,6 +285,84 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ResultUsedWithElementAccess_ParenthesizesAwait()
+    {
+        // File.ReadAllLines(p)[0] -> (await File.ReadAllLinesAsync(p, token))[0]
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var first = File.{|#0:ReadAllLines|}(p)[0];
+        await Task.Yield();
+        return first;
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var first = (await File.ReadAllLinesAsync(p, cancellationToken))[0];
+        await Task.Yield();
+        return first;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadAllLines");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ResultUsedWithConditionalAccess_ParenthesizesAwait()
+    {
+        // reader.ReadLine()?.Trim() -> (await reader.ReadLineAsync(token))?.Trim()
+        var test = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var t = reader.{|#0:ReadLine|}()?.Trim();
+        _ = t;
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var t = (await reader.ReadLineAsync(cancellationToken))?.Trim();
+        _ = t;
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
         var test = @"

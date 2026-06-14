@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.6] - 2026-06-14
+
+### Tests
+
+- Pinned the remaining receiver shapes of the CC028 fix parenthesization: element access
+  (`File.ReadAllLines(p)[0]`) and conditional access (`reader.ReadLine()?.Trim()`) both wrap the
+  inserted `await` correctly.
+
 ## [1.26.5] - 2026-06-14
 
 ### Fixed
