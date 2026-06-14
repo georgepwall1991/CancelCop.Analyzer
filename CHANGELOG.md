@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.6] - 2026-06-14
+
+### Tests
+
+- Added a multi-occurrence fixer test for CC013 (two `Thread.Sleep` calls in one method, both
+  rewritten to `await Task.Delay(..., ct)`), exercising the batch/iterative fix-application path.
+
 ## [1.23.5] - 2026-06-14
 
 ### Documentation

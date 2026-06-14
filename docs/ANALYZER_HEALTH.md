@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.5 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.6 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.6: 354 tests (353 + 1 CC013 multi-occurrence fixer test — two Thread.Sleep calls both
+  rewritten). Green locally.
 - v1.23.5: docs only — refreshed the health doc's narrative sections to the 27-rule state. 353 tests
   unchanged.
 - v1.23.4: 353 tests (352 + 1 CC027 non-async `using` clean-code FP guard). Green locally.
