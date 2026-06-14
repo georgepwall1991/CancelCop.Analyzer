@@ -560,6 +560,42 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSoftCancelReturningDefault_ProducesNoDiagnostics()
+    {
+        // Catching OperationCanceledException specifically (not a broad catch) to return a sentinel on
+        // soft-cancel is a deliberate choice CC019 does not flag (it targets broad swallowing catches).
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class SoftCancelService
+{
+    public async Task<int> TryComputeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ComputeAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return -1;
+        }
+    }
+
+    private Task<int> ComputeAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticCooperativeYieldLoop_ProducesNoDiagnostics()
     {
         // A loop that yields cooperatively with Task.Yield() (no token overload, so CC002 is quiet),
