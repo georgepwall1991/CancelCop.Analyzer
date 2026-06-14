@@ -560,6 +560,38 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticProgressReportingLoop_ProducesNoDiagnostics()
+    {
+        // A progress-reporting loop: cancellation check each iteration, token-flowing await, and
+        // IProgress<T>.Report. Nothing may fire.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ImportService
+{
+    public async Task RunAsync(int count, IProgress<int> progress, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(10, cancellationToken);
+            progress.Report(i);
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSemaphoreGatedSection_ProducesNoDiagnostics()
     {
         // The canonical async mutual-exclusion pattern: await WaitAsync(token), work in try, Release in
