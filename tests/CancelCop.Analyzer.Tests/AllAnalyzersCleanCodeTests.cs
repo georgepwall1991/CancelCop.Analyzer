@@ -560,6 +560,50 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncGeneratorPaging_ProducesNoDiagnostics()
+    {
+        // An async generator that pages a source and yields items: [EnumeratorCancellation] token
+        // (CC011), checks in both loops (CC009), token-flowing fetch (CC002). No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class PagingGenerator
+{
+    public async IAsyncEnumerable<int> StreamAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        int page = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var items = await FetchAsync(page++, cancellationToken);
+            if (items.Count == 0)
+                yield break;
+
+            foreach (var item in items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return item;
+            }
+        }
+    }
+
+    private Task<IReadOnlyList<int>> FetchAsync(int page, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<int>>(new List<int>());
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticCatchWithTokenFilter_ProducesNoDiagnostics()
     {
         // A broad catch guarded by a when-filter that lets cancellation propagate (rethrow on cancel)
