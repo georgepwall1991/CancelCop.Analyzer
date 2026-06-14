@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.3] - 2026-06-14
+
+### Tests
+
+- Pinned two CC028 negatives for the `StreamReader` branch: a non-curated method (`Peek()`) and a
+  user-defined `StreamReader` outside `System.IO` both stay clean (curated-set + namespace guards).
+
 ## [1.26.2] - 2026-06-14
 
 ### Tests

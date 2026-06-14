@@ -163,6 +163,54 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamReaderNonCuratedMethod_ShouldNotReportDiagnostic()
+    {
+        // Peek() is not in the curated set (and has no async counterpart), so it stays clean.
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(StreamReader reader)
+    {
+        await Task.Yield();
+        return reader.Peek();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task LookalikeStreamReaderType_ShouldNotReportDiagnostic()
+    {
+        // A user-defined StreamReader outside System.IO must not be flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+namespace MyIo
+{
+    public class StreamReader
+    {
+        public string ReadToEnd() => string.Empty;
+    }
+}
+
+public class TestClass
+{
+    public async Task<string> RunAsync(MyIo.StreamReader reader)
+    {
+        var text = reader.ReadToEnd();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task LookalikeFileType_ShouldNotReportDiagnostic()
     {
         // A user-defined 'File' type is not System.IO.File, so it must stay clean.
