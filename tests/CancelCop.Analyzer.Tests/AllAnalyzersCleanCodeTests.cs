@@ -560,6 +560,38 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticWhenAllFanOut_ProducesNoDiagnostics()
+    {
+        // Fan-out with Task.WhenAll over a LINQ projection that threads the token into each task.
+        // Task.WhenAll has no token overload, so CC002 must not ask for one, and each ProcessAsync call
+        // already receives the token.
+        var code = @"
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class FanOutService
+{
+    public async Task<int[]> RunAsync(IEnumerable<int> items, CancellationToken cancellationToken)
+    {
+        var tasks = items.Select(i => ProcessAsync(i, cancellationToken));
+        return await Task.WhenAll(tasks);
+    }
+
+    private Task<int> ProcessAsync(int item, CancellationToken cancellationToken) => Task.FromResult(item);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticRetryWithBackoff_ProducesNoDiagnostics()
     {
         // A canonical async retry loop: a cancellation check at the top of each attempt, awaited work
