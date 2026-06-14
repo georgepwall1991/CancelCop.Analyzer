@@ -550,9 +550,9 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **27 rules** spanning token presence, propagation, positioning, loop checks,
-async streams, blocking sync-over-async, resource lifecycle, async hygiene, and framework
-cancellation sources. The features originally planned here have shipped (under their final IDs):
+CancelCop now ships **28 rules** spanning token presence, propagation, positioning, loop checks,
+async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
+lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →
 **CC023**. New rules are added opportunistically as common cancellation pitfalls surface; bug fixes
 and false-positive hardening continue each release.

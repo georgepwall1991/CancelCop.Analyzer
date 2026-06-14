@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.26.0 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.26.1 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -64,9 +64,9 @@ Calibration notes:
 | --- | --- | --- |
 | High | None | No rule has a correctness defect severe enough to block a release. |
 | Medium | None | All P1/P2/P3 backlog items closed (through v1.14.3). |
-| Low | All 27 rules | Mature and FP-clean. Every rule is covered by a clean-code FP guard (`AllAnalyzersCleanCodeTests`) spanning core, framework (controllers/MediatR/SignalR/Minimal API/BackgroundService/gRPC), nested-scope, exotic-syntax, and non-async `using` cases. Improve opportunistically. |
+| Low | All 28 rules | Mature and FP-clean. Every rule is covered by a clean-code FP guard (`AllAnalyzersCleanCodeTests`) spanning core, framework (controllers/MediatR/SignalR/Minimal API/BackgroundService/gRPC), nested-scope, exotic-syntax, modern-C#-shape, async-File-I/O, and non-async `using` cases. Improve opportunistically. |
 
-The rule set has grown from the original 9 (CC001–CC006, CC009) to 27 (adding CC010–CC027 across the
+The rule set has grown from the original 9 (CC001–CC006, CC009) to 28 (adding CC010–CC028 across the
 async-stream, blocking, lifecycle, async-hygiene, and property-token families). Recent hardening loops
 have shifted from new rules to FP/FN edge cases found by reviewing each rule against representative
 code — three real false positives (CC009 loop condition, CC014 `cts?.Dispose()`, CC001 `async Main`)
@@ -167,6 +167,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.26.1: 434 tests (docs-only: rule count refreshed to 28 across README/health/NEXT_STEPS). Green locally.
 - v1.26.0: 434 tests (431 + 3 CC028 StreamReader coverage: analyzer fire/clean + fixer). Green locally.
   CC028 generalised from `System.IO.File` to `System.IO` (now also `StreamReader.ReadToEnd`/`ReadLine`);
   message format `File.<name>` → `<name>`. Type→method map is self-limiting via GetMembers(name+"Async").
