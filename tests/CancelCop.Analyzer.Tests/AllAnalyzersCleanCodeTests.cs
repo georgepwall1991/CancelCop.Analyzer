@@ -560,6 +560,41 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncEnumerableTransformPipeline_ProducesNoDiagnostics()
+    {
+        // An async-iterator that transforms another async stream: [EnumeratorCancellation] on its token
+        // (CC011), .WithCancellation(token) on the source (CC010), and a per-item check (CC009). All
+        // quiet.
+        var code = @"
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class TransformPipeline
+{
+    public async IAsyncEnumerable<int> DoubleAsync(
+        IAsyncEnumerable<int> source,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var value in source.WithCancellation(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return value * 2;
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticChannelProducerConsumerPair_ProducesNoDiagnostics()
     {
         // A producer and a consumer running concurrently over a bounded channel, both flowing the token
