@@ -560,6 +560,53 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticTransactionCommitRollback_ProducesNoDiagnostics()
+    {
+        // await using a transaction, commit on success, rollback then rethrow on failure. The catch-all
+        // rethrows (CC019 suppressed), all calls flow the token. No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface ITransaction : IAsyncDisposable
+{
+    Task CommitAsync(CancellationToken cancellationToken);
+    Task RollbackAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class UnitOfWork
+{
+    private readonly Func<CancellationToken, ValueTask<ITransaction>> _begin;
+
+    public UnitOfWork(Func<CancellationToken, ValueTask<ITransaction>> begin) => _begin = begin;
+
+    public async Task ExecuteAsync(Func<CancellationToken, Task> work, CancellationToken cancellationToken)
+    {
+        await using var tx = await _begin(cancellationToken);
+        try
+        {
+            await work(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSubscriptionStreamConsume_ProducesNoDiagnostics()
     {
         // await using a subscription (IAsyncDisposable), then consuming its message stream with
