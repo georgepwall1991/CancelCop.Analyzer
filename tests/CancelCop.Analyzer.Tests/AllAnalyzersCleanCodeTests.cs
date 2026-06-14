@@ -560,6 +560,46 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncValidationAggregation_ProducesNoDiagnostics()
+    {
+        // Running multiple async validators, each flowing the token, and aggregating their results with
+        // a per-validator cancellation check. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IValidator
+{
+    Task<string?> ValidateAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class ValidationRunner
+{
+    public async Task<IReadOnlyList<string>> RunAsync(IEnumerable<IValidator> validators, CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+        foreach (var validator in validators)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var error = await validator.ValidateAsync(cancellationToken);
+            if (error is not null)
+                errors.Add(error);
+        }
+        return errors;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSignalDrivenWorker_ProducesNoDiagnostics()
     {
         // A worker that waits on a SemaphoreSlim(0) signal each iteration, checks cancellation, and does
