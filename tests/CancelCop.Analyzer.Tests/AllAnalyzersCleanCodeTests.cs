@@ -560,6 +560,48 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticPerIterationAwaitUsing_ProducesNoDiagnostics()
+    {
+        // Opening and disposing an IAsyncDisposable per loop iteration via await using, with a
+        // cancellation check and token-flowing work. No analyzer fires.
+        var code = @"
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface ISession : IAsyncDisposable
+{
+    Task ProcessAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class PerItemRunner
+{
+    private readonly Func<int, CancellationToken, ValueTask<ISession>> _open;
+
+    public PerItemRunner(Func<int, CancellationToken, ValueTask<ISession>> open) => _open = open;
+
+    public async Task RunAsync(IEnumerable<int> ids, CancellationToken cancellationToken)
+    {
+        foreach (var id in ids)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var session = await _open(id, cancellationToken);
+            await session.ProcessAsync(cancellationToken);
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticWaitToReadDrainLoop_ProducesNoDiagnostics()
     {
         // The WaitToReadAsync/TryRead drain pattern: outer await WaitToReadAsync(token), inner TryRead
