@@ -560,6 +560,39 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticConfiguredAsyncStreamConsumer_ProducesNoDiagnostics()
+    {
+        // Library-style async-stream consumption: WithCancellation(token) then ConfigureAwait(false),
+        // with a per-item cancellation check. CC010/CC009 and the rest stay quiet.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ConfiguredConsumer
+{
+    public async Task ConsumeAsync(IAsyncEnumerable<int> source, CancellationToken cancellationToken)
+    {
+        await foreach (var item in source.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await HandleAsync(item, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private Task HandleAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSyncDisposableUsingInAsync_ProducesNoDiagnostics()
     {
         // A `using` over a purely-synchronous IDisposable inside async code is correct (it is NOT
