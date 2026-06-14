@@ -560,6 +560,38 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticHttpStreamingDownload_ProducesNoDiagnostics()
+    {
+        // Streaming an HTTP response: SendAsync with HttpCompletionOption.ResponseHeadersRead and the
+        // token, then ReadAsStreamAsync(token). CC004/CC002 (token passed) stay quiet.
+        var code = @"
+using System.IO;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class DownloadService
+{
+    private readonly HttpClient _client = new HttpClient();
+
+    public async Task<Stream> OpenAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStreamAsync(cancellationToken);
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticBufferedStreamCopyLoop_ProducesNoDiagnostics()
     {
         // A manual buffered copy loop: cancellation check per chunk, ReadAsync/WriteAsync both flow the
