@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.19] - 2026-06-14
+
+### Tests
+
+- Added a CC027 receiver-vs-argument pin: a returned task produced by a *helper* call, with the `using`
+  resource only read synchronously into an argument, is not flagged — only a return whose receiver is
+  the using resource is a premature-disposal bug.
+
 ## [1.27.18] - 2026-06-14
 
 ### Tests

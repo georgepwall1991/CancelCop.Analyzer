@@ -76,6 +76,29 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReturnHelperTask_ResourceReadIntoArgument_ShouldNotReportDiagnostic()
+    {
+        // The returned task is produced by a helper (the receiver is the helper, not the using
+        // resource); the resource is only read synchronously into an argument before disposal, so there
+        // is no premature-disposal bug and CC027 must stay quiet — only the receiver case is flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task<int> Compute(int v) => Task.FromResult(v);
+
+    public Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        return Compute(resource.Value);
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ReturnAliasedTaskLocal_ShouldNotReportDiagnostic()
     {
         // CC027 deliberately flags only the direct-receiver case (return resource.DoAsync();). An

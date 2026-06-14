@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.18 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.19 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,6 +168,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.19: 469 tests (+1 CC027 receiver-vs-argument pin: a helper-produced task with the using
+  resource read into an argument is not flagged). Green locally.
 - v1.27.18: 468 tests (+1 CC014 field-assignment escape pin). Green locally. (Confirmed CC014 already
   treats assignment-to-field as an escape — no bug; pinned to prevent regression.) Note: v1.27.13–17
   were released concurrently by a parallel loop instance (static-context coverage pins for
