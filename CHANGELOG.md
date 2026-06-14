@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.10] - 2026-06-14
+
+### Tests
+
+- Pinned the tokenless-async-iterator guided sequence with a combined CC001+CC011 test: a public
+  async iterator with no token reports **only** CC001 (add a token); once it has an unmarked token,
+  **only** CC011 fires (add `[EnumeratorCancellation]`). The two never fire simultaneously.
+
 ## [1.23.9] - 2026-06-14
 
 ### Tests
