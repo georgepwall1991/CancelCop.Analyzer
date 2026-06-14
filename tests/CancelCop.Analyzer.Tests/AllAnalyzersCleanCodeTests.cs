@@ -560,6 +560,43 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAsyncLambdasAsFuncTask_ProducesNoDiagnostics()
+    {
+        // Async lambdas materialized as Func<Task> and awaited via WhenAll(Select(f => f())) is correct
+        // usage — CC024 (async-lambda-to-Action) must not fire because these convert to Func<Task>.
+        var code = @"
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class StepRunner
+{
+    public async Task RunAllAsync(CancellationToken cancellationToken)
+    {
+        var steps = new List<Func<Task>>
+        {
+            async () => await StepAsync(1, cancellationToken),
+            async () => await StepAsync(2, cancellationToken),
+        };
+
+        await Task.WhenAll(steps.Select(step => step()));
+    }
+
+    private Task StepAsync(int id, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSequentialWorkflow_ProducesNoDiagnostics()
     {
         // A multi-step async workflow threading the token through each step (validate, reserve, charge,
