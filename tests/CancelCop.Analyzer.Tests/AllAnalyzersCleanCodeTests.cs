@@ -560,6 +560,42 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticConditionalAwait_ProducesNoDiagnostics()
+    {
+        // A partially-async method: one branch returns synchronously, the other awaits token-flowing
+        // work. The token is observed where async work happens. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class CacheAside
+{
+    private readonly Dictionary<int, string> _cache = new();
+
+    public async Task<string> GetAsync(int key, CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue(key, out var hit))
+            return hit;
+
+        var loaded = await LoadAsync(key, cancellationToken);
+        _cache[key] = loaded;
+        return loaded;
+    }
+
+    private Task<string> LoadAsync(int key, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticDoWhilePollLoop_ProducesNoDiagnostics()
     {
         // A do/while poll-until-result loop: cancellation check in the body, token-flowing poll and
