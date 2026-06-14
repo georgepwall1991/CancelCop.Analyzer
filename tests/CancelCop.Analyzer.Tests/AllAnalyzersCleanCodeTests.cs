@@ -560,6 +560,41 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticHttpPollingLoop_ProducesNoDiagnostics()
+    {
+        // A poll-until-cancelled loop: condition checks the token, the HTTP call and the delay both flow
+        // it. CC009 (condition check), CC004/CC002 (token passed) and the rest stay quiet.
+        var code = @"
+using System;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class PollingService
+{
+    private readonly HttpClient _client = new HttpClient();
+
+    public async Task RunAsync(string url, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var payload = await _client.GetStringAsync(url, cancellationToken);
+            _ = payload;
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncLazyInitialization_ProducesNoDiagnostics()
     {
         // Async double-checked lazy init guarded by a SemaphoreSlim: WaitAsync(token), re-check, init,
