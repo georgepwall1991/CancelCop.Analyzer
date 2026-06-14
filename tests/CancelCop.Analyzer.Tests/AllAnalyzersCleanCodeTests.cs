@@ -560,6 +560,40 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSyncBodiedTaskMethodWithToken_ProducesNoDiagnostics()
+    {
+        // A Task-returning method with no await that accepts a token and forwards it to a downstream
+        // Task-returning call. With no await in the body, CC016 (unused-token) does not apply, and the
+        // token is forwarded anyway. No analyzer fires.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ForwardingService
+{
+    private readonly IDownstream _downstream;
+
+    public ForwardingService(IDownstream downstream) => _downstream = downstream;
+
+    public Task<int> GetAsync(int id, CancellationToken cancellationToken)
+        => _downstream.QueryAsync(id, cancellationToken);
+}
+
+internal interface IDownstream
+{
+    Task<int> QueryAsync(int id, CancellationToken cancellationToken);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticConfiguredAsyncStreamConsumer_ProducesNoDiagnostics()
     {
         // Library-style async-stream consumption: WithCancellation(token) then ConfigureAwait(false),
