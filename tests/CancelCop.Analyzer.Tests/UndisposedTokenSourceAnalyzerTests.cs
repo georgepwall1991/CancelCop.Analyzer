@@ -30,6 +30,26 @@ public class TestClass
     }
 
     [Fact]
+    public async Task TargetTypedNew_NeverDisposed_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken outer)
+    {
+        CancellationTokenSource {|#0:cts|} = new();
+        await Task.Delay(1000, cts.Token);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task UsingDeclaration_ShouldNotReportDiagnostic()
     {
         var test = @"

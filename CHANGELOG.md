@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.25] - 2026-06-14
+
+### Tests
+
+- Pinned three edge cases: CC013 flags a static-imported `Sleep(...)` (symbol-resolved, not name-only
+  on a member access); CC015 flags `ValueTask<T>.Result`; CC014 flags a target-typed
+  `CancellationTokenSource cts = new();` that is never disposed.
+
 ## [1.23.24] - 2026-06-14
 
 ### Tests

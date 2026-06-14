@@ -50,6 +50,28 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ThreadSleep_ViaStaticImport_ShouldReportDiagnostic()
+    {
+        // Symbol-resolved, not name-only on a member access: a bare Sleep(...) via `using static`
+        // is still flagged.
+        var test = @"
+using static System.Threading.Thread;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        {|#0:Sleep(1000)|};
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ThreadSleep_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
