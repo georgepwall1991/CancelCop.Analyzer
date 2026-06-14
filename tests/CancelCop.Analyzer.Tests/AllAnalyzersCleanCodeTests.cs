@@ -560,6 +560,40 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticBufferedStreamCopyLoop_ProducesNoDiagnostics()
+    {
+        // A manual buffered copy loop: cancellation check per chunk, ReadAsync/WriteAsync both flow the
+        // token. No analyzer fires.
+        var code = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class CopyService
+{
+    public async Task CopyAsync(Stream input, Stream output, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+        await output.FlushAsync(cancellationToken);
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSyncBodiedTaskMethodWithToken_ProducesNoDiagnostics()
     {
         // A Task-returning method with no await that accepts a token and forwards it to a downstream
