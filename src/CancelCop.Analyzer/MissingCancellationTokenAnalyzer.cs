@@ -108,6 +108,11 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         if (CancellationTokenHelpers.IsSignatureExternallyControlled(methodSymbol))
             return;
 
+        // The program entry point (`static [async] Task Main(...)`) has a runtime-fixed signature;
+        // adding a CancellationToken parameter would stop it being recognised as the entry point.
+        if (IsProgramEntryPoint(methodSymbol))
+            return;
+
         // Check if method already has CancellationToken parameter
         if (CancellationTokenHelpers.HasCancellationTokenParameter(methodSymbol))
             return;
@@ -115,6 +120,22 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         // Report diagnostic
         var diagnostic = Diagnostic.Create(Rule, methodDeclaration.Identifier.GetLocation(), methodDeclaration.Identifier.Text);
         context.ReportDiagnostic(diagnostic);
+    }
+
+    /// <summary>
+    /// Returns true for a <c>static Main</c> with the entry-point parameter shape (no parameters or
+    /// a single <c>string[]</c>). The runtime dictates this signature, so a token cannot be added.
+    /// </summary>
+    private static bool IsProgramEntryPoint(IMethodSymbol method)
+    {
+        if (!method.IsStatic || method.Name != "Main")
+            return false;
+
+        if (method.Parameters.Length == 0)
+            return true;
+
+        return method.Parameters.Length == 1 &&
+               method.Parameters[0].Type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_String };
     }
 
     private static bool IsAsyncIteratorReturnType(ITypeSymbol type)

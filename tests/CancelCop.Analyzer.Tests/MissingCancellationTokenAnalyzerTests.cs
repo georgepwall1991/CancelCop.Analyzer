@@ -31,6 +31,40 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncMainWithArgs_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class Program
+{
+    public static async Task Main(string[] args)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task AsyncMainNoArgs_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class Program
+{
+    public static async Task Main()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task PublicAsyncMethod_WithCancellationToken_ShouldNotReportDiagnostic()
     {
         var test = @"

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.3] - 2026-06-14
+
+### Fixed
+
+- **CC001 false positive:** an `async Task Main` program entry point (`static [async] Task Main()`
+  or `Main(string[] args)`) was flagged to add a `CancellationToken`, but the runtime dictates the
+  entry-point signature — adding a parameter stops it being recognised as `Main`. The entry-point
+  shape is now excluded. Pinned by 2 new tests.
+
 ## [1.23.2] - 2026-06-14
 
 ### Fixed
