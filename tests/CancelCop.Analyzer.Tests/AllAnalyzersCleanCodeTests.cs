@@ -560,6 +560,40 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticManualAsyncEnumerator_ProducesNoDiagnostics()
+    {
+        // Manual enumeration: GetAsyncEnumerator(token) (token flowed), await using disposal, a
+        // MoveNextAsync loop with a per-item check. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class ManualConsumer
+{
+    public async Task RunAsync(IAsyncEnumerable<int> source, CancellationToken cancellationToken)
+    {
+        await using var enumerator = source.GetAsyncEnumerator(cancellationToken);
+        while (await enumerator.MoveNextAsync())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await HandleAsync(enumerator.Current, cancellationToken);
+        }
+    }
+
+    private Task HandleAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticWhenAllThenLinqAggregate_ProducesNoDiagnostics()
     {
         // Fan-out with WhenAll (token flowed per task), then LINQ aggregation over the materialized
