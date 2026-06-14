@@ -48,6 +48,29 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, string>
     }
 
     [Fact]
+    public async Task NotificationHandler_WithoutCancellationToken_ShouldNotReportDiagnostic()
+    {
+        // CC005A is deliberately scoped to IRequestHandler.Handle. An INotificationHandler.Handle (a
+        // distinct MediatR interface) is out of scope and must not be flagged.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using MediatR;
+
+public class UserCreated : INotification { }
+
+public class UserCreatedHandler : INotificationHandler<UserCreated>
+{
+    public async Task Handle(UserCreated notification)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task PlainHandleMethod_NotImplementingIRequestHandler_ShouldNotReportDiagnostic()
     {
         // CC005A is gated to MediatR.IRequestHandler implementations, so a class that merely has a
