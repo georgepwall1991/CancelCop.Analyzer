@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.18 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.19 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.19: 362 tests (361 + 1 CC005C→CC002 cascade pin). Green locally.
 - v1.23.18: 361 tests (360 + 1 `EveryShippedRule_HasAHelpLink` drift guard). `helpLinkUri` now on all
   27 rules. Green locally.
 - v1.23.17: `helpLinkUri` extended to CC016–CC021. No behavior change; 360 tests unchanged.

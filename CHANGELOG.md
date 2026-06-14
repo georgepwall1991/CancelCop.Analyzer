@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.19] - 2026-06-14
+
+### Tests
+
+- Pinned the CC005C → CC002 guided sequence with a combined test: a tokenless Minimal API handler
+  lambda reports **only** CC005C (the handler needs a token); CC002 does not fire until the CC005C
+  fix has added the parameter. Closes the long-standing "combined-analyzer test" backlog item.
+
 ## [1.23.18] - 2026-06-14
 
 ### Added
