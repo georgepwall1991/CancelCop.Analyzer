@@ -560,6 +560,43 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticCatchWithTokenFilter_ProducesNoDiagnostics()
+    {
+        // A broad catch guarded by a when-filter that lets cancellation propagate (rethrow on cancel)
+        // is the correct shape; CC019 (which targets unfiltered broad catches) must not fire.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class GuardedService
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DoWorkAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            Log(ex);
+        }
+    }
+
+    private Task DoWorkAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private void Log(Exception ex) { }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticBackgroundTaskLifecycle_ProducesNoDiagnostics()
     {
         // A start/stop background-task lifecycle: a field CTS (not flagged by CC014), CancelAsync on
