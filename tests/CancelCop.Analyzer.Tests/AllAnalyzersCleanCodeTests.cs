@@ -560,6 +560,40 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticPeriodicTimerLoop_ProducesNoDiagnostics()
+    {
+        // A PeriodicTimer tick loop: WaitForNextTickAsync(token) as the condition, an explicit
+        // cancellation check and token-flowing work in the body. No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class HeartbeatService
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await BeatAsync(cancellationToken);
+        }
+    }
+
+    private Task BeatAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticHttpStreamingDownload_ProducesNoDiagnostics()
     {
         // Streaming an HTTP response: SendAsync with HttpCompletionOption.ResponseHeadersRead and the
