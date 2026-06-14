@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.27.17 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.27.18 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -168,10 +168,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.27.17: 468 tests (+1 CC014 field-assignment escape pin). Green locally. (Confirmed CC014 already
-  treats assignment-to-field as an escape — no bug; pinned to prevent regression.) Note: v1.27.13–16
+- v1.27.18: 468 tests (+1 CC014 field-assignment escape pin). Green locally. (Confirmed CC014 already
+  treats assignment-to-field as an escape — no bug; pinned to prevent regression.) Note: v1.27.13–17
   were released concurrently by a parallel loop instance (static-context coverage pins for
-  CC013/CC015/CC026/CC028); this build rebased on top of them.
+  CC013/CC015/CC026/CC028 + lookalike); this build rebased on top of them.
 - v1.27.12: 465 tests (+1 cross-cutting clean-code guard: canonical async-stream producer —
   [EnumeratorCancellation] iterator with a cancellation-checked loop — clean across all analyzers).
   Green locally.
