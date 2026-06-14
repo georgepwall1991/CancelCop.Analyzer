@@ -20,6 +20,39 @@ public class TestClass
 ";
 
     [Fact]
+    public async Task FixAll_TwoResults_BothBecomeAwait()
+    {
+        var test = Harness + @"
+    public async Task<int> RunAsync()
+    {
+        await Task.Yield();
+        var x = GetValueAsync().{|#0:Result|};
+        var y = GetValueAsync().{|#1:Result|};
+        return x + y;
+    }
+}";
+
+        var fixedCode = Harness + @"
+    public async Task<int> RunAsync()
+    {
+        await Task.Yield();
+        var x = (await GetValueAsync());
+        var y = (await GetValueAsync());
+        return x + y;
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Result"),
+                VerifyCS.Diagnostic("CC015").WithLocation(1).WithArguments(".Result"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task Result_BecomesAwait()
     {
         var test = Harness + @"

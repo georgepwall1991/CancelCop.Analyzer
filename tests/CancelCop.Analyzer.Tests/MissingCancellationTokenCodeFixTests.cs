@@ -10,6 +10,52 @@ namespace CancelCop.Analyzer.Tests;
 public class MissingCancellationTokenCodeFixTests
 {
     [Fact]
+    public async Task FixAll_TwoMethods_BothGetTokenAndSingleImport()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task {|#0:FirstAsync|}()
+    {
+        await Task.Delay(100);
+    }
+
+    public async Task {|#1:SecondAsync|}()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task FirstAsync(CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(100);
+    }
+
+    public async Task SecondAsync(CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            new[]
+            {
+                VerifyCS.Diagnostic("CC001").WithLocation(0).WithArguments("FirstAsync"),
+                VerifyCS.Diagnostic("CC001").WithLocation(1).WithArguments("SecondAsync"),
+            },
+            fixedCode);
+    }
+
+    [Fact]
     public async Task PublicAsyncMethod_WithoutParameters_AddsDefaultCancellationToken()
     {
         var test = @"

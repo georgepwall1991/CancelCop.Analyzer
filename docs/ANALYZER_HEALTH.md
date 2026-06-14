@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.35 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.36 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -167,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.36: 401 tests (398 + 3 Fix-All tests: CC015, CC026, CC001 import-dedup). Green locally. Fix All
+  is now pinned for CC001, CC010-CC015, CC022, CC023, CC025, CC026.
 - v1.23.35: 398 tests (395 + 3 Fix-All tests: CC010, CC022, CC025). Green locally. Fix All is now
   pinned for CC010-CC014, CC022, CC023, CC025 (the import-adding and in-place fixers).
 - v1.23.34: 395 tests (392 + 3 Fix-All tests: CC014, CC023 import-dedup, CC012). Green locally.

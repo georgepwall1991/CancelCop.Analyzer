@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.36] - 2026-06-14
+
+### Tests
+
+- Added Fix All correctness tests for three more fixers: CC015 (two `.Result` both become `(await ...)`),
+  CC026 (two `SemaphoreSlim.Wait()` both become `await WaitAsync(ct)`), and CC001 (two token-less public
+  async methods both gain a `CancellationToken` parameter while the `System.Threading` import is added
+  exactly once).
+
 ## [1.23.35] - 2026-06-14
 
 ### Tests
