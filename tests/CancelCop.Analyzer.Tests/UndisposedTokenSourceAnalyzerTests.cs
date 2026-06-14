@@ -125,6 +125,25 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AssignedToOutParameter_ShouldNotReportDiagnostic()
+    {
+        // Assigning the CTS to an `out` parameter hands ownership to the caller, so CC014 must not flag
+        // it — complements the returned / field / argument / lambda-capture escape negatives.
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Create(out CancellationTokenSource cts)
+    {
+        cts = new CancellationTokenSource();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AssignedToField_ShouldNotReportDiagnostic()
     {
         // A CTS stored in a field escapes the method's scope — ownership (and disposal) moves to the
