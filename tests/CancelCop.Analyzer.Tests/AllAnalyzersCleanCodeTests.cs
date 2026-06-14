@@ -560,6 +560,52 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticEventToTaskBridge_ProducesNoDiagnostics()
+    {
+        // Bridging an event to a Task: subscribe, register cancellation on the TCS, await, unsubscribe
+        // in finally. No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class Device
+{
+    public event EventHandler? Ready;
+    public void Raise() => Ready?.Invoke(this, EventArgs.Empty);
+}
+
+internal sealed class DeviceWaiter
+{
+    public async Task WaitForReadyAsync(Device device, CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource();
+        void Handler(object? sender, EventArgs e) => tcs.TrySetResult();
+        device.Ready += Handler;
+        try
+        {
+            await using (cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken)))
+            {
+                await tcs.Task;
+            }
+        }
+        finally
+        {
+            device.Ready -= Handler;
+        }
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticTwoTokenLinkedSource_ProducesNoDiagnostics()
     {
         // Linking two external tokens with a using-declared CreateLinkedTokenSource and flowing the
