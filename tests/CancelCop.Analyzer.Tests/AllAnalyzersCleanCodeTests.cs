@@ -560,6 +560,49 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticAwaitForeachOverTokenizedProducer_ProducesNoDiagnostics()
+    {
+        // await foreach over a producer call that already received the token; CC010 must not also ask
+        // for .WithCancellation. A per-item check satisfies CC009. No analyzer fires.
+        var code = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class FeedReader
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var item in GetItemsAsync(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await HandleAsync(item, cancellationToken);
+        }
+    }
+
+    private async IAsyncEnumerable<int> GetItemsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
+            yield return i;
+        }
+    }
+
+    private Task HandleAsync(int item, CancellationToken cancellationToken) => Task.CompletedTask;
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticSharedReadinessTask_ProducesNoDiagnostics()
     {
         // Awaiting a shared readiness Task field before doing token-flowing work. Awaiting a Task field
