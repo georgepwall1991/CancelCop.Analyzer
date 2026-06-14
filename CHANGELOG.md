@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.8] - 2026-06-14
+
+### Tests
+
+- Pinned the CC002 fixer on a generic overload pair: appending the token to `FooAsync(item)` binds to
+  `FooAsync<T>(T, CancellationToken)` and compiles (companion to the 1.27.7 ordinal-aware analyzer
+  match).
+
 ## [1.27.7] - 2026-06-14
 
 ### Fixed

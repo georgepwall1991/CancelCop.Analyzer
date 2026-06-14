@@ -49,6 +49,47 @@ public class TestClass
     }
 
     [Fact]
+    public async Task GenericOverloadPair_AddsTokenArgument()
+    {
+        // The fix appends the token to a generic call; it must bind to the generic token overload and
+        // compile (companion to the analyzer's ordinal-aware overload match).
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task FooAsync<T>(T item) => Task.CompletedTask;
+    public Task FooAsync<T>(T item, CancellationToken ct) => Task.CompletedTask;
+
+    public async Task RunAsync<T>(T item, CancellationToken cancellationToken)
+    {
+        await {|#0:FooAsync|}(item);
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task FooAsync<T>(T item) => Task.CompletedTask;
+    public Task FooAsync<T>(T item, CancellationToken ct) => Task.CompletedTask;
+
+    public async Task RunAsync<T>(T item, CancellationToken cancellationToken)
+    {
+        await FooAsync(item, cancellationToken);
+    }
+}";
+
+        await VerifyCS.VerifyCodeFixAsync(
+            test,
+            VerifyCS.Diagnostic("CC002").WithLocation(0).WithArguments("FooAsync", "cancellationToken"),
+            fixedCode);
+    }
+
+    [Fact]
     public async Task TaskDelay_WithoutToken_AddsTokenParameter()
     {
         var test = @"
