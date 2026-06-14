@@ -560,6 +560,41 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticSyncDisposableUsingInAsync_ProducesNoDiagnostics()
+    {
+        // A `using` over a purely-synchronous IDisposable inside async code is correct (it is NOT
+        // IAsyncDisposable), so CC025 must not suggest await using. No analyzer fires.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class Lease : IDisposable
+{
+    public void Dispose() { }
+}
+
+internal sealed class LeaseService
+{
+    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    {
+        using var lease = new Lease();
+        return await ComputeAsync(cancellationToken);
+    }
+
+    private Task<int> ComputeAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticAsyncLambdasAsFuncTask_ProducesNoDiagnostics()
     {
         // Async lambdas materialized as Func<Task> and awaited via WhenAll(Select(f => f())) is correct
