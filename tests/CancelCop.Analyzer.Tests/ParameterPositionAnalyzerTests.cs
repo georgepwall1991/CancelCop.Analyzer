@@ -41,6 +41,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CancellationToken_BeforeOptionalParameter_ShouldReportDiagnostic()
+    {
+        // An optional trailing parameter does not make the token "effectively last" — the idiomatic
+        // shape is `(int x = 0, CancellationToken cancellationToken = default)`, so CC006 still flags it.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync({|#0:CancellationToken cancellationToken|}, int x = 0)
+    {
+        await Task.Delay(x, cancellationToken);
+    }
+}";
+
+        var expected = new DiagnosticResult("CC006", Microsoft.CodeAnalysis.DiagnosticSeverity.Info)
+            .WithLocation(0)
+            .WithArguments("ProcessAsync");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task CancellationToken_LastParameter_ShouldNotReportDiagnostic()
     {
         var test = @"
