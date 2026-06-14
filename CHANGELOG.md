@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.33] - 2026-06-14
+
+### Tests
+
+- Pinned that CC011's Fix All across two async iterators adds the
+  `System.Runtime.CompilerServices` import exactly once (no duplicate using). Also pinned that CC013
+  and CC015 flag the `TimeSpan` overloads (`Thread.Sleep(TimeSpan)`, `task.Wait(TimeSpan)`).
+
 ## [1.23.32] - 2026-06-14
 
 ### Tests

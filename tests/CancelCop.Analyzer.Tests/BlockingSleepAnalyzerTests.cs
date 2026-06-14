@@ -72,6 +72,27 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ThreadSleep_WithTimeSpan_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        {|#0:Thread.Sleep(TimeSpan.FromSeconds(1))|};
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ThreadSleep_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
