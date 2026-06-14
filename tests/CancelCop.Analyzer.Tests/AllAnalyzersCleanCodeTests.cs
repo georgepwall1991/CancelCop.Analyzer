@@ -493,6 +493,51 @@ internal sealed class FileService
     }
 
     [Fact]
+    public async Task IdiomaticLibraryStyleAsync_ProducesNoDiagnostics()
+    {
+        // Library-style async: ConfigureAwait(false) on every await, a ValueTask-returning method, an
+        // await using over an IAsyncDisposable whose factory flows the token, and a TaskCompletionSource
+        // — all threading the token. None of the rules may fire.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal interface IConnection : IAsyncDisposable
+{
+    ValueTask<int> ReadAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class LibraryService
+{
+    private readonly Func<CancellationToken, ValueTask<IConnection>> _factory;
+
+    public LibraryService(Func<CancellationToken, ValueTask<IConnection>> factory) => _factory = factory;
+
+    public async ValueTask<int> QueryAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await _factory(cancellationToken).ConfigureAwait(false);
+        return await connection.ReadAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task<int> WrapAsync(CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource<int>();
+        cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+        return tcs.Task;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticChannelsAndParallelForEachAsync_ProduceNoDiagnostics()
     {
         // System.Threading.Channels and Parallel.ForEachAsync are core modern async patterns. A

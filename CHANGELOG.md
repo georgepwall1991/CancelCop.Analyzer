@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.6] - 2026-06-14
+
+### Tests
+
+- Added a clean-code FP guard for library-style async: `ConfigureAwait(false)` on every await, a
+  `ValueTask`-returning method, an `await using` over an `IAsyncDisposable` whose factory flows the
+  token, and a `TaskCompletionSource` with a cancellation registration — all threading the token.
+  Confirms no analyzer over-fires on these patterns.
+
 ## [1.27.5] - 2026-06-14
 
 ### Tests
