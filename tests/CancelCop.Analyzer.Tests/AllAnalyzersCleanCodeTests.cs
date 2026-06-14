@@ -560,6 +560,46 @@ internal sealed class TimeoutService
     }
 
     [Fact]
+    public async Task IdiomaticRetryWithBackoff_ProducesNoDiagnostics()
+    {
+        // A canonical async retry loop: a cancellation check at the top of each attempt, awaited work
+        // and the backoff delay both flowing the token. No analyzer may fire.
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class RetryService
+{
+    public async Task<int> RunAsync(Func<CancellationToken, Task<int>> action, CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return await action(cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+        }
+
+        return -1;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task IdiomaticLibraryStyleAsync_ProducesNoDiagnostics()
     {
         // Library-style async: ConfigureAwait(false) on every await, a ValueTask-returning method, an
