@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.5] - 2026-06-14
+
+### Documentation
+
+- Refreshed `docs/ANALYZER_HEALTH.md`: the Planning Shortlist and Cross-Cutting Findings now reflect
+  the current 27-rule, FP-guarded state (they still described the original 9-rule set), including the
+  full list of shared helpers and the FP/FN edge cases fixed by per-rule review.
+
 ## [1.23.4] - 2026-06-14
 
 ### Tests

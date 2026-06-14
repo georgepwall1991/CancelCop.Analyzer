@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.23.4 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.23.5 hardening loop)
 
 A deliberately harsh health audit for the twenty-seven implemented CancelCop rule IDs (CC001–CC006, CC009–CC027).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -63,8 +63,15 @@ Calibration notes:
 | Priority | Rules | Work |
 | --- | --- | --- |
 | High | None | No rule has a correctness defect severe enough to block a release. |
-| Medium | None | The CC003/CC004 scope-walk gap was closed in v1.4.3; no medium-priority rule remains. |
-| Low | CC001, CC002, CC003, CC004, CC005A, CC005B, CC005C, CC006, CC009 | Currently acceptable or low-impact. Improve opportunistically. |
+| Medium | None | All P1/P2/P3 backlog items closed (through v1.14.3). |
+| Low | All 27 rules | Mature and FP-clean. Every rule is covered by a clean-code FP guard (`AllAnalyzersCleanCodeTests`) spanning core, framework (controllers/MediatR/SignalR/Minimal API/BackgroundService/gRPC), nested-scope, exotic-syntax, and non-async `using` cases. Improve opportunistically. |
+
+The rule set has grown from the original 9 (CC001–CC006, CC009) to 27 (adding CC010–CC027 across the
+async-stream, blocking, lifecycle, async-hygiene, and property-token families). Recent hardening loops
+have shifted from new rules to FP/FN edge cases found by reviewing each rule against representative
+code — three real false positives (CC009 loop condition, CC014 `cts?.Dispose()`, CC001 `async Main`)
+and several false negatives (CC023 local functions, CC024 anonymous methods, CC027 `using` statement)
+were fixed this way.
 
 ## Prioritized Fix Backlog
 
@@ -145,10 +152,14 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 - Every analyzer calls `ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None)` and
   `EnableConcurrentExecution()` — correct and consistent.
-- Shared logic lives in `CancellationTokenHelpers` (`IsCancellationToken`, `IsAsyncReturnType`,
-  `HasOverloadWithCancellationToken`, `IsSignatureExternallyControlled`, and
-  `FindEnclosingCancellationTokenParameter` — the scope walk shared by CC002, CC003, CC004, and CC009
-  as of v1.4.3). CC005A still hand-rolls its token check (P3 backlog).
+- Shared logic lives in `CancellationTokenHelpers`: `IsCancellationToken`, `IsAsyncReturnType`,
+  `HasOverloadWithCancellationToken`, `IsSignatureExternallyControlled`, the
+  `FindEnclosingCancellationTokenParameter` scope walk (CC002/003/004/009/012/013/026),
+  `IsInAsyncFunction` (CC013/015/022/026), `IsParameterReferenced` (CC016/017),
+  `ReportIfTokenNotPropagated` (CC002/003/004), and `AccessesMember`/`ParameterEscapesAsArgument`
+  (CC020/021). `CancellationTokenFixHelpers` shares the fixer plumbing (`InsertTokenParameter`,
+  `AddUsing`). CC005A was moved onto the shared helpers in v1.14.3, so no analyzer hand-rolls a token
+  check any more.
 - Diagnostic placement is good: CC001/CC005A/CC005B on the method identifier, CC002/CC003/CC004 on the
   invoked member name, CC006 on the offending parameter, CC009 on the loop keyword.
 - Release tracking (`AnalyzerReleases.Shipped.md` / `.Unshipped.md`) is wired as `AdditionalFiles` with
@@ -156,6 +167,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.23.5: docs only — refreshed the health doc's narrative sections to the 27-rule state. 353 tests
+  unchanged.
 - v1.23.4: 353 tests (352 + 1 CC027 non-async `using` clean-code FP guard). Green locally.
 - v1.23.3: 352 tests (350 + 2 CC001 FP fix — an `async Task Main` entry point is no longer flagged).
   Green locally.
