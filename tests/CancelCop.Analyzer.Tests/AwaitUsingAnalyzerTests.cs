@@ -32,6 +32,32 @@ public class SyncResource : System.IDisposable
     }
 
     [Fact]
+    public async Task UsingDeclaration_InAsyncLocalFunction_ShouldReportDiagnostic()
+    {
+        // The async-context check covers nested async local functions, so a sync `using` over an
+        // IAsyncDisposable inside one is flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure()
+    {
+        async Task RunAsync()
+        {
+            {|#0:using|} var x = new AsyncResource();
+            await Task.Yield();
+        }
+
+        _ = RunAsync();
+    }
+}" + Resources;
+
+        var expected = new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task UsingDeclaration_OverAsyncDisposable_ShouldReportDiagnostic()
     {
         var test = @"
