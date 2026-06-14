@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.13] - 2026-06-14
+
+### Tests
+
+- Added a Minimal API case to the cross-analyzer FP guard: an endpoint whose handler lambda accepts
+  a token satisfies CC005C with zero diagnostics (faithful `IEndpointRouteBuilder` + `MapGet`
+  extension stubs). **Every rule — including all framework rules — is now covered by a clean-code
+  guard.**
+
 ## [1.22.12] - 2026-06-14
 
 ### Tests

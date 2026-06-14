@@ -166,6 +166,47 @@ internal sealed class ChatHub : Microsoft.AspNetCore.SignalR.Hub
     }
 
     [Fact]
+    public async Task IdiomaticMinimalApiCode_ProducesNoDiagnostics()
+    {
+        // A Minimal API endpoint whose handler lambda accepts a token must satisfy CC005C with zero
+        // diagnostics (faithful IEndpointRouteBuilder + MapGet extension stubs).
+        var code = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+namespace Microsoft.AspNetCore.Routing
+{
+    public interface IEndpointRouteBuilder { }
+}
+
+namespace Microsoft.AspNetCore.Builder
+{
+    public static class EndpointRouteBuilderExtensions
+    {
+        public static void MapGet(this Microsoft.AspNetCore.Routing.IEndpointRouteBuilder endpoints, string pattern, Delegate handler) { }
+    }
+}
+
+internal sealed class Routes
+{
+    public void Map(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder app)
+    {
+        app.MapGet(""/"", async (CancellationToken cancellationToken) => await Task.Delay(1, cancellationToken));
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task NestedScopesCapturingToken_ProduceNoDiagnostics()
     {
         // The shared scope walk must recognise the outer token captured by a local function and a

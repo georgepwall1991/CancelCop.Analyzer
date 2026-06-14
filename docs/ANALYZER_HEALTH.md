@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-06-14 (refreshed through the v1.22.12 hardening loop)
+Reviewed: 2026-06-14 (refreshed through the v1.22.13 hardening loop)
 
 A deliberately harsh health audit for the twenty-six implemented CancelCop rule IDs (CC001–CC006, CC009–CC026).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -155,6 +155,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.22.13: 343 tests (342 + 1 Minimal API clean-code FP guard). Every rule, including all framework
+  rules, is now covered by a clean-code FP guard. Green locally.
 - v1.22.12: 342 tests (341 + 1 MediatR/SignalR clean-code FP guard — tokenized handler + hub method
   produce zero diagnostics). Green locally.
 - v1.22.11: 341 tests (340 + 1 controller clean-code FP guard — a tokenized `[HttpGet]` action
