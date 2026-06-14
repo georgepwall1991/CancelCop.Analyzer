@@ -84,6 +84,34 @@ public class TestClass
     }
 
     [Fact]
+    public async Task YieldInNestedLocalFunction_OuterNotFlagged_ShouldNotReportDiagnostic()
+    {
+        // The outer method has a token parameter and returns IAsyncEnumerable, but the yield belongs
+        // to a nested local-function iterator (whose token is marked), so neither is flagged.
+        var test = @"
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public IAsyncEnumerable<int> Outer(CancellationToken token)
+    {
+        async IAsyncEnumerable<int> Inner([EnumeratorCancellation] CancellationToken t)
+        {
+            yield return 1;
+            await Task.CompletedTask;
+        }
+
+        return Inner(token);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task NonIteratorReturningAsyncEnumerable_ShouldNotReportDiagnostic()
     {
         var test = @"

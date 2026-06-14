@@ -115,6 +115,30 @@ public class TestClass
     }
 
     [Fact]
+    public async Task UsingStatementWithExpression_NoVariable_ShouldNotReportDiagnostic()
+    {
+        // A `using (new Resource())` statement declares no variable to reference, so the returned
+        // task (which uses something else) is not flagged.
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task<int> OtherAsync() => Task.FromResult(0);
+
+    public Task<int> ReadAsync()
+    {
+        using (new Resource())
+        {
+            return OtherAsync();
+        }
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsyncMethod_AwaitsResource_ShouldNotReportDiagnostic()
     {
         var test = @"

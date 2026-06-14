@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.32] - 2026-06-14
+
+### Tests
+
+- Pinned three more edge cases: CC011 does not flag an outer method whose only `yield` belongs to a
+  nested local-function iterator; CC027 does not flag a `using (expr)` statement with no declared
+  variable; CC009 fires for a loop inside a lambda that captures the enclosing token.
+
 ## [1.23.31] - 2026-06-14
 
 ### Tests

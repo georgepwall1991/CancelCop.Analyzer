@@ -225,6 +225,33 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Loop_InLambdaCapturingToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Register(CancellationToken cancellationToken)
+    {
+        Action a = () =>
+        {
+            {|#0:while|} (true)
+            {
+            }
+        };
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Loop_InMethodWithoutCancellationToken_ShouldNotReportDiagnostic()
     {
         var test = @"
