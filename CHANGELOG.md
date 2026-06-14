@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.25.2] - 2026-06-14
+
+### Tests
+
+- Added a CC028 false-positive guard to the cross-analyzer clean-code suite: idiomatic async File I/O
+  (`File.ReadAllTextAsync` / `File.WriteAllTextAsync` flowing the in-scope token) produces zero
+  diagnostics across all 28 analyzers.
+
 ## [1.25.1] - 2026-06-14
 
 ### Fixed

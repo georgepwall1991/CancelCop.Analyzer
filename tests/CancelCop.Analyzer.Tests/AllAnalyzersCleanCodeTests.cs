@@ -464,6 +464,35 @@ internal record struct Job(int Id)
     }
 
     [Fact]
+    public async Task IdiomaticAsyncFileIo_ProducesNoDiagnostics()
+    {
+        // The async File counterparts flowing the in-scope token are the correct shape CC028 steers
+        // toward, so they (and every other rule) must stay silent.
+        var code = @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+internal sealed class FileService
+{
+    public async Task<string> LoadAsync(string path, CancellationToken cancellationToken)
+    {
+        var text = await File.ReadAllTextAsync(path, cancellationToken);
+        await File.WriteAllTextAsync(path, text, cancellationToken);
+        return text;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task PatternMatchingAndGenerics_ProduceNoDiagnostics()
     {
         // A switch statement with awaited arms, a generic async method, and a pattern-matched catch
