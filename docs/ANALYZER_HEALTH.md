@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-07-21 (refreshed through the v1.27.181 hardening loop)
+Reviewed: 2026-07-21 (refreshed through the v1.27.182 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -35,7 +35,7 @@ Calibration notes:
 | CC003 | EF Core async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.3:** now uses the shared `FindEnclosingCancellationTokenParameter` scope walk (local functions, lambdas, containing method) plus CC002's expression-tree guard, closing the scope-gap false negative and aligning all four propagation rules on one walk. Namespace-gated to `Microsoft.EntityFrameworkCore`, overload-checked. Class-level XML `<remarks>`/`<example>` doc present (v1.14.2). |
 | CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.3:** same shared scope walk + expression-tree guard as CC003. Type-gated to `System.Net.Http.HttpClient`, overload-checked. Class-level XML `<remarks>`/`<example>` doc present (v1.14.2). |
 | CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses the shared `HasCancellationTokenParameter`/`IsAsyncReturnType` helpers (moved off the hand-rolled checks in v1.14.3); only the `IRequestHandler.Handle` gating is rule-specific. |
-| CC005B | Controller action missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Heavily hardened in v1.4.0: public non-static, `ControllerBase`/`Controller` by namespace, inherited `[NonAction]`, MVC HTTP-method attribute by identity + subclass. Conservative and accurate. |
+| CC005B | Controller action missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | Heavily hardened in v1.4.0: public non-static, `ControllerBase`/`Controller` by namespace, inherited `[NonAction]`, MVC HTTP-method attribute by identity + subclass. **v1.27.182:** externally controlled override/interface signatures are excluded so the suggested parameter addition cannot break their contract. Conservative and accurate. |
 | CC005C | Minimal API handler missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.4.4:** method-group handlers (`app.MapGet("/", Handler)`, `Handlers.Get`, local functions) are now analysed and fixed (token added to the referenced declaration, `= default`, same-document only). v1.4.1 gated the receiver on `IEndpointRouteBuilder`. Remaining false negative (pre-existing, low value): the unreduced static-call form (`EndpointRouteBuilderExtensions.MapGet(app, …)`). |
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. **v1.27.180:** a compile-time-only `nameof(token.IsCancellationRequested)` reference no longer counts as a runtime cancellation check. The strongest rule in the set. |
@@ -168,6 +168,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.182: 639 tests, green locally. **CC005B FP/fix-safety correction:** controller actions
+  with externally controlled override or interface signatures are excluded because adding a token
+  only to the implementation can break compilation.
 - v1.27.181: 638 tests, green locally. **CC020/CC021 FN fix:** compile-time-only
   `nameof(context.CancellationToken)` and `nameof(context.RequestAborted)` references no longer
   suppress the runtime token-observation diagnostics.
