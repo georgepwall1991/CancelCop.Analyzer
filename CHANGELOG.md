@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.194] - 2026-07-21
+
+### Fixed
+
+- **CC015** false negative: null-conditional `Task<T>`/`ValueTask<T>` result access
+  (`task?.Result`) is now diagnosed in async code. No automatic fix is offered because a
+  null-preserving await rewrite is context-dependent.
+
 ## [1.27.193] - 2026-07-21
 
 ### Fixed
