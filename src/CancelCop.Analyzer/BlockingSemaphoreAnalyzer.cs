@@ -92,7 +92,7 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
             method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading")
             return;
 
-        if (HasZeroMillisecondsTimeout(invocation, context.SemanticModel, context.CancellationToken))
+        if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
@@ -108,7 +108,7 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(Rule, memberAccess.Name.GetLocation(), properties));
     }
 
-    private static bool HasZeroMillisecondsTimeout(
+    private static bool HasZeroTimeout(
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel,
         System.Threading.CancellationToken cancellationToken)
@@ -124,8 +124,44 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
             {
                 return true;
             }
+
+            if (!IsFrameworkTimeSpan(argument.Parameter?.Type))
+                continue;
+
+            var argumentValue = UnwrapImplicitOperations(argument.Value);
+            if (argumentValue is IDefaultValueOperation)
+                return true;
+
+            if (argumentValue is IFieldReferenceOperation
+                {
+                    Field: { IsStatic: true, Name: "Zero" } field,
+                } && IsFrameworkTimeSpan(field.ContainingType))
+            {
+                return true;
+            }
         }
 
         return false;
     }
+
+    private static IOperation UnwrapImplicitOperations(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation { IsImplicit: true } conversion:
+                    operation = conversion.Operand;
+                    continue;
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+                default:
+                    return operation;
+            }
+        }
+    }
+
+    private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
+        type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
 }

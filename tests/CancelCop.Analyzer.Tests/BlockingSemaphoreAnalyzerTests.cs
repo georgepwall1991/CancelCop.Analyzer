@@ -136,6 +136,28 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WaitWithZeroTimeSpan_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProbeAsync(SemaphoreSlim gate)
+    {
+        await Task.Yield();
+        _ = gate.Wait(TimeSpan.Zero);
+        _ = gate.Wait(default(TimeSpan));
+        _ = gate.Wait(timeout: default);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task WaitWithToken_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = @"
