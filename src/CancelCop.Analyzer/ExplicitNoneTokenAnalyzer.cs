@@ -83,7 +83,11 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
         if (argument.Parent is not ArgumentListSyntax { Parent: InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax })
             return;
 
-        if (!IsNoneishToken(argument.Expression, out var displayText))
+        if (!IsNoneishToken(
+                argument.Expression,
+                context.SemanticModel,
+                context.CancellationToken,
+                out var displayText))
             return;
 
         // The argument must actually bind to a CancellationToken (a bare `default` only counts in a
@@ -108,7 +112,11 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
     /// Recognises the three "no cancellation" spellings: <c>default</c>,
     /// <c>default(CancellationToken)</c>, and <c>CancellationToken.None</c>.
     /// </summary>
-    private static bool IsNoneishToken(ExpressionSyntax expression, out string displayText)
+    private static bool IsNoneishToken(
+        ExpressionSyntax expression,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken,
+        out string displayText)
     {
         switch (expression)
         {
@@ -118,12 +126,32 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
             case DefaultExpressionSyntax:
                 displayText = "default";
                 return true;
-            case MemberAccessExpressionSyntax memberAccess when memberAccess.Name.Identifier.Text == "None":
+            case MemberAccessExpressionSyntax memberAccess
+                when IsCancellationTokenNone(memberAccess, semanticModel, cancellationToken):
                 displayText = "CancellationToken.None";
                 return true;
             default:
                 displayText = string.Empty;
                 return false;
         }
+    }
+
+    private static bool IsCancellationTokenNone(
+        MemberAccessExpressionSyntax memberAccess,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol is not IPropertySymbol
+            {
+                Name: "None",
+                IsStatic: true,
+            } property)
+        {
+            return false;
+        }
+
+        var cancellationTokenType = semanticModel.Compilation.GetTypeByMetadataName(
+            "System.Threading.CancellationToken");
+        return SymbolEqualityComparer.Default.Equals(property.ContainingType, cancellationTokenType);
     }
 }

@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-07-21 (refreshed through the v1.27.175 hardening loop)
+Reviewed: 2026-07-21 (refreshed through the v1.27.176 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -56,7 +56,7 @@ Calibration notes:
 | CC015 | Blocking on async code (sync-over-async) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.10.0 (new):** flags `.Result`/`.Wait()`/`.GetAwaiter().GetResult()` on a `Task`/`Task<T>`/`ValueTask` inside an `async` function; fixer rewrites to `await`. Symbol-resolved (a look-alike `.Result` on a non-task is ignored). Shares `IsInAsyncFunction` with CC013. |
 | CC014 | `CancellationTokenSource` never disposed | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.9.0 (new):** flags a local `new CancellationTokenSource(...)`/`CreateLinkedTokenSource(...)` that is not a `using` decl, never disposed, and never escapes (return/out-assign/argument/nested-capture); fixer converts to a `using` declaration. Conservative escape analysis — any disposal-elsewhere path suppresses it (like a scoped CA2000 for CTS). |
 | CC013 | `Thread.Sleep` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.8.0 (new):** flags `System.Threading.Thread.Sleep` lexically inside an `async` method/local function/lambda/anonymous method; fixer rewrites to `await Task.Delay(delay, token)` (token flowed when in scope). Async-context check stops at the first function boundary, so a synchronous lambda inside an async method is quiet. Symbol-resolved (no name-only match). |
-| CC012 | Explicit `CancellationToken.None`/`default` when a token is in scope | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.7.0 (new):** flags `CancellationToken.None`/`default`/`default(CancellationToken)` bound to a `CancellationToken` parameter when an in-scope token exists; fixer swaps in the token. Info severity because best-effort cleanup legitimately opts out. Uses the shared scope walk + converted-type gate (a bare `default` only counts in token context). |
+| CC012 | Explicit `CancellationToken.None`/`default` when a token is in scope | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.7.0 (new); fix v1.27.176:** flags the actual `System.Threading.CancellationToken.None` property or `default`/`default(CancellationToken)` bound to a `CancellationToken` parameter when an in-scope token exists; fixer swaps in the token. The framework property is symbol-resolved, so a custom token-valued property merely named `None` stays quiet. Info severity because best-effort cleanup legitimately opts out. Uses the shared scope walk + converted-type gate (a bare `default` only counts in token context). |
 | CC011 | Async-iterator token missing `[EnumeratorCancellation]` | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.6.0 (new):** producer-side complement to CC010. Flags an `async IAsyncEnumerable<T>` iterator (method or local function with `yield`) whose `CancellationToken` parameter lacks `[EnumeratorCancellation]`, so a token passed via `.WithCancellation` would be silently dropped. Fixer adds the attribute + `System.Runtime.CompilerServices` import. Conservative: non-iterators returning the type, tokenless iterators, and already-marked params are quiet. Yield detection stops at nested local functions/lambdas. |
 
 ## Planning Shortlist
@@ -168,6 +168,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.176: 630 tests, green locally. **CC012 FP fix:** a custom token-valued property named
+  `None` is no longer treated as `CancellationToken.None`; the framework property must resolve by
+  symbol identity before the analyzer offers the in-scope token replacement.
 - v1.27.175: 629 tests, green locally. **CC019 FN fix:** `await foreach`, `await using var`, and
   `await using (...)` now count as awaited work in the current `try` scope, closing the syntax gap
   where their await keywords were invisible to the prior `AwaitExpressionSyntax`-only check.

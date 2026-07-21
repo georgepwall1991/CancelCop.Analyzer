@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.176] - 2026-07-21
+
+### Fixed
+
+- **CC012** false positive: a custom `CancellationToken`-valued property named `None` is no longer
+  mistaken for `System.Threading.CancellationToken.None`. The analyzer now verifies the framework
+  property symbol before suggesting replacement with an in-scope token.
+
 ## [1.27.175] - 2026-07-21
 
 ### Fixed

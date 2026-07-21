@@ -193,6 +193,24 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CustomTokenPropertyNamedNone_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    private sealed class TokenProvider
+    {
+        public CancellationToken None => new(canceled: true);
+    }
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync(new TokenProvider().None);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task DefaultToNonTokenParameter_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"
