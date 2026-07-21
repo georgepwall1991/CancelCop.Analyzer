@@ -238,6 +238,22 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StaticWaitWithZeroTimeout_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task ProbeAsync(Task[] tasks)
+    {
+        const int NoWait = 0;
+        await Task.Yield();
+        _ = Task.WaitAny(tasks, NoWait);
+        _ = Task.WaitAll(tasks, millisecondsTimeout: NoWait);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ValueTaskResult_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = Harness + @"

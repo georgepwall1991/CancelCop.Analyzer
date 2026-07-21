@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.190] - 2026-07-21
+
+### Fixed
+
+- **CC015** false positives: static `Task.WaitAny` and `Task.WaitAll` calls with a semantically
+  zero timeout are now treated as immediate probes, matching the instance `Task.Wait` boundary.
+
 ## [1.27.189] - 2026-07-21
 
 ### Fixed
