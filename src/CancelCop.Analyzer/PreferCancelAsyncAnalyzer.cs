@@ -24,7 +24,8 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a parameterless <c>Cancel()</c> call on a
 /// <c>System.Threading.CancellationTokenSource</c> inside an <c>async</c> method, local function,
-/// lambda, or anonymous method.
+/// lambda, anonymous method, or top-level program whose synthesized entry point contains
+/// <c>await</c>.
 /// </para>
 /// </remarks>
 /// <example>

@@ -26,7 +26,8 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a <c>using</c> statement or declaration (without <c>await</c>) over a
 /// resource whose type implements <c>System.IAsyncDisposable</c>, inside an <c>async</c> method,
-/// local function, lambda, or anonymous method.
+/// local function, lambda, anonymous method, or top-level program whose synthesized entry point
+/// contains <c>await</c>.
 /// </para>
 /// </remarks>
 /// <example>
