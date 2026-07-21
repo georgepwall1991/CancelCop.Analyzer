@@ -102,10 +102,16 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+        var invokedName = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            _ => null,
+        };
+        if (invokedName is null)
             return;
 
-        var methodName = memberAccess.Name.Identifier.Text;
+        var methodName = invokedName.Identifier.Text;
 
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;
@@ -140,7 +146,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
         context.ReportDiagnostic(Diagnostic.Create(
-            Rule, memberAccess.Name.GetLocation(), properties, methodName));
+            Rule, invokedName.GetLocation(), properties, methodName));
     }
 
     /// <summary>
