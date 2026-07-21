@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.196] - 2026-07-21
+
+### Fixed
+
+- **CC026** false negative: null-conditional `SemaphoreSlim.Wait` calls (`gate?.Wait()`)
+  are now diagnosed in async code. Conditional-access diagnostics intentionally have no
+  automatic fix.
+
 ## [1.27.195] - 2026-07-21
 
 ### Fixed

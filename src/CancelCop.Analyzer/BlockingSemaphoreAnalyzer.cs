@@ -76,9 +76,15 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+        var memberName = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            _ => null,
+        };
+        if (memberName is null)
             return;
-        if (memberAccess.Name.Identifier.Text != "Wait")
+        if (memberName.Identifier.Text != "Wait")
             return;
 
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
@@ -105,7 +111,7 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
         if (tokenParameter != null)
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, memberAccess.Name.GetLocation(), properties));
+        context.ReportDiagnostic(Diagnostic.Create(Rule, memberName.GetLocation(), properties));
     }
 
     private static bool HasZeroTimeout(

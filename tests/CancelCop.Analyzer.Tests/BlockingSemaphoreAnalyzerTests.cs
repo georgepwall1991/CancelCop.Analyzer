@@ -30,6 +30,27 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ConditionalWait_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim gate)
+    {
+        _ = gate?.Wait(0);
+        gate?.{|#0:Wait|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Wait_InAsyncLambda_ShouldReportDiagnostic()
     {
         var test = @"
