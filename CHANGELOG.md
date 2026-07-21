@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.191] - 2026-07-21
+
+### Fixed
+
+- **CC026** false positives: `SemaphoreSlim.Wait(TimeSpan.Zero)`, explicit `TimeSpan` defaults,
+  and target-typed zero defaults are now recognized as immediate try-enter probes.
+
 ## [1.27.190] - 2026-07-21
 
 ### Fixed
