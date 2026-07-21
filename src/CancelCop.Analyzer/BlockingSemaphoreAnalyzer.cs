@@ -139,6 +139,13 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
             {
                 return true;
             }
+
+            if (argumentValue is IObjectCreationOperation creation &&
+                creation.Arguments.Length == 0 &&
+                SymbolEqualityComparer.Default.Equals(creation.Type, argument.Parameter?.Type))
+            {
+                return true;
+            }
         }
 
         return false;

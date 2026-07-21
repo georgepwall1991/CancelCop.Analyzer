@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.193] - 2026-07-21
+
+### Fixed
+
+- **CC026** false positives: parameterless `new TimeSpan()` and named target-typed `new()`
+  timeout values are now recognized as exact zero-duration semaphore probes.
+
 ## [1.27.192] - 2026-07-21
 
 ### Fixed
