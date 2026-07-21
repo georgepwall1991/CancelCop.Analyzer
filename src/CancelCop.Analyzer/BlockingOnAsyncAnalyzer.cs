@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace CancelCop.Analyzer;
 
@@ -21,7 +22,7 @@ namespace CancelCop.Analyzer;
 /// method the task should be <c>await</c>ed instead.
 /// </para>
 /// <para>
-/// <b>What it detects:</b> <c>task.Result</c>, <c>task.Wait()</c>, and
+/// <b>What it detects:</b> <c>task.Result</c>, potentially blocking <c>task.Wait(...)</c>, and
 /// <c>task.GetAwaiter().GetResult()</c> on a <c>Task</c>/<c>Task&lt;T&gt;</c>/<c>ValueTask</c> inside
 /// an <c>async</c> method, local function, lambda, or anonymous method.
 /// </para>
@@ -95,10 +96,13 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;
 
-        // task.Wait() / task.Wait(timeout) / task.Wait(cancellationToken) — all block synchronously.
-        // (The code fix only rewrites the parameterless overload; the others report without a fix.)
+        // Potentially blocking task.Wait() overloads. A constant zero-millisecond timeout is an
+        // immediate completion probe; the code fix only rewrites the parameterless overload.
         if (method.Name == "Wait" && IsTaskLike(method.ContainingType))
         {
+            if (HasZeroMillisecondsTimeout(invocation, context.SemanticModel, context.CancellationToken))
+                return;
+
             Report(context, memberAccess.Name, ".Wait()");
             return;
         }
@@ -115,6 +119,27 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         {
             Report(context, memberAccess.Name, ".GetAwaiter().GetResult()");
         }
+    }
+
+    private static bool HasZeroMillisecondsTimeout(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+            return false;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (argument.Parameter?.Name == "millisecondsTimeout" &&
+                argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
+                value == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void Report(SyntaxNodeAnalysisContext context, SyntaxNode location, string display)
