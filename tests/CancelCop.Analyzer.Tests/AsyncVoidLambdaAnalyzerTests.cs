@@ -67,6 +67,46 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncLambda_AssignedToCustomVoidDelegate_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public delegate void Work();
+
+public class TestClass
+{
+    public void Register()
+    {
+        Work work = {|#0:async|} () => await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC024").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task AsyncLambda_AssignedToCustomEventHandlerDelegate_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public delegate void ChangedHandler(object sender, EventArgs args);
+
+public class TestClass
+{
+    public void Register()
+    {
+        ChangedHandler handler = async (sender, args) => await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsyncLambda_AssignedToFuncTask_ShouldNotReportDiagnostic()
     {
         var test = @"

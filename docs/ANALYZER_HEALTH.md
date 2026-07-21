@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-07-21 (refreshed through the v1.27.185 hardening loop)
+Reviewed: 2026-07-21 (refreshed through the v1.27.186 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -44,7 +44,7 @@ Calibration notes:
 | CC027 | Returned task uses a disposed `using` resource | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.23.0 (new):** flags a non-async `Task`-returning method/local function whose `return` is a call on a `using`-declared local — the resource is disposed before the returned task completes (premature disposal). **v1.27.184:** receiver walking unwraps interface/base casts, which do not change the using local's lifetime. High confidence: only the receiver case is flagged (a synchronous read into a completed task like `Task.FromResult(resource.Value)` is not). Analyzer-only (fix = make async + await). |
 | CC026 | `SemaphoreSlim.Wait()` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.22.0 (new):** flags potentially blocking `SemaphoreSlim.Wait()` overloads (parameterless, timeout, token) inside async code — a classic deadlock source; fixer → `await gate.WaitAsync(…)`, carrying the original arguments through and injecting the in-scope token when `Wait()` was parameterless (v1.22.2). **v1.27.185:** a compile-time zero `millisecondsTimeout` is excluded because `Wait(0)` is an immediate try-enter probe. Symbol-resolved to `System.Threading.SemaphoreSlim`. |
 | CC025 | Prefer `await using` for `IAsyncDisposable` | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.21.0 (new):** flags a `using` statement/declaration (no `await`) over an `IAsyncDisposable` resource in async code; fixer prepends `await`. Both the declaration (`using var x = …`) and statement (`using (…)`) forms, expression and variable receivers. Info. |
-| CC024 | `async` lambda converted to `Action` | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.20.0 (new):** the lambda counterpart of CC023. Flags an `async` lambda whose converted delegate type is `System.Action`/`Action<…>` (binds as async void). Catches the `Parallel.ForEach(..., async x => …)` trap. `Func<Task>` and event-handler delegates are not `Action`, so excluded. Analyzer-only (the right delegate depends on the consuming API). |
+| CC024 | `async` lambda converted to a void-returning delegate | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.20.0 (new); fix v1.27.186:** the lambda counterpart of CC023. Flags an `async` lambda whose converted delegate returns `void`, including custom delegate types (binds as async void). Catches the `Parallel.ForEach(..., async x => …)` trap. Task-returning delegates and the sanctioned `(object, EventArgs-derived)` event-handler shape are excluded. Analyzer-only (the right delegate depends on the consuming API). |
 | CC023 | `async void` (non-event-handler) | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.19.0 (new):** flags an `async void` method that is not an event handler (`(object, EventArgs)` shape, EventArgs subclasses included) and not externally-controlled; fixer changes `void`→`Task` + adds the Tasks import. Classic async anti-pattern (cf. VSTHRD100) — `async void` can't be awaited or cancelled and crashes on unhandled exceptions. |
 | CC022 | Prefer `CancelAsync()` over `Cancel()` in async | Usage | Info | 4 | 4 | 4 | 4 | 3 | 3 | Low | **v1.18.0 (new):** flags a parameterless `CancellationTokenSource.Cancel()` inside async code; fixer rewrites to `await cts.CancelAsync()`. Info (`Cancel()` is still valid). The `Cancel(bool)` overload and sync contexts are excluded. Modern .NET 8 guidance — `Cancel()` runs callbacks synchronously on the caller. |
 | CC021 | `HttpContext.RequestAborted` not observed | Usage | Info | 4 | 3 | n/a | 4 | 3 | 3 | Low | **v1.16.0 (new):** the HttpContext parallel of CC020. Flags a method with a `Microsoft.AspNetCore.Http.HttpContext` parameter that does async work but never reads `context.RequestAborted` and never passes the context on. **v1.27.181:** a compile-time-only `nameof(context.RequestAborted)` no longer counts as observation. Info because HttpContext is often taken for non-cancellation reasons (hence FP score 3). Shares `AccessesMember`/`ParameterEscapesAsArgument` with CC020. |
@@ -168,6 +168,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.186: 644 tests, green locally. **CC024 FN fix:** custom void-returning delegates now receive
+  the async-void-lambda diagnostic; custom event-handler delegates retain the sanctioned exclusion.
 - v1.27.185: 642 tests, green locally. **CC026 FP fix:** `SemaphoreSlim.Wait(0)` is excluded as a
   guaranteed non-blocking probe, with semantic binding covering named arguments and integer constants.
 - v1.27.184: 641 tests, green locally. **CC027 FN fix:** a returned async call through an

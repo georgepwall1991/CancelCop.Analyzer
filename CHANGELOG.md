@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.186] - 2026-07-21
+
+### Fixed
+
+- **CC024** false negative: async lambdas converted to custom void-returning delegates are now
+  diagnosed, while delegates with the sanctioned `(object, EventArgs-derived)` event-handler shape
+  remain excluded.
+
 ## [1.27.185] - 2026-07-21
 
 ### Fixed
