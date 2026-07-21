@@ -150,7 +150,8 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
             // cts.Dispose() / cts.DisposeAsync()
             if (parent is MemberAccessExpressionSyntax memberAccess &&
                 memberAccess.Expression == reference &&
-                IsDisposeName(memberAccess.Name.Identifier.Text))
+                IsDisposeName(memberAccess.Name.Identifier.Text) &&
+                !CancellationTokenHelpers.IsInsideNameof(memberAccess, semanticModel, cancellationToken))
             {
                 return true;
             }
