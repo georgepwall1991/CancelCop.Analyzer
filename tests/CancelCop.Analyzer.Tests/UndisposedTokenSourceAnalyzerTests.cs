@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
 using Xunit;
@@ -9,6 +10,25 @@ namespace CancelCop.Analyzer.Tests;
 
 public class UndisposedTokenSourceAnalyzerTests
 {
+    [Fact]
+    public async Task TopLevelSource_NeverDisposed_ShouldReportDiagnostic()
+    {
+        var test = new CSharpAnalyzerTest<UndisposedTokenSourceAnalyzer, DefaultVerifier>
+        {
+            TestCode = @"
+using System.Threading;
+
+var {|#0:cts|} = new CancellationTokenSource();
+_ = cts.Token;
+",
+        };
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        test.ExpectedDiagnostics.Add(
+            VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts"));
+
+        await test.RunAsync();
+    }
+
     [Fact]
     public async Task LocalSource_NeverDisposed_ShouldReportDiagnostic()
     {
