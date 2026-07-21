@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.197] - 2026-07-22
+
+### Fixed
+
+- **CC014** false negative: compile-time-only `nameof(cts.Dispose)` no longer counts as
+  disposal, so an otherwise undisposed `CancellationTokenSource` is diagnosed.
+
 ## [1.27.196] - 2026-07-21
 
 ### Fixed

@@ -127,6 +127,25 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Source_OnlyNamesDispose_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        var {|#0:cts|} = new CancellationTokenSource();
+        _ = nameof(cts.Dispose);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Returned_ShouldNotReportDiagnostic()
     {
         var test = @"
