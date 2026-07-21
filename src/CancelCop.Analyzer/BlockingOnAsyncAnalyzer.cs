@@ -107,9 +107,13 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        // Task.WaitAll(...) / Task.WaitAny(...) — static blocking joins.
+        // Task.WaitAll(...) / Task.WaitAny(...) — static blocking joins unless their timeout is
+        // a guaranteed-zero immediate probe.
         if ((method.Name == "WaitAll" || method.Name == "WaitAny") && IsTaskLike(method.ContainingType))
         {
+            if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
+                return;
+
             Report(context, memberAccess.Name, "." + method.Name + "()");
             return;
         }
