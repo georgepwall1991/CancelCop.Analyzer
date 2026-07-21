@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.179] - 2026-07-21
+
+### Fixed
+
+- **CC014** false negative: undisposed `CancellationTokenSource` locals in top-level programs are
+  now analyzed using the compilation unit as their synthesized function boundary. The existing fix
+  safely rewrites these declarations to `using var` at top level.
+
 ## [1.27.178] - 2026-07-21
 
 ### Fixed

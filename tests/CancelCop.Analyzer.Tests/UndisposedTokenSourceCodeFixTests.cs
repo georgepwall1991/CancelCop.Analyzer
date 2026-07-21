@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
 using Xunit;
@@ -10,6 +11,35 @@ namespace CancelCop.Analyzer.Tests;
 
 public class UndisposedTokenSourceCodeFixTests
 {
+    [Fact]
+    public async Task AddsUsingDeclaration_InTopLevelProgram()
+    {
+        var test = new CSharpCodeFixTest<
+            UndisposedTokenSourceAnalyzer,
+            UndisposedTokenSourceCodeFixProvider,
+            DefaultVerifier>
+        {
+            TestCode = @"
+using System.Threading;
+
+var {|#0:cts|} = new CancellationTokenSource();
+_ = cts.Token;
+",
+            FixedCode = @"
+using System.Threading;
+
+using var cts = new CancellationTokenSource();
+_ = cts.Token;
+",
+        };
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        test.FixedState.OutputKind = OutputKind.ConsoleApplication;
+        test.ExpectedDiagnostics.Add(
+            VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts"));
+
+        await test.RunAsync();
+    }
+
     [Fact]
     public async Task FixAll_TwoSources_BothBecomeUsing()
     {

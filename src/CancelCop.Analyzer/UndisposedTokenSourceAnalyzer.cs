@@ -22,8 +22,9 @@ namespace CancelCop.Analyzer;
 /// resources leak until finalization. The cleanest fix is a <c>using</c> declaration.
 /// </para>
 /// <para>
-/// <b>What it detects:</b> a local variable initialized with <c>new CancellationTokenSource(...)</c>
-/// or <c>CancellationTokenSource.CreateLinkedTokenSource(...)</c> that is not already a <c>using</c>
+/// <b>What it detects:</b> a local variable (including one in a top-level program) initialized with
+/// <c>new CancellationTokenSource(...)</c> or
+/// <c>CancellationTokenSource.CreateLinkedTokenSource(...)</c> that is not already a <c>using</c>
 /// declaration, is never disposed (<c>Dispose</c>/<c>DisposeAsync</c>), and never escapes (it is not
 /// returned, assigned out, passed as an argument, or captured by a nested function).
 /// </para>
@@ -115,7 +116,7 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
     private static bool IsFunctionScope(SyntaxNode node) =>
         node is MethodDeclarationSyntax or LocalFunctionStatementSyntax or
             AnonymousFunctionExpressionSyntax or AccessorDeclarationSyntax or
-            ConstructorDeclarationSyntax;
+            ConstructorDeclarationSyntax or CompilationUnitSyntax;
 
     /// <summary>
     /// Returns true when the source is disposed within <paramref name="scope"/>, or when it escapes
