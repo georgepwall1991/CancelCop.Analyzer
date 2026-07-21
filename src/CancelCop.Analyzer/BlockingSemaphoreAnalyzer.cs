@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace CancelCop.Analyzer;
 
@@ -21,9 +22,9 @@ namespace CancelCop.Analyzer;
 /// overload) for exactly this case.
 /// </para>
 /// <para>
-/// <b>What it detects:</b> a parameterless <c>Wait()</c> call on a
+/// <b>What it detects:</b> a potentially blocking <c>Wait(...)</c> call on a
 /// <c>System.Threading.SemaphoreSlim</c> inside an <c>async</c> method, local function, lambda, or
-/// anonymous method.
+/// anonymous method. The guaranteed non-blocking <c>Wait(0)</c> try-enter form is excluded.
 /// </para>
 /// </remarks>
 /// <example>
@@ -83,12 +84,15 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;
 
-        // All Wait overloads block; the fix carries the original arguments through to WaitAsync
-        // (and adds the in-scope token only when Wait() was parameterless).
+        // Potentially blocking Wait overloads should become WaitAsync; a constant zero-millisecond
+        // timeout is the guaranteed non-blocking try-enter form and should remain synchronous.
         if (method.Name != "Wait")
             return;
         if (method.ContainingType?.Name != "SemaphoreSlim" ||
             method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading")
+            return;
+
+        if (HasZeroMillisecondsTimeout(invocation, context.SemanticModel, context.CancellationToken))
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
@@ -102,5 +106,26 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, memberAccess.Name.GetLocation(), properties));
+    }
+
+    private static bool HasZeroMillisecondsTimeout(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+            return false;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (argument.Parameter?.Name == "millisecondsTimeout" &&
+                argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
+                value == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

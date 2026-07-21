@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.185] - 2026-07-21
+
+### Fixed
+
+- **CC026** false positive: `SemaphoreSlim.Wait(0)` is no longer treated as blocking in async code.
+  A zero-millisecond timeout is an immediate try-enter probe; semantic argument binding also covers
+  named arguments and compile-time constants.
+
 ## [1.27.184] - 2026-07-21
 
 ### Fixed
