@@ -36,7 +36,7 @@ CC025 | Usage | Info | Prefer await using for IAsyncDisposable
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-CC024 | Usage | Warning | Avoid async lambdas converted to Action
+CC024 | Usage | Warning | Avoid async lambdas converted to void-returning delegates
 
 ## Release 1.19.0
 

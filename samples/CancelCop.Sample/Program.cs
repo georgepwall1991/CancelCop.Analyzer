@@ -25,7 +25,7 @@
 // CC019_SwallowedCancellation.cs - Broad catch swallows OperationCanceledException
 // CC022_PreferCancelAsync.cs   - Prefer await CancelAsync() over Cancel()
 // CC023_AsyncVoid.cs           - Avoid async void (non-event-handler)
-// CC024_AsyncVoidLambda.cs     - Avoid async lambdas converted to Action
+// CC024_AsyncVoidLambda.cs     - Avoid async lambdas converted to void-returning delegates
 // CC025_AwaitUsing.cs          - Prefer await using for IAsyncDisposable
 // CC026_BlockingSemaphore.cs   - Avoid SemaphoreSlim.Wait() in async code
 // CC027_PrematureDisposal.cs   - Returned task uses a disposed using resource
