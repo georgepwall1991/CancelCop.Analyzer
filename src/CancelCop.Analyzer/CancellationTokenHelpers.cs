@@ -327,12 +327,16 @@ internal static class CancellationTokenHelpers
         return false;
     }
 
-    private static bool IsInsideNameof(
-        IdentifierNameSyntax identifier,
+    /// <summary>
+    /// Returns true when <paramref name="node"/> is contained by a compile-time-only
+    /// <c>nameof</c> operation.
+    /// </summary>
+    public static bool IsInsideNameof(
+        SyntaxNode node,
         SemanticModel semanticModel,
         System.Threading.CancellationToken cancellationToken)
     {
-        for (var operation = semanticModel.GetOperation(identifier, cancellationToken);
+        for (var operation = semanticModel.GetOperation(node, cancellationToken);
              operation != null;
              operation = operation.Parent)
         {

@@ -32,9 +32,10 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What satisfies the check:</b>
 /// <list type="bullet">
-/// <item>Calling <c>ThrowIfCancellationRequested()</c> inside the loop</item>
-/// <item>Checking <c>IsCancellationRequested</c> property inside the loop</item>
+/// <item>Calling <c>ThrowIfCancellationRequested()</c> inside the loop at runtime</item>
+/// <item>Checking <c>IsCancellationRequested</c> inside the loop at runtime</item>
 /// </list>
+/// Compile-time-only references inside <c>nameof</c> do not observe cancellation.
 /// </para>
 /// <para>
 /// <b>Scope:</b>
@@ -141,8 +142,10 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
         // A cancellation check satisfies the rule whether it is in the loop body or the loop
         // condition — `while (!token.IsCancellationRequested)` and
         // `for (...; !token.IsCancellationRequested; ...)` are canonical cancellation-aware loops.
-        if (HasCancellationCheck(loopBody, tokenParameter, context.SemanticModel) ||
-            (condition != null && HasCancellationCheck(condition, tokenParameter, context.SemanticModel)))
+        if (HasCancellationCheck(
+                loopBody, tokenParameter, context.SemanticModel, context.CancellationToken) ||
+            (condition != null && HasCancellationCheck(
+                condition, tokenParameter, context.SemanticModel, context.CancellationToken)))
             return;
 
         // Report diagnostic
@@ -159,7 +162,11 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     /// rejected, a real token with a plain name is accepted, and a check on a different token does
     /// not satisfy the rule for the reported token.
     /// </summary>
-    private static bool HasCancellationCheck(SyntaxNode loopBody, IParameterSymbol tokenParameter, SemanticModel semanticModel)
+    private static bool HasCancellationCheck(
+        SyntaxNode loopBody,
+        IParameterSymbol tokenParameter,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
     {
         if (loopBody == null)
             return false;
@@ -178,7 +185,9 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
             // IsCancellationRequested property access on the in-scope token.
             if (node is MemberAccessExpressionSyntax propAccess &&
                 propAccess.Name.Identifier.Text == "IsCancellationRequested" &&
-                IsTokenReceiver(propAccess.Expression, tokenParameter, semanticModel))
+                IsTokenReceiver(propAccess.Expression, tokenParameter, semanticModel) &&
+                !CancellationTokenHelpers.IsInsideNameof(
+                    propAccess, semanticModel, cancellationToken))
             {
                 return true;
             }

@@ -161,6 +161,31 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ForEachLoop_NameofIsCancellationRequested_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(IEnumerable<int> items, CancellationToken cancellationToken)
+    {
+        {|#0:foreach|} (var item in items)
+        {
+            _ = nameof(cancellationToken.IsCancellationRequested);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task WhileLoop_WithConditionCheck_ShouldNotReportDiagnostic()
     {
         var test = @"

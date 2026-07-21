@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.180] - 2026-07-21
+
+### Fixed
+
+- **CC009** false negative: mentioning `cancellationToken.IsCancellationRequested` only inside
+  `nameof(...)` no longer counts as a loop cancellation check. Because `nameof` is evaluated at
+  compile time, the loop is now diagnosed until it observes cancellation at runtime.
+
 ## [1.27.179] - 2026-07-21
 
 ### Fixed
