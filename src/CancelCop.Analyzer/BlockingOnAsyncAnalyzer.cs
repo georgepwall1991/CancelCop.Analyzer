@@ -69,6 +69,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
 
         context.RegisterSyntaxNodeAction(AnalyzeMemberAccess, SyntaxKind.SimpleMemberAccessExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeMemberBinding, SyntaxKind.MemberBindingExpression);
         context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
     }
 
@@ -85,6 +86,20 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             return;
 
         Report(context, memberAccess.Name, ".Result");
+    }
+
+    private void AnalyzeMemberBinding(SyntaxNodeAnalysisContext context)
+    {
+        var memberBinding = (MemberBindingExpressionSyntax)context.Node;
+        if (memberBinding.Name.Identifier.Text != "Result")
+            return;
+
+        if (context.SemanticModel.GetSymbolInfo(memberBinding, context.CancellationToken).Symbol is not IPropertySymbol property)
+            return;
+        if (!IsTaskLike(property.ContainingType))
+            return;
+
+        Report(context, memberBinding.Name, ".Result");
     }
 
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
