@@ -100,7 +100,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         // immediate completion probe; the code fix only rewrites the parameterless overload.
         if (method.Name == "Wait" && IsTaskLike(method.ContainingType))
         {
-            if (HasZeroMillisecondsTimeout(invocation, context.SemanticModel, context.CancellationToken))
+            if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
                 return;
 
             Report(context, memberAccess.Name, ".Wait()");
@@ -121,7 +121,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool HasZeroMillisecondsTimeout(
+    private static bool HasZeroTimeout(
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel,
         System.Threading.CancellationToken cancellationToken)
@@ -137,10 +137,46 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             {
                 return true;
             }
+
+            if (!IsFrameworkTimeSpan(argument.Parameter?.Type))
+                continue;
+
+            var argumentValue = UnwrapImplicitOperations(argument.Value);
+            if (argumentValue is IDefaultValueOperation)
+                return true;
+
+            if (argumentValue is IFieldReferenceOperation
+                {
+                    Field: { IsStatic: true, Name: "Zero" } field,
+                } && IsFrameworkTimeSpan(field.ContainingType))
+            {
+                return true;
+            }
         }
 
         return false;
     }
+
+    private static IOperation UnwrapImplicitOperations(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation { IsImplicit: true } conversion:
+                    operation = conversion.Operand;
+                    continue;
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+                default:
+                    return operation;
+            }
+        }
+    }
+
+    private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
+        type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
 
     private static void Report(SyntaxNodeAnalysisContext context, SyntaxNode location, string display)
     {
