@@ -27,8 +27,9 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a non-<c>async</c> method or local function returning
 /// <c>Task</c>/<c>Task&lt;T&gt;</c>/<c>ValueTask</c> where a <c>return</c> expression is a call whose
-/// left-most receiver is a <c>using</c>-declared local. Only the receiver case is flagged (high
-/// confidence); a resource read synchronously into a completed task — e.g.
+/// left-most receiver is a <c>using</c>-declared local, including when the receiver is cast to a
+/// base type or interface. Only the receiver case is flagged (high confidence); a resource read
+/// synchronously into a completed task — e.g.
 /// <c>Task.FromResult(resource.Value)</c> — is not.
 /// </para>
 /// </remarks>
@@ -147,8 +148,8 @@ public class ReturnedTaskUsingDisposedAnalyzer : DiagnosticAnalyzer
             child is not LocalFunctionStatementSyntax && child is not AnonymousFunctionExpressionSyntax);
 
     /// <summary>
-    /// Walks an invocation/member-access (and conditional-access/parenthesis) chain down to its
-    /// left-most receiver expression.
+    /// Walks an invocation/member-access (and conditional-access/parenthesis/cast) chain down to
+    /// its left-most receiver expression.
     /// </summary>
     private static ExpressionSyntax GetLeftmostReceiver(ExpressionSyntax expression)
     {
@@ -167,6 +168,9 @@ public class ReturnedTaskUsingDisposedAnalyzer : DiagnosticAnalyzer
                     break;
                 case ParenthesizedExpressionSyntax parenthesized:
                     expression = parenthesized.Expression;
+                    break;
+                case CastExpressionSyntax cast:
+                    expression = cast.Expression;
                     break;
                 default:
                     return expression;

@@ -58,6 +58,37 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReturnTaskThroughCastUsingResource_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public interface IResource : IDisposable
+{
+    Task<int> DoAsync();
+}
+
+public sealed class Resource : IResource
+{
+    public void Dispose() { }
+    public Task<int> DoAsync() => Task.FromResult(0);
+}
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        using var resource = new Resource();
+        return {|#0:((IResource)resource).DoAsync()|};
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC027").WithLocation(0).WithArguments("resource");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ReturnCompletedTaskReadingResource_ShouldNotReportDiagnostic()
     {
         var test = @"
