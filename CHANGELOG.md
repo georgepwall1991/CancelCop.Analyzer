@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.189] - 2026-07-21
+
+### Fixed
+
+- **CC015** false positives: `Task.Wait(TimeSpan.Zero)`, `Task.Wait(default(TimeSpan))`, and a
+  target-typed zero `default` are now recognized as immediate completion probes. Recognition is
+  limited to the exact framework `TimeSpan.Zero` field and default-value operations.
+
 ## [1.27.188] - 2026-07-21
 
 ### Fixed

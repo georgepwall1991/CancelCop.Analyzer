@@ -192,6 +192,22 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WaitWithZeroTimeSpan_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task ProbeAsync(Task task)
+    {
+        await Task.Yield();
+        _ = task.Wait(System.TimeSpan.Zero);
+        _ = task.Wait(default(System.TimeSpan));
+        _ = task.Wait(timeout: default);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task WaitWithTimeSpan_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = Harness + @"
