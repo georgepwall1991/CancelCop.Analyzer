@@ -111,6 +111,27 @@ public class GreeterService
     }
 
     [Fact]
+    public async Task GrpcMethod_NameofTokenOnly_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task<string> SayHello(string request, ServerCallContext {|#0:context|})
+    {
+        _ = nameof(context.CancellationToken);
+        await Task.Yield();
+        return ""hi"";
+    }
+}" + ContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC020").WithLocation(0).WithArguments("context");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task GrpcMethod_PassesContextOn_ShouldNotReportDiagnostic()
     {
         var test = @"

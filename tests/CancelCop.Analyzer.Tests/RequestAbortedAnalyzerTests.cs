@@ -85,6 +85,26 @@ public class Middleware
     }
 
     [Fact]
+    public async Task Method_NameofRequestAbortedOnly_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public class Middleware
+{
+    public async Task InvokeAsync(HttpContext {|#0:context|})
+    {
+        _ = nameof(context.RequestAborted);
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC021").WithLocation(0).WithArguments("context");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Method_PassesContextOn_ShouldNotReportDiagnostic()
     {
         var test = @"
