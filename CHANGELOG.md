@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.195] - 2026-07-21
+
+### Fixed
+
+- **CC015** false negative: null-conditional `Task.Wait` calls (`task?.Wait()`) are now
+  diagnosed in async code. Conditional-access diagnostics intentionally have no automatic fix.
+
 ## [1.27.194] - 2026-07-21
 
 ### Fixed
