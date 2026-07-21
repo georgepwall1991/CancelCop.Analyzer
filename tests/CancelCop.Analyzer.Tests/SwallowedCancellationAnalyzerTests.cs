@@ -50,6 +50,92 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CatchException_OverAwaitForeach_ShouldReportDiagnostic()
+    {
+        var test = new CSharpAnalyzerTest<SwallowedCancellationAnalyzer, DefaultVerifier>
+        {
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+            TestCode = @"
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(IAsyncEnumerable<int> source)
+    {
+        try
+        {
+            await foreach (var item in source)
+            {
+            }
+        }
+        {|#0:catch|} (Exception) { }
+    }
+}",
+        };
+        test.ExpectedDiagnostics.Add(VerifyCS.Diagnostic("CC019").WithLocation(0));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task CatchException_OverAwaitUsingDeclaration_ShouldReportDiagnostic()
+    {
+        var test = new CSharpAnalyzerTest<SwallowedCancellationAnalyzer, DefaultVerifier>
+        {
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+            TestCode = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(IAsyncDisposable resource)
+    {
+        try
+        {
+            await using var owned = resource;
+        }
+        {|#0:catch|} (Exception) { }
+    }
+}",
+        };
+        test.ExpectedDiagnostics.Add(VerifyCS.Diagnostic("CC019").WithLocation(0));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task CatchException_OverAwaitUsingStatement_ShouldReportDiagnostic()
+    {
+        var test = new CSharpAnalyzerTest<SwallowedCancellationAnalyzer, DefaultVerifier>
+        {
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+            TestCode = @"
+using System;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(IAsyncDisposable resource)
+    {
+        try
+        {
+            await using (resource)
+            {
+            }
+        }
+        {|#0:catch|} (Exception) { }
+    }
+}",
+        };
+        test.ExpectedDiagnostics.Add(VerifyCS.Diagnostic("CC019").WithLocation(0));
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task CatchException_Rethrows_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"
