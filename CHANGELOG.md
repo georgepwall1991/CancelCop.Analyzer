@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.175] - 2026-07-21
+
+### Fixed
+
+- **CC019** false negative: broad catches around `await foreach` or either `await using` form are
+  now analyzed as cancellation-capable awaited work. These constructs carry await keywords on their
+  statement syntax rather than producing `AwaitExpressionSyntax`, which previously left them silent.
+
 ## [1.27.174] - 2026-07-21
 
 ### Fixed

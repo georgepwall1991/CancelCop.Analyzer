@@ -26,8 +26,9 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a <c>catch</c> with no exception type, or one catching
 /// <c>System.Exception</c>, that has no <c>when</c> filter, whose <c>try</c> block contains an
-/// <c>await</c> in the current function scope, and whose body never rethrows. Awaits owned by a
-/// nested local or anonymous function do not execute as part of the <c>try</c> itself.
+/// <c>await</c> in the current function scope (including <c>await foreach</c> and
+/// <c>await using</c>), and whose body never rethrows. Awaits owned by a nested local or anonymous
+/// function do not execute as part of the <c>try</c> itself.
 /// </para>
 /// </remarks>
 /// <example>
@@ -103,8 +104,22 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
         return block.DescendantNodes(descendIntoChildren: child =>
                 child is not LocalFunctionStatementSyntax &&
                 child is not AnonymousFunctionExpressionSyntax)
-            .OfType<AwaitExpressionSyntax>()
-            .Any();
+            .Any(IsAwaitedOperation);
+    }
+
+    private static bool IsAwaitedOperation(SyntaxNode node)
+    {
+        return node switch
+        {
+            AwaitExpressionSyntax => true,
+            CommonForEachStatementSyntax forEach =>
+                forEach.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword),
+            LocalDeclarationStatementSyntax declaration =>
+                declaration.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword),
+            UsingStatementSyntax usingStatement =>
+                usingStatement.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword),
+            _ => false,
+        };
     }
 
     private static bool CatchesEverything(
