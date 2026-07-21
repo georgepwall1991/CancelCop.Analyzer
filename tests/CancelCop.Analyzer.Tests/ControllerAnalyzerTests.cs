@@ -410,6 +410,31 @@ public class UsersController : BaseController
     }
 
     [Fact]
+    public async Task ControllerAction_OverrideWithFixedSignature_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public abstract class ApiControllerBase : ControllerBase
+{
+    public abstract Task<IActionResult> GetUsers();
+}
+
+public class UsersController : ApiControllerBase
+{
+    [HttpGet]
+    public override async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task ControllerAction_UserDefinedNonActionAttribute_StillReportsDiagnostic()
     {
         // A user-defined NonActionAttribute (not Microsoft.AspNetCore.Mvc's) does not stop MVC

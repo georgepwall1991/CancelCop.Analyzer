@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.182] - 2026-07-21
+
+### Fixed
+
+- **CC005B** false positive: controller actions whose signatures are fixed by an override or
+  interface contract are no longer told to add a `CancellationToken` parameter. Applying that
+  change only to the implementation could break the contract and produce compiler errors.
+
 ## [1.27.181] - 2026-07-21
 
 ### Fixed
