@@ -114,6 +114,37 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Cancel_InTopLevelAsyncProgram_ShouldReportDiagnostic()
+    {
+        var testCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+using var cts = new CancellationTokenSource();
+cts.{|#0:Cancel|}();
+await Task.Yield();";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        var test = CreateTest(testCode, expected);
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task Cancel_InTopLevelSyncProgram_ShouldNotReportDiagnostic()
+    {
+        var testCode = @"
+using System.Threading;
+
+using var cts = new CancellationTokenSource();
+cts.Cancel();";
+
+        var test = CreateTest(testCode);
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"

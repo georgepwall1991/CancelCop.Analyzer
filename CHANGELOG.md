@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.187] - 2026-07-21
+
+### Fixed
+
+- **CC022 / CC025** false negatives: top-level programs whose synthesized entry point contains
+  `await` are now recognized as async context. `Cancel()` and synchronous `using` over an
+  `IAsyncDisposable` receive the same guidance there as inside an explicit async method, while
+  purely synchronous top-level programs remain quiet.
+
 ## [1.27.186] - 2026-07-21
 
 ### Fixed

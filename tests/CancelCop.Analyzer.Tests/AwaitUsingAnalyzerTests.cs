@@ -77,6 +77,32 @@ public class TestClass
     }
 
     [Fact]
+    public async Task UsingDeclaration_InTopLevelAsyncProgram_ShouldReportDiagnostic()
+    {
+        var testCode = @"
+using System.Threading.Tasks;
+
+{|#0:using|} var x = new AsyncResource();
+await Task.Yield();" + Resources;
+
+        var expected = new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0);
+        var test = CreateTest(testCode, expected);
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task UsingDeclaration_InTopLevelSyncProgram_ShouldNotReportDiagnostic()
+    {
+        var testCode = @"
+using var x = new AsyncResource();" + Resources;
+
+        var test = CreateTest(testCode);
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitUsing_ShouldNotReportDiagnostic()
     {
         var test = @"

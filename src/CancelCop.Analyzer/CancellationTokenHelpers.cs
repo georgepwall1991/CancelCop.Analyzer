@@ -271,10 +271,10 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// Returns true when the nearest enclosing function (method, local function, lambda, or
-    /// anonymous method) is declared <c>async</c>. The search stops at the first function boundary,
-    /// so a synchronous lambda inside an async method is correctly treated as non-async, and a
-    /// property/accessor boundary ends the search.
+    /// Returns true when the nearest enclosing function (method, local function, lambda, anonymous
+    /// method, or synthesized top-level entry point) is async. The search stops at the first
+    /// function boundary, so a synchronous lambda inside an async method is correctly treated as
+    /// non-async, and a property/accessor boundary ends the search.
     /// </summary>
     public static bool IsInAsyncFunction(SyntaxNode node)
     {
@@ -288,9 +288,34 @@ internal static class CancellationTokenHelpers
                     return local.Modifiers.Any(SyntaxKind.AsyncKeyword);
                 case AnonymousFunctionExpressionSyntax anonymous:
                     return anonymous.Modifiers.Any(SyntaxKind.AsyncKeyword);
+                case GlobalStatementSyntax global:
+                    return HasTopLevelAwait((CompilationUnitSyntax)global.Parent!);
                 case AccessorDeclarationSyntax:
                 case BasePropertyDeclarationSyntax:
                     return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasTopLevelAwait(CompilationUnitSyntax compilationUnit)
+    {
+        foreach (var global in compilationUnit.Members.OfType<GlobalStatementSyntax>())
+        {
+            foreach (var token in global.DescendantTokens())
+            {
+                if (!token.IsKind(SyntaxKind.AwaitKeyword))
+                    continue;
+
+                // Await inside a nested lambda/local function belongs to that function, not the
+                // synthesized top-level entry point.
+                var belongsToNestedFunction = token.Parent?.AncestorsAndSelf()
+                    .TakeWhile(node => node != global)
+                    .Any(node => node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax) == true;
+
+                if (!belongsToNestedFunction)
+                    return true;
             }
         }
 
