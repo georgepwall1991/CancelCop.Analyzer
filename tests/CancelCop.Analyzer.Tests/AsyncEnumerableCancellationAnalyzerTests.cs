@@ -96,6 +96,46 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AwaitForeach_CustomWithCancellationWithoutToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public sealed class CustomStream : IAsyncEnumerable<int>
+{
+    public CustomStream WithCancellation() => this;
+
+    public IAsyncEnumerator<int> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+        => new Enumerator();
+
+    private sealed class Enumerator : IAsyncEnumerator<int>
+    {
+        public int Current => 0;
+        public ValueTask DisposeAsync() => default;
+        public ValueTask<bool> MoveNextAsync() => new(false);
+    }
+}
+
+public class TestClass
+{
+    public async Task ConsumeAsync(CustomStream source, CancellationToken cancellationToken)
+    {
+        await foreach (var item in {|#0:source.WithCancellation()|})
+        {
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC010", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitForeach_NoTokenInScope_ShouldNotReportDiagnostic()
     {
         var test = @"

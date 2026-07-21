@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.183] - 2026-07-21
+
+### Fixed
+
+- **CC010** false negative: a custom method merely named `WithCancellation` no longer makes an
+  `await foreach` loop appear to flow its in-scope token. Only the framework configured-enumerable
+  API suppresses the diagnostic through that wrapper path.
+
 ## [1.27.182] - 2026-07-21
 
 ### Fixed

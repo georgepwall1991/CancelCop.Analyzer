@@ -27,7 +27,7 @@ namespace CancelCop.Analyzer;
 /// <b>What it detects:</b> an <c>await foreach</c> whose source is statically typed as
 /// <c>IAsyncEnumerable&lt;T&gt;</c> (or implements it), where a <c>CancellationToken</c> is in scope
 /// and the source neither already passes a token argument nor is wrapped in a configured cancelable
-/// enumerable (the result of <c>.WithCancellation</c>/<c>.ConfigureAwait</c>).
+/// enumerable (the result of the framework <c>.WithCancellation</c>/<c>.ConfigureAwait</c> APIs).
 /// </para>
 /// </remarks>
 /// <example>
@@ -91,7 +91,11 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
         // source so the underlying async stream is examined. `source.ConfigureAwait(false)` is a
         // configured cancelable enumerable that still never received a token — that should be
         // flagged, while a chain that already includes `.WithCancellation(...)` should not.
-        var source = UnwrapConfiguredEnumerable(forEach.Expression, out var hasWithCancellation);
+        var source = UnwrapConfiguredEnumerable(
+            forEach.Expression,
+            context.SemanticModel,
+            context.CancellationToken,
+            out var hasWithCancellation);
         if (hasWithCancellation)
             return;
 
@@ -120,17 +124,24 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
     /// <summary>
     /// Strips trailing <c>.WithCancellation(...)</c> and <c>.ConfigureAwait(...)</c> calls from an
     /// <c>await foreach</c> source, returning the underlying enumerable expression and reporting
-    /// (via <paramref name="hasWithCancellation"/>) whether a <c>.WithCancellation</c> was present —
-    /// in which case a token already flows and the loop must not be flagged.
+    /// (via <paramref name="hasWithCancellation"/>) whether the framework
+    /// <c>.WithCancellation</c> API was present — in which case a token already flows and the loop
+    /// must not be flagged. Name-only look-alike methods are not treated as token flow.
     /// </summary>
-    private static ExpressionSyntax UnwrapConfiguredEnumerable(ExpressionSyntax source, out bool hasWithCancellation)
+    private static ExpressionSyntax UnwrapConfiguredEnumerable(
+        ExpressionSyntax source,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken,
+        out bool hasWithCancellation)
     {
         hasWithCancellation = false;
 
-        while (source is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
+        while (source is InvocationExpressionSyntax invocation &&
+               invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
             var name = memberAccess.Name.Identifier.Text;
-            if (name == "WithCancellation")
+            if (name == "WithCancellation" &&
+                IsFrameworkWithCancellation(invocation, semanticModel, cancellationToken))
             {
                 hasWithCancellation = true;
                 source = memberAccess.Expression;
@@ -146,6 +157,22 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
         }
 
         return source;
+    }
+
+    private static bool IsFrameworkWithCancellation(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        var method = semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol as IMethodSymbol;
+        var definition = method?.ReducedFrom ?? method;
+
+        return definition is
+        {
+            Name: "WithCancellation",
+            ContainingType.Name: "TaskAsyncEnumerableExtensions"
+        } &&
+        definition.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks";
     }
 
     /// <summary>
