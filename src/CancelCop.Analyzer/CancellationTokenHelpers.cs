@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace CancelCop.Analyzer;
 
@@ -297,9 +298,10 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// Returns true when <paramref name="parameter"/> is referenced anywhere within
+    /// Returns true when <paramref name="parameter"/> is referenced at runtime within
     /// <paramref name="body"/> — including inside nested lambdas and local functions, where the
-    /// parameter is captured. Used to tell an observed token from a dead one.
+    /// parameter is captured. Compile-time-only <c>nameof</c> references are ignored. Used to tell
+    /// an observed token from a dead one.
     /// </summary>
     public static bool IsParameterReferenced(
         SyntaxNode body,
@@ -312,8 +314,29 @@ internal static class CancellationTokenHelpers
             if (identifier.Identifier.Text != parameter.Name)
                 continue;
 
-            if (SymbolEqualityComparer.Default.Equals(
+            if (!SymbolEqualityComparer.Default.Equals(
                     semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
+            {
+                continue;
+            }
+
+            if (!IsInsideNameof(identifier, semanticModel, cancellationToken))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsInsideNameof(
+        IdentifierNameSyntax identifier,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        for (var operation = semanticModel.GetOperation(identifier, cancellationToken);
+             operation != null;
+             operation = operation.Parent)
+        {
+            if (operation is INameOfOperation)
                 return true;
         }
 
