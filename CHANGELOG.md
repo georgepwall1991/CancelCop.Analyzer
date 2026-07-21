@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.198] - 2026-07-22
+
+### Fixed
+
+- **CC028** false negative: null-conditional blocking `StreamReader`/`StreamWriter` calls,
+  such as `reader?.ReadLine()`, are now diagnosed in async code. Conditional-access
+  diagnostics intentionally have no automatic fix.
+
 ## [1.27.197] - 2026-07-22
 
 ### Fixed

@@ -175,6 +175,48 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StreamReaderConditionalReadLine_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader reader)
+    {
+        _ = reader?.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadLine");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalCallsWithoutSupportedAsyncCounterpart_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader reader, StreamWriter writer)
+    {
+        _ = reader?.Peek();
+        writer?.Write(""abc"".AsSpan());
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task StreamReaderReadLine_InSyncMethod_ShouldNotReportDiagnostic()
     {
         var test = @"
