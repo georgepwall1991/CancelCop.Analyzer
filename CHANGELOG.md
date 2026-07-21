@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.192] - 2026-07-21
+
+### Fixed
+
+- **CC015** false positives: parameterless `new TimeSpan()` and target-typed `new()` timeout
+  values are now recognized as exact zero-duration completion probes. Framework `TimeSpan`
+  recognition now uses symbol identity rather than name matching.
+
 ## [1.27.191] - 2026-07-21
 
 ### Fixed

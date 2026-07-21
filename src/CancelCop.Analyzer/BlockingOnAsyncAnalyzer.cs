@@ -133,6 +133,8 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
             return false;
 
+        var timeSpanType = semanticModel.Compilation.GetTypeByMetadataName("System.TimeSpan");
+
         foreach (var argument in operation.Arguments)
         {
             if (argument.Parameter?.Name == "millisecondsTimeout" &&
@@ -142,7 +144,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
                 return true;
             }
 
-            if (!IsFrameworkTimeSpan(argument.Parameter?.Type))
+            if (!SymbolEqualityComparer.Default.Equals(argument.Parameter?.Type, timeSpanType))
                 continue;
 
             var argumentValue = UnwrapImplicitOperations(argument.Value);
@@ -152,7 +154,14 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             if (argumentValue is IFieldReferenceOperation
                 {
                     Field: { IsStatic: true, Name: "Zero" } field,
-                } && IsFrameworkTimeSpan(field.ContainingType))
+                } && SymbolEqualityComparer.Default.Equals(field.ContainingType, timeSpanType))
+            {
+                return true;
+            }
+
+            if (argumentValue is IObjectCreationOperation creation &&
+                creation.Arguments.Length == 0 &&
+                SymbolEqualityComparer.Default.Equals(creation.Type, timeSpanType))
             {
                 return true;
             }
@@ -178,9 +187,6 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             }
         }
     }
-
-    private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
-        type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
 
     private static void Report(SyntaxNodeAnalysisContext context, SyntaxNode location, string display)
     {
