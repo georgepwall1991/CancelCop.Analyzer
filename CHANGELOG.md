@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.177] - 2026-07-21
+
+### Fixed
+
+- **CC016 / CC017** false negatives: mentioning a token only inside `nameof(...)` no longer counts
+  as observing cancellation. `nameof` is evaluated at compile time, so these methods still ignore
+  their runtime cancellation signal and are now diagnosed.
+
 ## [1.27.176] - 2026-07-21
 
 ### Fixed

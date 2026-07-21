@@ -29,6 +29,26 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncMethod_TokenOnlyInNameof_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken {|#0:cancellationToken|})
+    {
+        _ = nameof(cancellationToken);
+        await Task.Delay(1000);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC016").WithLocation(0).WithArguments("cancellationToken");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task AsyncIterator_EnumeratorCancellationToken_NotReferencedInBody_ShouldNotReportDiagnostic()
     {
         // A [EnumeratorCancellation] token is delivered to the async-iterator enumerator (it receives a
