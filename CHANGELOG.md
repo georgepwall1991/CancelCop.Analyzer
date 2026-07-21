@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.188] - 2026-07-21
+
+### Fixed
+
+- **CC015** false positive: `Task.Wait(0)` is no longer treated as sync-over-async blocking. A
+  zero-millisecond timeout is an immediate completion probe; semantic argument binding also covers
+  named arguments and compile-time constants.
+
 ## [1.27.187] - 2026-07-21
 
 ### Fixed
