@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.184] - 2026-07-21
+
+### Fixed
+
+- **CC027** false negative: returning an async call through an interface or base-type cast of a
+  `using`-scoped resource is now diagnosed. The cast does not extend the resource lifetime, so it
+  is still disposed before the returned task completes.
+
 ## [1.27.183] - 2026-07-21
 
 ### Fixed
