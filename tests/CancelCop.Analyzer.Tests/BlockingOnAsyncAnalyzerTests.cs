@@ -130,6 +130,22 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ConditionalWait_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync(Task task)
+    {
+        await Task.Yield();
+        _ = task?.Wait(0);
+        task?.{|#0:Wait|}();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Wait()");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task GetAwaiterGetResult_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = Harness + @"

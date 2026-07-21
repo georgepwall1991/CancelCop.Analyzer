@@ -105,7 +105,13 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+        var memberName = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            _ => null,
+        };
+        if (memberName is null)
             return;
 
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
@@ -118,7 +124,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
                 return;
 
-            Report(context, memberAccess.Name, ".Wait()");
+            Report(context, memberName, ".Wait()");
             return;
         }
 
@@ -129,14 +135,14 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
                 return;
 
-            Report(context, memberAccess.Name, "." + method.Name + "()");
+            Report(context, memberName, "." + method.Name + "()");
             return;
         }
 
         // task.GetAwaiter().GetResult()
         if (method.Name == "GetResult" && IsTaskAwaiter(method.ContainingType))
         {
-            Report(context, memberAccess.Name, ".GetAwaiter().GetResult()");
+            Report(context, memberName, ".GetAwaiter().GetResult()");
         }
     }
 
