@@ -116,6 +116,26 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WaitWithZeroTimeout_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<bool> TryEnterAsync(SemaphoreSlim gate)
+    {
+        const int NoWait = 0;
+        await Task.Yield();
+        return gate.Wait(millisecondsTimeout: NoWait);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task WaitWithToken_InAsyncMethod_ShouldReportDiagnostic()
     {
         var test = @"
