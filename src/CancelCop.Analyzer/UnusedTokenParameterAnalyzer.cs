@@ -24,7 +24,8 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a method/local function whose body performs asynchronous work (contains
-/// an <c>await</c>) and declares a <c>CancellationToken</c> parameter that is never referenced.
+/// an <c>await</c> in its current function scope) and declares a <c>CancellationToken</c> parameter
+/// that is never referenced.
 /// Signatures dictated elsewhere (override, interface implementation, <c>extern</c>) are excluded —
 /// they cannot drop the parameter — as are bodies with no <c>await</c>. A token marked
 /// <c>[EnumeratorCancellation]</c> is also excluded: the async-iterator infrastructure delivers the
@@ -105,7 +106,7 @@ public class UnusedTokenParameterAnalyzer : DiagnosticAnalyzer
             return;
 
         // Only flag where there is asynchronous work that ought to observe the token.
-        if (!body.DescendantNodes().OfType<AwaitExpressionSyntax>().Any())
+        if (!ContainsAwaitInCurrentScope(body))
             return;
 
         foreach (var parameter in parameterList.Parameters)
@@ -133,6 +134,15 @@ public class UnusedTokenParameterAnalyzer : DiagnosticAnalyzer
             context.ReportDiagnostic(Diagnostic.Create(
                 Rule, parameter.Identifier.GetLocation(), parameter.Identifier.Text));
         }
+    }
+
+    private static bool ContainsAwaitInCurrentScope(SyntaxNode body)
+    {
+        return body.DescendantNodes(descendIntoChildren: child =>
+                child is not LocalFunctionStatementSyntax &&
+                child is not AnonymousFunctionExpressionSyntax)
+            .OfType<AwaitExpressionSyntax>()
+            .Any();
     }
 
     /// <summary>

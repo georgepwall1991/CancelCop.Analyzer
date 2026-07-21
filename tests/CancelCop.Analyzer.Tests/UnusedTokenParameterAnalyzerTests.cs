@@ -108,6 +108,26 @@ public class TestClass
     }
 
     [Fact]
+    public async Task SyncMethod_AwaitOnlyInsideNestedLambda_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Configure(CancellationToken cancellationToken)
+    {
+        Func<Task> work = async () => await Task.Delay(1000);
+        _ = work;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task InterfaceImplementation_UnusedToken_ShouldNotReportDiagnostic()
     {
         var test = @"

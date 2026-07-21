@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.178] - 2026-07-21
+
+### Fixed
+
+- **CC016** false positive: an `await` owned only by a nested lambda or local function no longer
+  makes a synchronous containing method look asynchronous. Await eligibility now respects the
+  current function boundary while token-reference analysis remains capture-aware.
+
 ## [1.27.177] - 2026-07-21
 
 ### Fixed
