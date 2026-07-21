@@ -349,8 +349,9 @@ internal static class CancellationTokenHelpers
 
     /// <summary>
     /// Returns true when <paramref name="body"/> reads a member named <paramref name="memberName"/>
-    /// off <paramref name="parameter"/> (e.g. <c>context.CancellationToken</c>). Used by the
-    /// context-token rules (CC020/CC021) to tell an observed token from an ignored one.
+    /// off <paramref name="parameter"/> at runtime (e.g. <c>context.CancellationToken</c>).
+    /// Compile-time-only <c>nameof</c> references are ignored. Used by the context-token rules
+    /// (CC020/CC021) to tell an observed token from an ignored one.
     /// </summary>
     public static bool AccessesMember(
         SyntaxNode body,
@@ -365,8 +366,11 @@ internal static class CancellationTokenHelpers
                 continue;
 
             if (SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol, parameter))
+                    semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol, parameter) &&
+                !IsInsideNameof(memberAccess, semanticModel, cancellationToken))
+            {
                 return true;
+            }
         }
 
         return false;

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.181] - 2026-07-21
+
+### Fixed
+
+- **CC020 / CC021** false negatives: mentioning `ServerCallContext.CancellationToken` or
+  `HttpContext.RequestAborted` only inside `nameof(...)` no longer counts as observing request
+  cancellation. These compile-time-only references now leave the runtime token-use diagnostic active.
+
 ## [1.27.180] - 2026-07-21
 
 ### Fixed
