@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.174] - 2026-07-21
+
+### Fixed
+
+- **CC019** false positive: a broad catch is no longer reported merely because its `try` declares a
+  local function or lambda containing an `await`. Deferred nested-function work does not execute in
+  the `try` scope, so it cannot make that catch swallow `OperationCanceledException`.
+
 ## [1.27.19] - 2026-06-14
 
 ### Tests

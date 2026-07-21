@@ -137,6 +137,24 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CatchException_AwaitOnlyInsideNestedFunctions_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    public void Run()
+    {
+        try
+        {
+            Func<Task> deferred = async () => await DoAsync();
+            async Task LocalAsync() => await DoAsync();
+        }
+        catch (Exception) { }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CatchOperationCanceled_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

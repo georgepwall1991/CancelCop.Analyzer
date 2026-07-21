@@ -26,7 +26,8 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a <c>catch</c> with no exception type, or one catching
 /// <c>System.Exception</c>, that has no <c>when</c> filter, whose <c>try</c> block contains an
-/// <c>await</c>, and whose body never rethrows.
+/// <c>await</c> in the current function scope, and whose body never rethrows. Awaits owned by a
+/// nested local or anonymous function do not execute as part of the <c>try</c> itself.
 /// </para>
 /// </remarks>
 /// <example>
@@ -87,7 +88,7 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
             return;
 
         // Cancellation can only surface where awaited work runs.
-        if (!tryStatement.Block.DescendantNodes().OfType<AwaitExpressionSyntax>().Any())
+        if (!ContainsAwaitInCurrentScope(tryStatement.Block))
             return;
 
         // A rethrow lets cancellation propagate, so the catch is not swallowing it.
@@ -95,6 +96,15 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, catchClause.CatchKeyword.GetLocation()));
+    }
+
+    private static bool ContainsAwaitInCurrentScope(SyntaxNode block)
+    {
+        return block.DescendantNodes(descendIntoChildren: child =>
+                child is not LocalFunctionStatementSyntax &&
+                child is not AnonymousFunctionExpressionSyntax)
+            .OfType<AwaitExpressionSyntax>()
+            .Any();
     }
 
     private static bool CatchesEverything(
