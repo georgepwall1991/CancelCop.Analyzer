@@ -171,6 +171,54 @@ public class UsersController : ControllerBase
     }
 
     [Fact]
+    public async Task ControllerAction_AcceptVerbsWithoutToken_AddsTokenParameter()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [AcceptVerbs(""GET"")]
+    public async Task<IActionResult> {|#0:GetUsers|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [AcceptVerbs(""GET"")]
+    public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetUsers");
+
+        var test2 = new CSharpCodeFixTest<ControllerAnalyzer, HandlerPatternCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("Microsoft.AspNetCore.Mvc.Core", "2.2.5"))),
+        };
+
+        test2.ExpectedDiagnostics.Add(expected);
+        await test2.RunAsync();
+    }
+
+    [Fact]
     public async Task ControllerAction_WithExistingParameters_AddsTokenAsLastParameter()
     {
         var test = @"
