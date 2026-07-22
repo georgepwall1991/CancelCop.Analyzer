@@ -27,7 +27,7 @@ namespace CancelCop.Analyzer;
 /// <c>CancellationTokenSource.CreateLinkedTokenSource(...)</c> that is not already a <c>using</c>
 /// declaration, is never disposed (<c>Dispose</c>/<c>DisposeAsync</c>), and never escapes (it is not
 /// returned, assigned out, passed as an argument, or captured by a nested function). Compile-time
-/// null-forgiving operators do not change disposal or escape recognition.
+/// parentheses and null-forgiving operators do not change disposal or escape recognition.
 /// </para>
 /// </remarks>
 /// <example>
@@ -147,11 +147,24 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
                 return true;
 
             ExpressionSyntax value = reference;
-            while (value.Parent is PostfixUnaryExpressionSyntax postfix &&
-                   postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression) &&
-                   postfix.Operand == value)
+            while (true)
             {
-                value = postfix;
+                switch (value.Parent)
+                {
+                    case PostfixUnaryExpressionSyntax postfix
+                        when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression) &&
+                             postfix.Operand == value:
+                        value = postfix;
+                        continue;
+                    case ParenthesizedExpressionSyntax parenthesized
+                        when parenthesized.Expression == value:
+                        value = parenthesized;
+                        continue;
+                    default:
+                        break;
+                }
+
+                break;
             }
 
             var parent = value.Parent;
