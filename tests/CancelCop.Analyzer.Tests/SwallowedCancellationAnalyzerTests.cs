@@ -181,6 +181,43 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CatchException_RethrowsOnlyUnrelatedException_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        {|#0:catch|} (Exception ex)
+        {
+            if (ex is InvalidOperationException)
+                throw;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC019").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task CatchException_RethrowsCancellationException_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        catch (Exception ex)
+        {
+            if (ex is OperationCanceledException)
+                throw;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task CatchException_WithFilter_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

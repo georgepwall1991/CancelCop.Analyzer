@@ -27,8 +27,9 @@ namespace CancelCop.Analyzer;
 /// <b>What it detects:</b> a <c>catch</c> with no exception type, or one catching
 /// <c>System.Exception</c>, that has no <c>when</c> filter, whose <c>try</c> block contains an
 /// <c>await</c> in the current function scope (including <c>await foreach</c> and
-/// <c>await using</c>), and whose body never rethrows. Awaits owned by a nested local or anonymous
-/// function do not execute as part of the <c>try</c> itself.
+/// <c>await using</c>), and whose body does not propagate cancellation. Awaits owned by a nested
+/// local or anonymous function do not execute as part of the <c>try</c> itself. A conditional
+/// rethrow restricted to an unrelated exception type does not count as propagating cancellation.
 /// </para>
 /// </remarks>
 /// <example>
@@ -93,7 +94,11 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
             return;
 
         // A rethrow lets cancellation propagate, so the catch is not swallowing it.
-        if (RethrowsOrThrows(catchClause.Block))
+        if (RethrowsOrThrows(
+                catchClause.Block,
+                catchClause,
+                context.SemanticModel,
+                context.CancellationToken))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, catchClause.CatchKeyword.GetLocation()));
@@ -134,7 +139,11 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
                type.ContainingNamespace?.ToDisplayString() == "System";
     }
 
-    private static bool RethrowsOrThrows(SyntaxNode? block)
+    private static bool RethrowsOrThrows(
+        SyntaxNode? block,
+        CatchClauseSyntax catchClause,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
     {
         if (block == null)
             return false;
@@ -144,10 +153,95 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
                      child is not LocalFunctionStatementSyntax &&
                      child is not AnonymousFunctionExpressionSyntax))
         {
-            if (node is ThrowStatementSyntax or ThrowExpressionSyntax)
+            if ((node is ThrowStatementSyntax or ThrowExpressionSyntax) &&
+                !IsRestrictedToUnrelatedException(node, catchClause, semanticModel, cancellationToken))
+            {
                 return true;
+            }
         }
 
         return false;
+    }
+
+    private static bool IsRestrictedToUnrelatedException(
+        SyntaxNode throwNode,
+        CatchClauseSyntax catchClause,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (catchClause.Declaration is not { } declaration ||
+            semanticModel.GetDeclaredSymbol(declaration, cancellationToken) is not { } caughtException ||
+            semanticModel.Compilation.GetTypeByMetadataName("System.OperationCanceledException")
+                is not { } cancellationException)
+        {
+            return false;
+        }
+
+        foreach (var ifStatement in throwNode.Ancestors().OfType<IfStatementSyntax>())
+        {
+            if (!ifStatement.Statement.Span.Contains(throwNode.Span) ||
+                !TryGetTypeTest(ifStatement.Condition, out var identifier, out var typeSyntax) ||
+                !SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol,
+                    caughtException) ||
+                semanticModel.GetTypeInfo(typeSyntax, cancellationToken).Type is not INamedTypeSymbol testedType)
+            {
+                continue;
+            }
+
+            if (!CanMatch(cancellationException, testedType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetTypeTest(
+        ExpressionSyntax condition,
+        out IdentifierNameSyntax identifier,
+        out TypeSyntax typeSyntax)
+    {
+        if (condition is IsPatternExpressionSyntax
+            {
+                Expression: IdentifierNameSyntax patternIdentifier,
+                Pattern: TypePatternSyntax typePattern,
+            })
+        {
+            identifier = patternIdentifier;
+            typeSyntax = typePattern.Type;
+            return true;
+        }
+
+        if (condition is BinaryExpressionSyntax
+            {
+                RawKind: (int)SyntaxKind.IsExpression,
+                Left: IdentifierNameSyntax binaryIdentifier,
+                Right: TypeSyntax binaryType,
+            })
+        {
+            identifier = binaryIdentifier;
+            typeSyntax = binaryType;
+            return true;
+        }
+
+        identifier = null!;
+        typeSyntax = null!;
+        return false;
+    }
+
+    private static bool CanMatch(INamedTypeSymbol sourceType, INamedTypeSymbol testedType)
+    {
+        for (var current = sourceType; current != null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, testedType))
+            {
+                return true;
+            }
+        }
+
+        return sourceType.AllInterfaces.Any(interfaceType =>
+            SymbolEqualityComparer.Default.Equals(interfaceType, testedType));
     }
 }
