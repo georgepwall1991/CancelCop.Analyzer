@@ -23,7 +23,8 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a call to <c>System.Threading.Thread.Sleep</c> lexically inside an
 /// <c>async</c> method, local function, lambda, or anonymous method. The compile-time-zero
-/// millisecond form is excluded because it yields a scheduler time slice rather than waiting.
+/// millisecond or <c>TimeSpan</c> form is excluded because it yields a scheduler time slice rather
+/// than waiting.
 /// </para>
 /// </remarks>
 /// <example>
@@ -96,18 +97,9 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        if (context.SemanticModel.GetOperation(invocation, context.CancellationToken) is
-            IInvocationOperation operation)
+        if (HasZeroDuration(invocation, context.SemanticModel, context.CancellationToken))
         {
-            foreach (var argument in operation.Arguments)
-            {
-                if (argument.Parameter?.Name == "millisecondsTimeout" &&
-                    argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
-                    value == 0)
-                {
-                    return;
-                }
-            }
+            return;
         }
 
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
@@ -119,5 +111,74 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
 
         var diagnostic = Diagnostic.Create(Rule, invocation.GetLocation(), properties);
         context.ReportDiagnostic(diagnostic);
+    }
+
+    private static bool HasZeroDuration(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+        {
+            return false;
+        }
+
+        var timeSpanType = semanticModel.Compilation.GetTypeByMetadataName("System.TimeSpan");
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (argument.Parameter?.Name == "millisecondsTimeout" &&
+                argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
+                value == 0)
+            {
+                return true;
+            }
+
+            if (!SymbolEqualityComparer.Default.Equals(argument.Parameter?.Type, timeSpanType))
+            {
+                continue;
+            }
+
+            var argumentValue = UnwrapImplicitOperations(argument.Value);
+            if (argumentValue is IDefaultValueOperation)
+            {
+                return true;
+            }
+
+            if (argumentValue is IFieldReferenceOperation
+                {
+                    Field: { IsStatic: true, Name: "Zero" } field,
+                } && SymbolEqualityComparer.Default.Equals(field.ContainingType, timeSpanType))
+            {
+                return true;
+            }
+
+            if (argumentValue is IObjectCreationOperation creation &&
+                creation.Arguments.Length == 0 &&
+                SymbolEqualityComparer.Default.Equals(creation.Type, timeSpanType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IOperation UnwrapImplicitOperations(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation { IsImplicit: true } conversion:
+                    operation = conversion.Operand;
+                    continue;
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+                default:
+                    return operation;
+            }
+        }
     }
 }
