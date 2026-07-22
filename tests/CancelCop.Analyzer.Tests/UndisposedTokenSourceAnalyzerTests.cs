@@ -165,6 +165,67 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Source_DisposedThroughParenthesizedReceivers_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        var cts = new CancellationTokenSource();
+        (cts).Dispose();
+
+        CancellationTokenSource? nested = new CancellationTokenSource();
+        ((nested!))?.Dispose();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Source_NonDisposalThroughParentheses_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        var {|#0:cts|} = new CancellationTokenSource();
+        (cts).Cancel();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task Source_PassedAsParenthesizedArgument_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        var cts = new CancellationTokenSource();
+        Use((cts));
+    }
+
+    private static void Use(CancellationTokenSource source) { }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NullableSource_NonDisposalThroughNullForgivingOperator_ShouldReportDiagnostic()
     {
         var test = @"
