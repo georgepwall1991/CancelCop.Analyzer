@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.203] - 2026-07-22
+
+### Fixed
+
+- **CC014** false positive: null-forgiven `CancellationTokenSource` references now retain
+  disposal and conservative escape semantics, so `cts!.Dispose()` and `Use(cts!)` no longer
+  produce an incorrect undisposed-source diagnostic.
+
 ## [1.27.202] - 2026-07-22
 
 ### Fixed
