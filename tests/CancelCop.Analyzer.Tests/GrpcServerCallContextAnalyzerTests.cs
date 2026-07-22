@@ -90,6 +90,25 @@ public class GreeterService
     }
 
     [Fact]
+    public async Task GrpcMethod_NullConditionallyChecksToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task SayHello(ServerCallContext context)
+    {
+        context?.CancellationToken.ThrowIfCancellationRequested();
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task GrpcMethod_NullConditionallyReadsNestedToken_ShouldReportDiagnostic()
     {
         var test = @"
@@ -101,6 +120,26 @@ public class GreeterService
     public async Task SayHello(ServerCallContext {|#0:context|})
     {
         _ = context?.Nested.CancellationToken;
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC020").WithLocation(0).WithArguments("context");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task GrpcMethod_NullConditionallyChecksNestedToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task SayHello(ServerCallContext {|#0:context|})
+    {
+        context?.Nested.CancellationToken.ThrowIfCancellationRequested();
         await Task.Yield();
     }
 }" + ContextStub;
