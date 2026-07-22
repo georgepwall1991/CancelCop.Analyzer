@@ -22,7 +22,8 @@ namespace CancelCop.Analyzer;
 /// method the task should be <c>await</c>ed instead.
 /// </para>
 /// <para>
-/// <b>What it detects:</b> <c>task.Result</c>, potentially blocking <c>task.Wait(...)</c>, and
+/// <b>What it detects:</b> <c>task.Result</c>, potentially blocking <c>task.Wait(...)</c>, static
+/// <c>Task.WaitAll</c>/<c>Task.WaitAny</c> joins (qualified or imported), and
 /// <c>task.GetAwaiter().GetResult()</c> on a <c>Task</c>/<c>Task&lt;T&gt;</c>/<c>ValueTask</c> inside
 /// an <c>async</c> method, local function, lambda, or anonymous method.
 /// </para>
@@ -109,6 +110,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
             MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            IdentifierNameSyntax identifier => identifier,
             _ => null,
         };
         if (memberName is null)

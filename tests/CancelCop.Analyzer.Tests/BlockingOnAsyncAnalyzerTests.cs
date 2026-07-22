@@ -284,6 +284,104 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StaticallyImportedWaitAll_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using static System.Threading.Tasks.Task;
+
+public class TestClass
+{
+    public async Task RunAsync(Task first, Task second)
+    {
+        {|#0:WaitAll|}(first, second);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".WaitAll()");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task StaticallyImportedWaitAny_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using static System.Threading.Tasks.Task;
+
+public class TestClass
+{
+    public async Task RunAsync(Task first, Task second)
+    {
+        _ = {|#0:WaitAny|}(first, second);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".WaitAny()");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task StaticallyImportedWaitAllWithZeroTimeout_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using static System.Threading.Tasks.Task;
+
+public class TestClass
+{
+    public async Task ProbeAsync(Task first)
+    {
+        _ = WaitAll(new[] { first }, millisecondsTimeout: 0);
+        await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task UserWaitAllShadowingStaticImport_InAsyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using static System.Threading.Tasks.Task;
+
+public class TestClass
+{
+    private static void WaitAll(Task first, Task second) { }
+
+    public async Task RunAsync(Task first, Task second)
+    {
+        WaitAll(first, second);
+        await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StaticallyImportedWaitAll_InSyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using static System.Threading.Tasks.Task;
+
+public class TestClass
+{
+    public void Run(Task first, Task second)
+    {
+        WaitAll(first, second);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task StaticWaitWithZeroTimeout_InAsyncMethod_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

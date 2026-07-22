@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.219] - 2026-07-22
+
+### Fixed
+
+- **CC015** false negative: `Task.WaitAll` and `Task.WaitAny` imported with `using static`
+  are now diagnosed in async code; zero-timeout probes, user shadows, and sync code stay quiet.
+
 ## [1.27.218] - 2026-07-22
 
 ### Fixed
