@@ -24,8 +24,8 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a call argument that is <c>default</c>, <c>default(CancellationToken)</c>,
-/// or <c>CancellationToken.None</c> and binds to a <c>CancellationToken</c>, where an in-scope token
-/// parameter is available.
+/// or <c>CancellationToken.None</c>, including parenthesized forms, and binds to a
+/// <c>CancellationToken</c>, where an in-scope token parameter is available.
 /// </para>
 /// </remarks>
 /// <example>
@@ -118,6 +118,9 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
         System.Threading.CancellationToken cancellationToken,
         out string displayText)
     {
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
         switch (expression)
         {
             case LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.DefaultLiteralExpression):

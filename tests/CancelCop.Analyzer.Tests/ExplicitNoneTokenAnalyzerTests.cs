@@ -96,6 +96,28 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ParenthesizedNoneAndDefaults_WhenTokenInScope_ShouldReportDiagnostics()
+    {
+        var test = Harness + @"
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync({|#0:(CancellationToken.None)|});
+        await DoAsync({|#1:((default(CancellationToken)))|});
+        await DoAsync({|#2:(default)|});
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(
+            test,
+            VerifyCS.Diagnostic("CC012").WithLocation(0)
+                .WithArguments("CancellationToken.None", "cancellationToken"),
+            VerifyCS.Diagnostic("CC012").WithLocation(1)
+                .WithArguments("default", "cancellationToken"),
+            VerifyCS.Diagnostic("CC012").WithLocation(2)
+                .WithArguments("default", "cancellationToken"));
+    }
+
+    [Fact]
     public async Task None_InExplicitNew_WhenTokenInScope_ShouldReportDiagnostic()
     {
         var test = @"
