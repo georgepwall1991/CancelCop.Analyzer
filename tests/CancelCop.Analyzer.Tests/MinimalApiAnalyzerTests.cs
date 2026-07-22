@@ -52,6 +52,124 @@ public class Program
     }
 
     [Fact]
+    public async Task StaticMapGet_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        EndpointRouteBuilderExtensions.MapGet(
+            app, ""/users"", {|#0:async () => await GetUsersAsync()|});
+    }
+
+    private static async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task StaticMapGet_MethodGroupWithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        EndpointRouteBuilderExtensions.MapGet(app, ""/users"", {|#0:GetUsersAsync|});
+    }
+
+    private static async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("MapGet");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task StaticMapGet_WithCancellationToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        EndpointRouteBuilderExtensions.MapGet(
+            app, ""/users"", async (CancellationToken ct) => await GetUsersAsync(ct));
+    }
+
+    private static async Task<string> GetUsersAsync(CancellationToken ct)
+    {
+        await Task.Delay(100, ct);
+        return ""users"";
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task CustomStaticMapGet_WithEndpointBuilderArgument_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Routing;
+
+public static class CustomMaps
+{
+    public static void MapGet(
+        IEndpointRouteBuilder routes, string pattern, Func<Task> handler) { }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        CustomMaps.MapGet(app, ""/users"", async () => await GetUsersAsync());
+    }
+
+    private static async Task GetUsersAsync()
+    {
+        await Task.Delay(100);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task MapGet_WithCancellationToken_ShouldNotReportDiagnostic()
     {
         var test = @"

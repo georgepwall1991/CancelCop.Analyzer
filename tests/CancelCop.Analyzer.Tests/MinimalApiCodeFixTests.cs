@@ -8,6 +8,64 @@ namespace CancelCop.Analyzer.Tests;
 public class MinimalApiCodeFixTests
 {
     [Fact]
+    public async Task StaticMapGet_WithoutToken_AddsTokenParameter()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        EndpointRouteBuilderExtensions.MapGet(
+            app, ""/users"", {|#0:async () => await GetUsersAsync()|});
+    }
+
+    private static async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+
+public class Program
+{
+    public static void Main()
+    {
+        var app = WebApplication.Create();
+        EndpointRouteBuilderExtensions.MapGet(
+            app, ""/users"", async (CancellationToken cancellationToken) => await GetUsersAsync());
+    }
+
+    private static async Task<string> GetUsersAsync()
+    {
+        await Task.Delay(100);
+        return ""users"";
+    }
+}";
+
+        var test2 = new CSharpCodeFixTest<MinimalApiAnalyzer, MinimalApiCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = Microsoft.CodeAnalysis.Testing.ReferenceAssemblies.Net.Net90
+                .AddPackages(ImmutableArray.Create(new PackageIdentity("Microsoft.AspNetCore.App.Ref", "9.0.0"))),
+        };
+
+        test2.ExpectedDiagnostics.Add(new DiagnosticResult(
+            "CC005C", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("MapGet"));
+        await test2.RunAsync();
+    }
+
+    [Fact]
     public async Task FixAll_TwoEndpoints_BothGetTokenParameter()
     {
         var test = @"

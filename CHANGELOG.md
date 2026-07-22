@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.220] - 2026-07-22
+
+### Fixed
+
+- **CC005C** false negative: positional unreduced
+  `EndpointRouteBuilderExtensions.MapGet`/`MapPost`/`MapPut`/`MapDelete`/`MapPatch` calls now
+  analyze and fix their handlers; named/reordered calls and static lookalikes remain excluded.
+
 ## [1.27.219] - 2026-07-22
 
 ### Fixed
