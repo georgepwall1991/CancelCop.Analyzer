@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.207] - 2026-07-22
+
+### Fixed
+
+- **CC014** false positive: disposal through an exact `System.IDisposable` cast is now
+  recognized, while unrelated casted calls and user-defined conversions remain diagnostic.
+
 ## [1.27.206] - 2026-07-22
 
 ### Fixed

@@ -226,6 +226,49 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Source_DisposedThroughSystemIDisposableCast_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        var cts = new CancellationTokenSource();
+        ((IDisposable)cts).Dispose();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Source_NonDisposalThroughObjectCastExtension_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+
+public static class Extensions
+{
+    public static void Dispose(this object value) { }
+}
+
+public class TestClass
+{
+    public void Run()
+    {
+        var {|#0:cts|} = new CancellationTokenSource();
+        ((object)cts).Dispose();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task NullableSource_NonDisposalThroughNullForgivingOperator_ShouldReportDiagnostic()
     {
         var test = @"
