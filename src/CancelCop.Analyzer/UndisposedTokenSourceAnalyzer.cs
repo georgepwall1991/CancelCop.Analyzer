@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace CancelCop.Analyzer;
 
@@ -27,7 +28,8 @@ namespace CancelCop.Analyzer;
 /// <c>CancellationTokenSource.CreateLinkedTokenSource(...)</c> that is not already a <c>using</c>
 /// declaration, is never disposed (<c>Dispose</c>/<c>DisposeAsync</c>), and never escapes (it is not
 /// returned, assigned out, passed as an argument, or captured by a nested function). Compile-time
-/// parentheses and null-forgiving operators do not change disposal or escape recognition.
+/// parentheses, null-forgiving operators, and an exact <c>System.IDisposable</c> disposal cast do
+/// not change disposal or escape recognition.
 /// </para>
 /// </remarks>
 /// <example>
@@ -146,27 +148,13 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
             if (reference.FirstAncestorOrSelf<SyntaxNode>(IsFunctionScope) != declarationScope)
                 return true;
 
-            ExpressionSyntax value = reference;
-            while (true)
+            if (IsDisposedThroughIDisposableCast(
+                    reference, semanticModel, cancellationToken))
             {
-                switch (value.Parent)
-                {
-                    case PostfixUnaryExpressionSyntax postfix
-                        when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression) &&
-                             postfix.Operand == value:
-                        value = postfix;
-                        continue;
-                    case ParenthesizedExpressionSyntax parenthesized
-                        when parenthesized.Expression == value:
-                        value = parenthesized;
-                        continue;
-                    default:
-                        break;
-                }
-
-                break;
+                return true;
             }
 
+            var value = UnwrapCompileTimeWrappers(reference);
             var parent = value.Parent;
 
             // cts.Dispose() / cts.DisposeAsync()
@@ -200,6 +188,70 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private static bool IsDisposedThroughIDisposableCast(
+        IdentifierNameSyntax reference,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        var operand = UnwrapCompileTimeWrappers(reference);
+        if (operand.Parent is not CastExpressionSyntax cast || cast.Expression != operand)
+            return false;
+
+        if (semanticModel.GetOperation(cast, cancellationToken) is not IConversionOperation conversion ||
+            conversion.Type?.SpecialType != SpecialType.System_IDisposable ||
+            !conversion.Conversion.IsReference ||
+            conversion.Conversion.IsUserDefined)
+        {
+            return false;
+        }
+
+        var receiver = UnwrapCompileTimeWrappers(cast);
+        if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess ||
+            memberAccess.Expression != receiver ||
+            memberAccess.Parent is not InvocationExpressionSyntax invocation ||
+            invocation.Expression != memberAccess ||
+            CancellationTokenHelpers.IsInsideNameof(invocation, semanticModel, cancellationToken))
+        {
+            return false;
+        }
+
+        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+            return false;
+
+        var target = operation.TargetMethod;
+        return target.Name == "Dispose" &&
+               !target.IsStatic &&
+               target.Parameters.Length == 0 &&
+               target.ReturnsVoid &&
+               target.ContainingType.SpecialType == SpecialType.System_IDisposable;
+    }
+
+    private static ExpressionSyntax UnwrapCompileTimeWrappers(ExpressionSyntax expression)
+    {
+        var value = expression;
+        while (true)
+        {
+            switch (value.Parent)
+            {
+                case PostfixUnaryExpressionSyntax postfix
+                    when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression) &&
+                         postfix.Operand == value:
+                    value = postfix;
+                    continue;
+                case ParenthesizedExpressionSyntax parenthesized
+                    when parenthesized.Expression == value:
+                    value = parenthesized;
+                    continue;
+                default:
+                    break;
+            }
+
+            break;
+        }
+
+        return value;
     }
 
     private static bool IsDisposeName(string name) => name is "Dispose" or "DisposeAsync";
