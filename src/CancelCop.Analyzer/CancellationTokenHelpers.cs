@@ -325,8 +325,8 @@ internal static class CancellationTokenHelpers
     /// <summary>
     /// Returns true when <paramref name="parameter"/> is referenced at runtime within
     /// <paramref name="body"/> — including inside nested lambdas and local functions, where the
-    /// parameter is captured. Compile-time-only <c>nameof</c> references are ignored. Used to tell
-    /// an observed token from a dead one.
+    /// parameter is captured. Compile-time-only <c>nameof</c> references and simple assignments that
+    /// only overwrite the parameter are ignored. Used to tell an observed token from a dead one.
     /// </summary>
     public static bool IsParameterReferenced(
         SyntaxNode body,
@@ -345,8 +345,18 @@ internal static class CancellationTokenHelpers
                 continue;
             }
 
-            if (!IsInsideNameof(identifier, semanticModel, cancellationToken))
-                return true;
+            if (IsInsideNameof(identifier, semanticModel, cancellationToken))
+                continue;
+
+            if (semanticModel.GetOperation(identifier, cancellationToken)
+                    is IParameterReferenceOperation parameterReference
+                && parameterReference.Parent is ISimpleAssignmentOperation assignment
+                && ReferenceEquals(assignment.Target, parameterReference))
+            {
+                continue;
+            }
+
+            return true;
         }
 
         return false;

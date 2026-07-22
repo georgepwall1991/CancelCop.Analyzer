@@ -49,6 +49,47 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncMethod_TokenOnlyOverwritten_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken {|#0:cancellationToken|})
+    {
+        cancellationToken = default;
+        await Task.Delay(1);
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC016").WithLocation(0).WithArguments("cancellationToken");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task AsyncMethod_TokenReadOnAssignmentRightHandSide_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken = Preserve(cancellationToken);
+        await Task.Delay(1);
+    }
+
+    private static CancellationToken Preserve(CancellationToken token) => token;
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsyncIterator_EnumeratorCancellationToken_NotReferencedInBody_ShouldNotReportDiagnostic()
     {
         // A [EnumeratorCancellation] token is delivered to the async-iterator enumerator (it receives a
