@@ -20,6 +20,29 @@ public class PreferCancelAsyncAnalyzerTests
     }
 
     [Fact]
+    public async Task Cancel_WhenCancelAsyncIsUnavailable_ShouldNotReportDiagnostic()
+    {
+        var test = new CSharpAnalyzerTest<PreferCancelAsyncAnalyzer, DefaultVerifier>
+        {
+            TestCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource cts)
+    {
+        cts.Cancel();
+        await Task.Yield();
+    }
+}",
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net70,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_OnFieldSource_ShouldReportDiagnostic()
     {
         // Receiver-agnostic: a parameterless Cancel() on a CancellationTokenSource field is flagged
