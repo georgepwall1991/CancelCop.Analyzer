@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.200] - 2026-07-22
+
+### Fixed
+
+- **CC020/CC021** false positives: passing `ServerCallContext` or `HttpContext` as a
+  reduced extension-method receiver now counts as handing the context to another method.
+  Ordinary instance calls still do not suppress the cancellation-observation diagnostics.
+
 ## [1.27.199] - 2026-07-22
 
 ### Fixed

@@ -153,6 +153,51 @@ public class GreeterService
     }
 
     [Fact]
+    public async Task GrpcMethod_PassesContextAsReducedExtensionReceiver_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public static class ServerCallContextExtensions
+{
+    public static Task ProcessAsync(this ServerCallContext context) => Task.CompletedTask;
+}
+
+public class GreeterService
+{
+    public async Task<string> SayHello(string request, ServerCallContext context)
+    {
+        await context.ProcessAsync();
+        return ""hi"";
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GrpcMethod_OrdinaryInstanceCall_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task<string> SayHello(string request, ServerCallContext {|#0:context|})
+    {
+        _ = context.ToString();
+        await Task.Yield();
+        return ""hi"";
+    }
+}" + ContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC020").WithLocation(0).WithArguments("context");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task GrpcMethod_NoAsyncWork_ShouldNotReportDiagnostic()
     {
         var test = @"
