@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.213] - 2026-07-22
+
+### Fixed
+
+- **CC019** false negative: a conditional rethrow restricted to an unrelated exception
+  type no longer masks cancellation swallowing; `OperationCanceledException` guards remain recognized.
+
 ## [1.27.212] - 2026-07-22
 
 ### Fixed
