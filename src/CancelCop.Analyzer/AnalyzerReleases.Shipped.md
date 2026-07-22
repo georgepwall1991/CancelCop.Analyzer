@@ -1,3 +1,11 @@
+## Release 1.28.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC029 | Usage | Warning | Timeout CancellationTokenSource should link the in-scope token
+
 ## Release 1.24.0
 
 ### New Rules

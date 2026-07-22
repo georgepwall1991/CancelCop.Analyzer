@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/LICENSE)
 
 CancelCop.Analyzer is a Roslyn analyzer and code-fix package for correct **CancellationToken** and
-async/await usage in C# and .NET. Its 28 diagnostics catch missing cancellation propagation,
+async/await usage in C# and .NET. Its 29 diagnostics catch missing cancellation propagation,
 ignored ASP.NET Core, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, sync-over-async,
 blocking I/O, `async void`, and resource-lifetime bugs at compile time.
 
@@ -32,7 +32,7 @@ dotnet add package CancelCop.Analyzer
 For reusable libraries, keep the analyzer private to the consuming project:
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.27.224">
+<PackageReference Include="CancelCop.Analyzer" Version="1.28.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -41,7 +41,7 @@ For reusable libraries, keep the analyzer private to the consuming project:
 Or use Package Manager Console:
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.27.224
+Install-Package CancelCop.Analyzer -Version 1.28.0
 ```
 
 ## Analyzer Rules
@@ -76,6 +76,7 @@ Install-Package CancelCop.Analyzer -Version 1.27.224
 | **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
 | **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
 | **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`) in async code; use the async counterpart | Warning | ✅ |
+| **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
 
 ## Quick Examples
 
@@ -473,6 +474,25 @@ public async Task<string> LoadAsync(string path, CancellationToken cancellationT
 }
 ```
 
+### CC029: Timeout CTS Should Link the In-Scope Token
+
+```csharp
+// ❌ Warning CC029 - timeout ignores the caller's cancellation (e.g. RequestAborted)
+public async Task RunAsync(CancellationToken cancellationToken)
+{
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    await DoAsync(cts.Token);
+}
+
+// ✅ Fixed - parent cancel and timeout both apply
+public async Task RunAsync(CancellationToken cancellationToken)
+{
+    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    cts.CancelAfter(TimeSpan.FromSeconds(30));
+    await DoAsync(cts.Token);
+}
+```
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
@@ -573,7 +593,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **28 rules** spanning token presence, propagation, positioning, loop checks,
+CancelCop now ships **29 rules** spanning token presence, propagation, positioning, loop checks,
 async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →

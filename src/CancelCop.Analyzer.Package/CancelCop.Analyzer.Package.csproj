@@ -13,10 +13,10 @@
         <PackageId>CancelCop.Analyzer</PackageId>
         <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-        <Version>1.27.224</Version>
+        <Version>1.28.0</Version>
         <Authors>George Wall</Authors>
         <Title>CancelCop.Analyzer — CancellationToken and Async Roslyn Analyzer for C#/.NET</Title>
-        <Description>Roslyn analyzer and code-fix package for correct CancellationToken and async/await usage in C# and .NET. Detects missing cancellation propagation, ignored ASP.NET Core, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, sync-over-async, blocking I/O, async void, and resource-lifetime bugs across 28 diagnostics.</Description>
+        <Description>Roslyn analyzer and code-fix package for correct CancellationToken and async/await usage in C# and .NET. Detects missing cancellation propagation, ignored ASP.NET Core, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async, blocking I/O, async void, and resource-lifetime bugs across 29 diagnostics.</Description>
         <PackageTags>roslyn;analyzer;codefix;code-fix;csharp;dotnet;cancellation;cancellationtoken;async;async-await;aspnetcore;efcore;httpclient;grpc;signalr;mediatr</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
