@@ -17,6 +17,12 @@ namespace Grpc.Core
     public abstract class ServerCallContext
     {
         public System.Threading.CancellationToken CancellationToken => default;
+        public NestedContext Nested => null;
+    }
+
+    public class NestedContext
+    {
+        public System.Threading.CancellationToken CancellationToken => default;
     }
 }";
 
@@ -62,6 +68,45 @@ public class GreeterService
 }" + ContextStub;
 
         await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GrpcMethod_NullConditionallyObservesToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task SayHello(ServerCallContext context)
+    {
+        _ = context?.CancellationToken;
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task GrpcMethod_NullConditionallyReadsNestedToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task SayHello(ServerCallContext {|#0:context|})
+    {
+        _ = context?.Nested.CancellationToken;
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC020").WithLocation(0).WithArguments("context");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
