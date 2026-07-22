@@ -26,7 +26,8 @@ namespace CancelCop.Analyzer;
 /// <c>new CancellationTokenSource(...)</c> or
 /// <c>CancellationTokenSource.CreateLinkedTokenSource(...)</c> that is not already a <c>using</c>
 /// declaration, is never disposed (<c>Dispose</c>/<c>DisposeAsync</c>), and never escapes (it is not
-/// returned, assigned out, passed as an argument, or captured by a nested function).
+/// returned, assigned out, passed as an argument, or captured by a nested function). Compile-time
+/// null-forgiving operators do not change disposal or escape recognition.
 /// </para>
 /// </remarks>
 /// <example>
@@ -145,11 +146,19 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
             if (reference.FirstAncestorOrSelf<SyntaxNode>(IsFunctionScope) != declarationScope)
                 return true;
 
-            var parent = reference.Parent;
+            ExpressionSyntax value = reference;
+            while (value.Parent is PostfixUnaryExpressionSyntax postfix &&
+                   postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression) &&
+                   postfix.Operand == value)
+            {
+                value = postfix;
+            }
+
+            var parent = value.Parent;
 
             // cts.Dispose() / cts.DisposeAsync()
             if (parent is MemberAccessExpressionSyntax memberAccess &&
-                memberAccess.Expression == reference &&
+                memberAccess.Expression == value &&
                 IsDisposeName(memberAccess.Name.Identifier.Text) &&
                 !CancellationTokenHelpers.IsInsideNameof(memberAccess, semanticModel, cancellationToken))
             {
@@ -158,7 +167,7 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
 
             // cts?.Dispose() / cts?.DisposeAsync() — the null-conditional form.
             if (parent is ConditionalAccessExpressionSyntax conditional &&
-                conditional.Expression == reference &&
+                conditional.Expression == value &&
                 conditional.WhenNotNull is InvocationExpressionSyntax { Expression: MemberBindingExpressionSyntax binding } &&
                 IsDisposeName(binding.Name.Identifier.Text))
             {
@@ -173,7 +182,7 @@ public class UndisposedTokenSourceAnalyzer : DiagnosticAnalyzer
             }
 
             // Assigned to something else (field/property/out variable) -> escapes.
-            if (parent is AssignmentExpressionSyntax assignment && assignment.Right == reference)
+            if (parent is AssignmentExpressionSyntax assignment && assignment.Right == value)
                 return true;
         }
 

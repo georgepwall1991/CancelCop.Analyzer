@@ -127,6 +127,85 @@ public class TestClass
     }
 
     [Fact]
+    public async Task NullableSource_DisposedThroughNullForgivingOperator_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        CancellationTokenSource? cts = new CancellationTokenSource();
+        cts!.Dispose();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NullableSource_DisposedThroughNullForgivingConditionalAccess_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        CancellationTokenSource? cts = new CancellationTokenSource();
+        cts!?.Dispose();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NullableSource_NonDisposalThroughNullForgivingOperator_ShouldReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        CancellationTokenSource? {|#0:cts|} = new CancellationTokenSource();
+        cts!.Cancel();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC014").WithLocation(0).WithArguments("cts");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NullableSource_PassedThroughNullForgivingOperator_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+
+public class TestClass
+{
+    public void Run()
+    {
+        CancellationTokenSource? cts = new CancellationTokenSource();
+        Use(cts!);
+    }
+
+    private static void Use(CancellationTokenSource source) { }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Source_OnlyNamesDispose_ShouldReportDiagnostic()
     {
         var test = @"
