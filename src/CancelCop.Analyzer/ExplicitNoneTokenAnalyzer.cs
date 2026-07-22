@@ -24,8 +24,8 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a call argument that is <c>default</c>, <c>default(CancellationToken)</c>,
-/// or <c>CancellationToken.None</c>, including parenthesized forms, and binds to a
-/// <c>CancellationToken</c>, where an in-scope token parameter is available.
+/// or <c>CancellationToken.None</c>, including parenthesized and statically imported forms, and
+/// binds to a <c>CancellationToken</c>, where an in-scope token parameter is available.
 /// </para>
 /// </remarks>
 /// <example>
@@ -121,30 +121,35 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
         while (expression is ParenthesizedExpressionSyntax parenthesized)
             expression = parenthesized.Expression;
 
-        switch (expression)
+        if (expression is LiteralExpressionSyntax literal
+            && literal.IsKind(SyntaxKind.DefaultLiteralExpression))
         {
-            case LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.DefaultLiteralExpression):
-                displayText = "default";
-                return true;
-            case DefaultExpressionSyntax:
-                displayText = "default";
-                return true;
-            case MemberAccessExpressionSyntax memberAccess
-                when IsCancellationTokenNone(memberAccess, semanticModel, cancellationToken):
-                displayText = "CancellationToken.None";
-                return true;
-            default:
-                displayText = string.Empty;
-                return false;
+            displayText = "default";
+            return true;
         }
+
+        if (expression is DefaultExpressionSyntax)
+        {
+            displayText = "default";
+            return true;
+        }
+
+        if (IsCancellationTokenNone(expression, semanticModel, cancellationToken))
+        {
+            displayText = "CancellationToken.None";
+            return true;
+        }
+
+        displayText = string.Empty;
+        return false;
     }
 
     private static bool IsCancellationTokenNone(
-        MemberAccessExpressionSyntax memberAccess,
+        ExpressionSyntax expression,
         SemanticModel semanticModel,
         System.Threading.CancellationToken cancellationToken)
     {
-        if (semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol is not IPropertySymbol
+        if (semanticModel.GetSymbolInfo(expression, cancellationToken).Symbol is not IPropertySymbol
             {
                 Name: "None",
                 IsStatic: true,

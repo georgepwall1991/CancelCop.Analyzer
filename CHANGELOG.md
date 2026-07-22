@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.210] - 2026-07-22
+
+### Fixed
+
+- **CC012** false negative: `CancellationToken.None` imported with `using static` is now
+  diagnosed and replaced with the in-scope token; custom bare `None` properties remain ignored.
+
 ## [1.27.209] - 2026-07-22
 
 ### Fixed

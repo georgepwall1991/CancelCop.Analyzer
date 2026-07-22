@@ -38,6 +38,31 @@ public class TestClass
     }
 
     [Fact]
+    public async Task StaticallyImportedNone_WhenTokenInScope_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using static System.Threading.CancellationToken;
+
+public class TestClass
+{
+    private Task DoAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync({|#0:None|});
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC012")
+            .WithLocation(0)
+            .WithArguments("CancellationToken.None", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task None_InAsyncLocalFunction_WhenTokenInScope_ShouldReportDiagnostic()
     {
         // The token is in scope of a nested async local function via the shared scope walk, so an
@@ -226,6 +251,32 @@ public class TestClass
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         await DoAsync(new TokenProvider().None);
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StaticallyImportedCustomTokenPropertyNamedNone_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+using static TokenProvider;
+
+public static class TokenProvider
+{
+    public static CancellationToken None => default;
+}
+
+public class TestClass
+{
+    private Task DoAsync(CancellationToken token) => Task.CompletedTask;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await DoAsync(None);
     }
 }";
 
