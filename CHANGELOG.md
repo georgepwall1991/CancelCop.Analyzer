@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.216] - 2026-07-22
+
+### Fixed
+
+- **CC020/CC021** false positives: direct null-conditional reads of
+  `context?.CancellationToken` and `context?.RequestAborted` now count as runtime observation;
+  similarly named members reached through a nested object do not.
+
 ## [1.27.215] - 2026-07-22
 
 ### Fixed

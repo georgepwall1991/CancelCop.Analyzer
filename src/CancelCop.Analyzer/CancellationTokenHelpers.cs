@@ -393,7 +393,8 @@ internal static class CancellationTokenHelpers
 
     /// <summary>
     /// Returns true when <paramref name="body"/> reads a member named <paramref name="memberName"/>
-    /// off <paramref name="parameter"/> at runtime (e.g. <c>context.CancellationToken</c>).
+    /// off <paramref name="parameter"/> at runtime (e.g. <c>context.CancellationToken</c> or
+    /// <c>context?.CancellationToken</c>).
     /// Compile-time-only <c>nameof</c> references are ignored. Used by the context-token rules
     /// (CC020/CC021) to tell an observed token from an ignored one.
     /// </summary>
@@ -412,6 +413,21 @@ internal static class CancellationTokenHelpers
             if (SymbolEqualityComparer.Default.Equals(
                     semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol, parameter) &&
                 !IsInsideNameof(memberAccess, semanticModel, cancellationToken))
+                return true;
+        }
+
+        foreach (var conditionalAccess in body.DescendantNodes().OfType<ConditionalAccessExpressionSyntax>())
+        {
+            if (conditionalAccess.WhenNotNull is not MemberBindingExpressionSyntax memberBinding ||
+                memberBinding.Name.Identifier.Text != memberName)
+            {
+                continue;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(conditionalAccess.Expression, cancellationToken).Symbol,
+                    parameter) &&
+                !IsInsideNameof(conditionalAccess, semanticModel, cancellationToken))
             {
                 return true;
             }
