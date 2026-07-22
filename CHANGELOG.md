@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.201] - 2026-07-22
+
+### Fixed
+
+- **CC013** false positive: `Thread.Sleep(0)`, the zero-millisecond scheduler-yield
+  form, is no longer diagnosed or rewritten to the behaviorally different `Task.Delay(0)`.
+  Positive and runtime-determined sleeps in async code remain diagnosed.
+
 ## [1.27.200] - 2026-07-22
 
 ### Fixed

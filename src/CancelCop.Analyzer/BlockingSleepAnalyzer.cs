@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace CancelCop.Analyzer;
 
@@ -21,7 +22,8 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a call to <c>System.Threading.Thread.Sleep</c> lexically inside an
-/// <c>async</c> method, local function, lambda, or anonymous method.
+/// <c>async</c> method, local function, lambda, or anonymous method. The compile-time-zero
+/// millisecond form is excluded because it yields a scheduler time slice rather than waiting.
 /// </para>
 /// </remarks>
 /// <example>
@@ -93,6 +95,20 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
         // (and sometimes legitimate) decision.
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
+
+        if (context.SemanticModel.GetOperation(invocation, context.CancellationToken) is
+            IInvocationOperation operation)
+        {
+            foreach (var argument in operation.Arguments)
+            {
+                if (argument.Parameter?.Name == "millisecondsTimeout" &&
+                    argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
+                    value == 0)
+                {
+                    return;
+                }
+            }
+        }
 
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
             invocation, context.SemanticModel);
