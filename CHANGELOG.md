@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.217] - 2026-07-22
+
+### Fixed
+
+- **CC020/CC021** false positives: null-conditional context-token reads now count as
+  observation when the token is immediately used through a member or method call, while
+  similarly named members reached through a nested object remain excluded.
+
 ## [1.27.216] - 2026-07-22
 
 ### Fixed

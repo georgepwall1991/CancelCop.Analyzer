@@ -82,6 +82,25 @@ public class Middleware
     }
 
     [Fact]
+    public async Task Method_NullConditionallyReadsRequestAbortedMember_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public class Middleware
+{
+    public async Task InvokeAsync(HttpContext context)
+    {
+        _ = context?.RequestAborted.IsCancellationRequested;
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Method_ObservesRequestAbortedViaAlias_ShouldNotReportDiagnostic()
     {
         var test = @"
