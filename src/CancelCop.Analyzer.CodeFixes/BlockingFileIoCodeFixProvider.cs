@@ -12,8 +12,8 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace CancelCop.Analyzer;
 
 /// <summary>
-/// Code fix provider that rewrites a blocking <c>File.&lt;name&gt;(...)</c> call to
-/// <c>await File.&lt;name&gt;Async(..., token)</c>, flowing the in-scope token when one is available.
+/// Code fix provider that rewrites a blocking qualified or <c>using static</c> call to its
+/// <c>await ...Async(..., token)</c> counterpart, flowing the in-scope token when one is available.
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingFileIoCodeFixProvider)), Shared]
 public class BlockingFileIoCodeFixProvider : CodeFixProvider
@@ -35,7 +35,13 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         var diagnostic = context.Diagnostics.First();
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
             .Parent?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
-        if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)
+        var invokedName = invocation?.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            IdentifierNameSyntax identifier => identifier,
+            _ => null,
+        };
+        if (invocation == null || invokedName == null)
             return;
 
         var tokenName = diagnostic.Properties.TryGetValue(BlockingFileIoAnalyzer.TokenNameProperty, out var name)
@@ -45,7 +51,7 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => ReplaceAsync(context.Document, invocation, memberAccess, tokenName, c),
+                createChangedDocument: c => ReplaceAsync(context.Document, invocation, invokedName, tokenName, c),
                 equivalenceKey: Title),
             diagnostic);
     }
@@ -53,7 +59,7 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
     private static async Task<Document> ReplaceAsync(
         Document document,
         InvocationExpressionSyntax invocation,
-        MemberAccessExpressionSyntax memberAccess,
+        SimpleNameSyntax invokedName,
         string? tokenName,
         CancellationToken cancellationToken)
     {
@@ -71,13 +77,14 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
                 argumentList, tokenName, "cancellationToken");
         }
 
-        var asyncName = memberAccess.Name.Identifier.Text + "Async";
-        var asyncInvocation = SyntaxFactory.InvocationExpression(
-            SyntaxFactory.MemberAccessExpression(
+        var asyncName = invokedName.Identifier.Text + "Async";
+        var asyncTarget = invocation.Expression is MemberAccessExpressionSyntax memberAccess
+            ? (ExpressionSyntax)SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
                 memberAccess.Expression.WithoutTrivia(),
-                SyntaxFactory.IdentifierName(asyncName)),
-            argumentList);
+                SyntaxFactory.IdentifierName(asyncName))
+            : SyntaxFactory.IdentifierName(asyncName);
+        var asyncInvocation = SyntaxFactory.InvocationExpression(asyncTarget, argumentList);
 
         // When the blocking call is the receiver of a further access (e.g. File.ReadAllText(p).Trim()),
         // the await must be parenthesized so it binds before the trailing member/element access:

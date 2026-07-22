@@ -32,8 +32,9 @@ namespace CancelCop.Analyzer;
 /// (<c>File</c> read/write/append helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, or
 /// <c>StreamWriter.Write</c>/<c>WriteLine</c>/<c>Flush</c>) that has a signature-compatible
 /// <c>&lt;name&gt;Async</c> counterpart, made inside an <c>async</c> method, local function, lambda,
-/// or anonymous method. Overloads without an async form (e.g. <c>StreamWriter.Write(bool)</c>) are not
-/// flagged, so the rewrite always compiles.
+/// or anonymous method. Qualified calls and bare <c>File</c> calls imported with
+/// <c>using static</c> are supported. Overloads without an async form (e.g.
+/// <c>StreamWriter.Write(bool)</c>) are not flagged, so the rewrite always compiles.
 /// </para>
 /// </remarks>
 /// <example>
@@ -106,6 +107,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
             MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            IdentifierNameSyntax identifier => identifier,
             _ => null,
         };
         if (invokedName is null)

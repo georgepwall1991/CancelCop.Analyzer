@@ -42,6 +42,28 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReadAllText_ViaStaticImport_ShouldReportDiagnostic()
+    {
+        var test = @"
+using static System.IO.File;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string path)
+    {
+        var text = {|#0:ReadAllText|}(path);
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0).WithArguments("ReadAllText");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task WriteAllText_InAsyncLambda_ShouldReportDiagnostic()
     {
         var test = @"

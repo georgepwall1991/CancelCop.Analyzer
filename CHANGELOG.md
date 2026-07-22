@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.202] - 2026-07-22
+
+### Fixed
+
+- **CC028** false negative: blocking `System.IO.File` calls made through a `using static`
+  import are now diagnosed and fixed to their bare async counterpart, with an in-scope
+  `CancellationToken` flowed when supported.
+
 ## [1.27.201] - 2026-07-22
 
 ### Fixed
