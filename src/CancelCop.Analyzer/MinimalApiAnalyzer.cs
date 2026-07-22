@@ -34,6 +34,8 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
 
     private const string EndpointRouteBuilderInterfaceName = "IEndpointRouteBuilder";
     private const string AspNetCoreRoutingNamespace = "Microsoft.AspNetCore.Routing";
+    private const string EndpointRouteBuilderExtensionsMetadataName =
+        "Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions";
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
@@ -56,23 +58,45 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
         if (!MapMethods.Contains(methodName))
             return;
 
-        // Confirm the call targets an ASP.NET Core endpoint route builder, not an unrelated method
-        // that merely shares the name (e.g. a user-defined MapGet on some other type). The
-        // framework's MapGet/MapPost/… are extension methods on
-        // Microsoft.AspNetCore.Routing.IEndpointRouteBuilder, so checking the receiver's type is the
-        // reliable contract — and it resolves even when an untyped handler lambda leaves the MapXxx
-        // overload itself unbound. Doing the cheap syntactic name match first keeps the semantic
-        // lookup off the hot path.
-        var receiverType = context.SemanticModel.GetTypeInfo(memberAccess.Expression).Type;
-        if (receiverType == null || !ImplementsEndpointRouteBuilder(receiverType))
-            return;
-
-        // Get the second argument (the handler lambda/delegate)
         var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count < 2)
+
+        // Confirm the call targets an ASP.NET Core endpoint route builder, not an unrelated method
+        // that merely shares the name. Reduced calls carry the route builder as their receiver;
+        // positional unreduced calls carry it as argument zero and use the exact framework extension
+        // type as their syntactic receiver.
+        var receiverType = context.SemanticModel.GetTypeInfo(memberAccess.Expression).Type;
+        int handlerIndex;
+        if (receiverType != null && ImplementsEndpointRouteBuilder(receiverType))
+        {
+            handlerIndex = 1;
+        }
+        else
+        {
+            var extensionType = context.SemanticModel.Compilation.GetTypeByMetadataName(
+                EndpointRouteBuilderExtensionsMetadataName);
+            if (extensionType == null ||
+                arguments.Count < 3 ||
+                arguments[0].NameColon != null ||
+                arguments[1].NameColon != null ||
+                arguments[2].NameColon != null ||
+                !SymbolEqualityComparer.Default.Equals(
+                    context.SemanticModel.GetSymbolInfo(memberAccess.Expression).Symbol,
+                    extensionType))
+            {
+                return;
+            }
+
+            var routeBuilderType = context.SemanticModel.GetTypeInfo(arguments[0].Expression).Type;
+            if (routeBuilderType == null || !ImplementsEndpointRouteBuilder(routeBuilderType))
+                return;
+
+            handlerIndex = 2;
+        }
+
+        if (arguments.Count <= handlerIndex)
             return;
 
-        var handlerArgument = arguments[1].Expression;
+        var handlerArgument = arguments[handlerIndex].Expression;
 
         // A parenthesized handler is the same handler: `(Handler)` must not evade analysis.
         while (handlerArgument is ParenthesizedExpressionSyntax parenthesized)
