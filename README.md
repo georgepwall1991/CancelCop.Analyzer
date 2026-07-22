@@ -3,7 +3,7 @@
 [![NuGet](https://img.shields.io/nuget/v/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
 [![NuGet downloads](https://img.shields.io/nuget/dt/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
 [![CI](https://github.com/georgepwall1991/CancelCop.Analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/main/LICENSE)
 
 CancelCop.Analyzer is a Roslyn analyzer and code-fix package for correct **CancellationToken** and
 async/await usage in C# and .NET. Its 28 diagnostics catch missing cancellation propagation,
@@ -563,7 +563,7 @@ dotnet build samples/CancelCop.Sample
 ## Contributing
 
 Contributions are welcome! Please see the
-[contribution guidelines](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/CONTRIBUTING.md).
+[contribution guidelines](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/main/CONTRIBUTING.md).
 
 Key points:
 - Follow TDD approach (tests first)
@@ -582,7 +582,7 @@ and false-positive hardening continue each release.
 
 ## License
 
-[MIT License](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/LICENSE)
+[MIT License](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/main/LICENSE)
 
 ## Author
 

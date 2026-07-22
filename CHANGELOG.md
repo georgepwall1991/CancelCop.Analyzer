@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated the repository's default branch from `master` to `main` and refreshed documentation links.
+
 ## [1.27.224] - 2026-07-22
 
 ### Changed

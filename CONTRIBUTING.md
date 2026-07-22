@@ -240,7 +240,7 @@ Examples:
 3. [ ] XML documentation added for public APIs
 4. [ ] `AnalyzerReleases.Unshipped.md` updated (if adding/changing rules)
 5. [ ] README updated (if adding new features)
-6. [ ] No merge conflicts with the `master` branch
+6. [ ] No merge conflicts with the `main` branch
 
 ### PR Guidelines
 
@@ -252,7 +252,7 @@ Examples:
 
 ### Review Process
 
-1. Create PR against the `master` branch
+1. Create PR against the `main` branch
 2. Wait for automated CI checks to pass
 3. Address reviewer feedback
 4. Once approved, maintainer will merge
