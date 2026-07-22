@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.211] - 2026-07-22
+
+### Fixed
+
+- **CC016/CC017** false negatives: passing a cancellation-token parameter as an `out`
+  argument no longer counts as observing its incoming value; `ref`, `in`, and ordinary forwarding do.
+
 ## [1.27.210] - 2026-07-22
 
 ### Fixed

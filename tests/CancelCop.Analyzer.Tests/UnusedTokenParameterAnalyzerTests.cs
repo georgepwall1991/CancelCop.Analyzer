@@ -69,6 +69,53 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AsyncMethod_TokenOnlyPassedAsOut_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken {|#0:cancellationToken|})
+    {
+        Reset(out cancellationToken);
+        await Task.Delay(1);
+    }
+
+    private static void Reset(out CancellationToken token) => token = default;
+}";
+
+        var expected = VerifyCS.Diagnostic("CC016").WithLocation(0).WithArguments("cancellationToken");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task AsyncMethod_TokensPassedAsRefAndIn_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken, CancellationToken otherToken)
+    {
+        Observe(ref cancellationToken, in otherToken);
+        await Task.Delay(1);
+    }
+
+    private static void Observe(ref CancellationToken first, in CancellationToken second)
+    {
+        _ = first.CanBeCanceled;
+        _ = second.CanBeCanceled;
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task AsyncMethod_TokenReadOnAssignmentRightHandSide_ShouldNotReportDiagnostic()
     {
         var test = @"
