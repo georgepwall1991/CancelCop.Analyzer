@@ -123,6 +123,27 @@ public class TestClass
     }
 
     [Fact]
+    public async Task GetStringAsync_WithDefaultToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly HttpClient _httpClient = new HttpClient();
+
+    public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
+    {
+        return await _httpClient.GetStringAsync(""https://api.example.com"", default);
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task GetAsync_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
     {
         var test = @"

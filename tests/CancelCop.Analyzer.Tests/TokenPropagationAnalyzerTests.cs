@@ -197,6 +197,51 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CustomAsyncMethod_WithDefaultToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        await DoWorkAsync(default);
+    }
+
+    private Task DoWorkAsync(CancellationToken token = default) => Task.CompletedTask;
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task TokenConvertedToObject_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        await {|#0:DoWorkAsync|}(cancellationToken);
+    }
+
+    private Task DoWorkAsync(object state) => Task.CompletedTask;
+    private Task DoWorkAsync(object state, CancellationToken token) => Task.CompletedTask;
+}";
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("DoWorkAsync", "cancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task AsyncMethod_NoTokenParameter_ShouldNotReportDiagnostic()
     {
         var test = @"

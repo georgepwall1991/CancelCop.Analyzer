@@ -52,13 +52,13 @@ internal static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// Checks if any argument in the invocation is a CancellationToken.
+    /// Checks if any argument in the invocation is converted to a CancellationToken parameter.
     /// </summary>
     public static bool HasCancellationTokenArgument(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
     {
         return invocation.ArgumentList.Arguments.Any(arg =>
         {
-            var argType = semanticModel.GetTypeInfo(arg.Expression).Type;
+            var argType = semanticModel.GetTypeInfo(arg.Expression).ConvertedType;
             return IsCancellationToken(argType);
         });
     }
