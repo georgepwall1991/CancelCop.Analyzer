@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.209] - 2026-07-22
+
+### Fixed
+
+- **CC016/CC017** false negatives: simply overwriting a cancellation-token parameter no
+  longer counts as observing the incoming token; reads on an assignment's right-hand side still do.
+
 ## [1.27.208] - 2026-07-22
 
 ### Fixed
