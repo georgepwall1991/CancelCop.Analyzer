@@ -44,10 +44,10 @@ dotnet test --logger "console;verbosity=detailed"
 ```
 CancelCop.Analyzer/
 ├── src/
-│   ├── CancelCop.Analyzer/           # Main analyzers and code fix providers
+│   ├── CancelCop.Analyzer/           # Diagnostic analyzers
 │   │   ├── *Analyzer.cs              # Diagnostic analyzers (CC001, CC002, etc.)
-│   │   ├── *CodeFixProvider.cs       # Code fix providers
 │   │   └── CancellationTokenHelpers.cs  # Shared helper methods
+│   ├── CancelCop.Analyzer.CodeFixes/ # Code fix providers and shared fix helpers
 │   └── CancelCop.Analyzer.Package/   # NuGet packaging project
 ├── tests/
 │   └── CancelCop.Analyzer.Tests/     # XUnit tests
@@ -240,7 +240,7 @@ Examples:
 3. [ ] XML documentation added for public APIs
 4. [ ] `AnalyzerReleases.Unshipped.md` updated (if adding/changing rules)
 5. [ ] README updated (if adding new features)
-6. [ ] No merge conflicts with main branch
+6. [ ] No merge conflicts with the `master` branch
 
 ### PR Guidelines
 
@@ -252,7 +252,7 @@ Examples:
 
 ### Review Process
 
-1. Create PR against `main` branch
+1. Create PR against the `master` branch
 2. Wait for automated CI checks to pass
 3. Address reviewer feedback
 4. Once approved, maintainer will merge

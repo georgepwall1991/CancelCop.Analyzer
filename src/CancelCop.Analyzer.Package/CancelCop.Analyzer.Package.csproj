@@ -13,10 +13,11 @@
         <PackageId>CancelCop.Analyzer</PackageId>
         <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-        <Version>1.27.223</Version>
+        <Version>1.27.224</Version>
         <Authors>George Wall</Authors>
-        <Description>A surgical Roslyn analyzer focused on CancellationToken best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes for public APIs, handlers, EF Core, HTTP calls, and Minimal APIs.</Description>
-        <PackageTags>roslyn;analyzer;cancellationtoken;async;code-fix;loops;efcore;httpclient</PackageTags>
+        <Title>CancelCop.Analyzer — CancellationToken and Async Roslyn Analyzer for C#/.NET</Title>
+        <Description>Roslyn analyzer and code-fix package for correct CancellationToken and async/await usage in C# and .NET. Detects missing cancellation propagation, ignored ASP.NET Core, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, sync-over-async, blocking I/O, async void, and resource-lifetime bugs across 28 diagnostics.</Description>
+        <PackageTags>roslyn;analyzer;codefix;code-fix;csharp;dotnet;cancellation;cancellationtoken;async;async-await;aspnetcore;efcore;httpclient;grpc;signalr;mediatr</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
         <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
@@ -37,7 +38,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="..\CancelCop.Analyzer\README.md" Pack="true" PackagePath="\" />
+        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
         <None Include="..\CancelCop.Analyzer\icon.png" Pack="true" PackagePath="\" />
     </ItemGroup>
 
