@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.218] - 2026-07-22
+
+### Fixed
+
+- **CC020/CC021** false positives: passing a context through a null-conditional reduced
+  extension call now counts as handing it off; null-conditional ordinary instance calls do not.
+
 ## [1.27.217] - 2026-07-22
 
 ### Fixed

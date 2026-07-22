@@ -186,6 +186,29 @@ public class Middleware
     }
 
     [Fact]
+    public async Task Method_PassesContextAsNullConditionalExtensionReceiver_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public static class HttpContextExtensions
+{
+    public static Task ProcessAsync(this HttpContext context) => Task.CompletedTask;
+}
+
+public class Middleware
+{
+    public async Task InvokeAsync(HttpContext context)
+    {
+        await (context?.ProcessAsync() ?? Task.CompletedTask);
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task Method_OrdinaryInstanceCall_ShouldReportDiagnostic()
     {
         var test = @"
