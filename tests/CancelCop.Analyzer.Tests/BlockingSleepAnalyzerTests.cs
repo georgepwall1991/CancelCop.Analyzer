@@ -50,6 +50,46 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ThreadSleep_WithConstantZeroMilliseconds_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task YieldAsync()
+    {
+        const int YieldOnly = 0;
+        Thread.Sleep(millisecondsTimeout: YieldOnly);
+        await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThreadSleep_WithRuntimeMilliseconds_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(int millisecondsTimeout)
+    {
+        {|#0:Thread.Sleep(millisecondsTimeout: millisecondsTimeout)|};
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task ThreadSleep_ViaStaticImport_ShouldReportDiagnostic()
     {
         // Symbol-resolved, not name-only on a member access: a bare Sleep(...) via `using static`
