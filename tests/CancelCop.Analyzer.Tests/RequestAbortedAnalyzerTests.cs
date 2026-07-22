@@ -125,6 +125,49 @@ public class Middleware
     }
 
     [Fact]
+    public async Task Method_PassesContextAsReducedExtensionReceiver_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public static class HttpContextExtensions
+{
+    public static Task ProcessAsync(this HttpContext context) => Task.CompletedTask;
+}
+
+public class Middleware
+{
+    public async Task InvokeAsync(HttpContext context)
+    {
+        await context.ProcessAsync();
+    }
+}" + ContextStub;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task Method_OrdinaryInstanceCall_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public class Middleware
+{
+    public async Task InvokeAsync(HttpContext {|#0:context|})
+    {
+        _ = context.ToString();
+        await Task.Yield();
+    }
+}" + ContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC021").WithLocation(0).WithArguments("context");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task Method_NoAsyncWork_ShouldNotReportDiagnostic()
     {
         var test = @"

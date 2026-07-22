@@ -403,8 +403,9 @@ internal static class CancellationTokenHelpers
 
     /// <summary>
     /// Returns true when <paramref name="parameter"/> is passed as an argument somewhere in
-    /// <paramref name="body"/> — i.e. it is handed off to another method that may observe it — so a
-    /// rule that requires the parameter to be used locally should stand down.
+    /// <paramref name="body"/>, including as the receiver of a reduced extension invocation — i.e.
+    /// it is handed off to another method that may observe it — so a rule that requires the
+    /// parameter to be used locally should stand down.
     /// </summary>
     public static bool ParameterEscapesAsArgument(
         SyntaxNode body,
@@ -416,12 +417,21 @@ internal static class CancellationTokenHelpers
         {
             if (identifier.Identifier.Text != parameter.Name)
                 continue;
-            if (identifier.Parent is not ArgumentSyntax)
+            if (!SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
                 continue;
 
-            if (SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
+            if (identifier.Parent is ArgumentSyntax)
                 return true;
+
+            if (identifier.Parent is MemberAccessExpressionSyntax { Expression: var receiver } memberAccess &&
+                receiver == identifier &&
+                memberAccess.Parent is InvocationExpressionSyntax invocation &&
+                semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is
+                    IMethodSymbol { ReducedFrom: not null })
+            {
+                return true;
+            }
         }
 
         return false;
