@@ -146,7 +146,8 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
                 hasWithCancellation = true;
                 source = memberAccess.Expression;
             }
-            else if (name == "ConfigureAwait")
+            else if (name == "ConfigureAwait" &&
+                     !CancellationTokenHelpers.HasCancellationTokenArgument(invocation, semanticModel))
             {
                 source = memberAccess.Expression;
             }
