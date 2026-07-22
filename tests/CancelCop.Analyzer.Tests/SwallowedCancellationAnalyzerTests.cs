@@ -218,6 +218,117 @@ public class TestClass
     }
 
     [Fact]
+    public async Task CatchException_RethrowsNonCancellationExceptions_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        {|#0:catch|} (Exception ex)
+        {
+            if (ex is not OperationCanceledException)
+                throw;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC019").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task CatchException_RethrowsExceptTaskCanceledException_ShouldReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        {|#0:catch|} (Exception ex)
+        {
+            if (ex is not TaskCanceledException)
+                throw;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC019").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task CatchException_RethrowsCancellationButNotUnrelatedException_ShouldNotReportDiagnostic()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        catch (Exception ex)
+        {
+            if (ex is not InvalidOperationException)
+                throw;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CatchException_RethrowsCancellationWithCustomLookalike_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+namespace Custom
+{
+    public sealed class OperationCanceledException : Exception { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        try { await Task.Yield(); }
+        catch (Exception ex)
+        {
+            if (ex is not Custom.OperationCanceledException)
+                throw;
+        }
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task CatchException_RethrowsExceptCancellationSubtypeImplementingInterface_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+
+public interface IMarker { }
+public sealed class MarkedCancellationException : OperationCanceledException, IMarker { }
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        try { await Task.Yield(); }
+        {|#0:catch|} (Exception ex)
+        {
+            if (ex is not IMarker)
+                throw;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC019").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task CatchException_WithFilter_ShouldNotReportDiagnostic()
     {
         var test = Harness + @"

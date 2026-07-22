@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.223] - 2026-07-22
+
+### Fixed
+
+- **CC019** false negative: negated type-pattern rethrows now account for pattern polarity and
+  cancellation-hierarchy overlap, so guards that still swallow `OperationCanceledException`, a
+  derived cancellation type, or a possible interface-implementing subtype are diagnosed.
+
 ## [1.27.222] - 2026-07-22
 
 ### Fixed

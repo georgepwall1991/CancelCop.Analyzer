@@ -28,8 +28,8 @@ namespace CancelCop.Analyzer;
 /// <c>System.Exception</c>, that has no <c>when</c> filter, whose <c>try</c> block contains an
 /// <c>await</c> in the current function scope (including <c>await foreach</c> and
 /// <c>await using</c>), and whose body does not propagate cancellation. Awaits owned by a nested
-/// local or anonymous function do not execute as part of the <c>try</c> itself. A conditional
-/// rethrow restricted to an unrelated exception type does not count as propagating cancellation.
+/// local or anonymous function do not execute as part of the <c>try</c> itself. Direct type-pattern
+/// rethrows account for positive/negated polarity and overlap with the cancellation hierarchy.
 /// </para>
 /// </remarks>
 /// <example>
@@ -180,16 +180,23 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
         foreach (var ifStatement in throwNode.Ancestors().OfType<IfStatementSyntax>())
         {
             if (!ifStatement.Statement.Span.Contains(throwNode.Span) ||
-                !TryGetTypeTest(ifStatement.Condition, out var identifier, out var typeSyntax) ||
+                !TryGetTypeTest(
+                    ifStatement.Condition,
+                    out var identifier,
+                    out var typeSyntax,
+                    out var isNegated) ||
                 !SymbolEqualityComparer.Default.Equals(
                     semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol,
                     caughtException) ||
-                semanticModel.GetTypeInfo(typeSyntax, cancellationToken).Type is not INamedTypeSymbol testedType)
+                semanticModel.GetSymbolInfo(typeSyntax, cancellationToken).Symbol is not INamedTypeSymbol testedType)
             {
                 continue;
             }
 
-            if (!CanMatch(cancellationException, testedType))
+            var restrictsCancellation = isNegated
+                ? CanOverlapCancellationHierarchy(cancellationException, testedType)
+                : !CanMatch(cancellationException, testedType);
+            if (restrictsCancellation)
             {
                 return true;
             }
@@ -201,7 +208,8 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
     private static bool TryGetTypeTest(
         ExpressionSyntax condition,
         out IdentifierNameSyntax identifier,
-        out TypeSyntax typeSyntax)
+        out SyntaxNode typeSyntax,
+        out bool isNegated)
     {
         if (condition is IsPatternExpressionSyntax
             {
@@ -211,6 +219,23 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
         {
             identifier = patternIdentifier;
             typeSyntax = typePattern.Type;
+            isNegated = false;
+            return true;
+        }
+
+        if (condition is IsPatternExpressionSyntax
+            {
+                Expression: IdentifierNameSyntax negatedPatternIdentifier,
+                Pattern: UnaryPatternSyntax
+                {
+                    RawKind: (int)SyntaxKind.NotPattern,
+                    Pattern: ConstantPatternSyntax negatedTypePattern,
+                },
+            })
+        {
+            identifier = negatedPatternIdentifier;
+            typeSyntax = negatedTypePattern.Expression;
+            isNegated = true;
             return true;
         }
 
@@ -223,12 +248,23 @@ public class SwallowedCancellationAnalyzer : DiagnosticAnalyzer
         {
             identifier = binaryIdentifier;
             typeSyntax = binaryType;
+            isNegated = false;
             return true;
         }
 
         identifier = null!;
         typeSyntax = null!;
+        isNegated = false;
         return false;
+    }
+
+    private static bool CanOverlapCancellationHierarchy(
+        INamedTypeSymbol cancellationException,
+        INamedTypeSymbol testedType)
+    {
+        return CanMatch(cancellationException, testedType) ||
+               CanMatch(testedType, cancellationException) ||
+               testedType.TypeKind == TypeKind.Interface && !cancellationException.IsSealed;
     }
 
     private static bool CanMatch(INamedTypeSymbol sourceType, INamedTypeSymbol testedType)

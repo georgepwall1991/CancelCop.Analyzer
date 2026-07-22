@@ -102,6 +102,39 @@ public class TestClass
     }
 
     [Fact]
+    public async Task NegatedCancellationRethrow_AddsCancellationRethrowGuard()
+    {
+        var test = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        {|#0:catch|} (Exception ex)
+        {
+            if (ex is not OperationCanceledException)
+                throw;
+        }
+    }
+}";
+
+        var fixedCode = Harness + @"
+    public async Task RunAsync()
+    {
+        try { await DoAsync(); }
+        catch (Exception ex)
+        {
+            if (ex is OperationCanceledException)
+                throw;
+            if (ex is not OperationCanceledException)
+                throw;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC019").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
     public async Task UnnamedException_AddsVariableAndRethrowGuard()
     {
         var test = Harness + @"
