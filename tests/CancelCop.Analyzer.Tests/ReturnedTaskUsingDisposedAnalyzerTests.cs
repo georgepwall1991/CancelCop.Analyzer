@@ -58,6 +58,52 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReturnTaskFromExpressionUsingLocal_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync()
+    {
+        var resource = new Resource();
+        using ((resource))
+        {
+            return {|#0:resource.DoAsync()|};
+        }
+    }
+}" + Resource;
+
+        var expected = VerifyCS.Diagnostic("CC027").WithLocation(0).WithArguments("resource");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ReturnBeforeExpressionUsing_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task<int> ReadAsync(bool early)
+    {
+        var resource = new Resource();
+        if (early)
+            return resource.DoAsync();
+
+        using (resource)
+        {
+            return Task.FromResult(0);
+        }
+    }
+}" + Resource;
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ReturnTaskThroughCastUsingResource_ShouldReportDiagnostic()
     {
         var test = @"

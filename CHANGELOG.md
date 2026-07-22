@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.206] - 2026-07-22
+
+### Fixed
+
+- **CC027** false negative: tasks returned from a call on a local disposed by
+  expression-form `using (resource)` are now diagnosed, without affecting returns outside
+  that using scope.
+
 ## [1.27.205] - 2026-07-22
 
 ### Fixed

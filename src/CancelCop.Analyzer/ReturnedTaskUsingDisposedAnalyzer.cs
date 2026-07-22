@@ -27,8 +27,9 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a non-<c>async</c> method or local function returning
 /// <c>Task</c>/<c>Task&lt;T&gt;</c>/<c>ValueTask</c> where a <c>return</c> expression is a call whose
-/// left-most receiver is a <c>using</c>-declared local, including when the receiver is cast to a
-/// base type or interface. Only the receiver case is flagged (high confidence); a resource read
+/// left-most receiver is a local disposed by a <c>using</c> declaration or statement, including
+/// expression-form <c>using (resource)</c> and receivers cast to a base type or interface. Only the
+/// receiver case is flagged (high confidence); a resource read
 /// synchronously into a completed task — e.g.
 /// <c>Task.FromResult(resource.Value)</c> — is not.
 /// </para>
@@ -121,22 +122,84 @@ public class ReturnedTaskUsingDisposedAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        if (usingLocals.Count == 0)
-            return;
+        var reportedReturns = new HashSet<ReturnStatementSyntax>();
 
-        foreach (var returnStatement in DescendantsInOwnScope(body).OfType<ReturnStatementSyntax>())
+        if (usingLocals.Count != 0)
         {
-            if (returnStatement.Expression == null)
-                continue;
-
-            var receiver = GetLeftmostReceiver(returnStatement.Expression);
-            var receiverSymbol = context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol;
-            if (receiverSymbol != null && usingLocals.Contains(receiverSymbol))
+            foreach (var returnStatement in DescendantsInOwnScope(body).OfType<ReturnStatementSyntax>())
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    Rule, returnStatement.Expression.GetLocation(), receiverSymbol.Name));
+                var receiverSymbol = GetReceiverSymbol(context, returnStatement);
+                if (receiverSymbol != null && usingLocals.Contains(receiverSymbol))
+                {
+                    Report(context, returnStatement, receiverSymbol, reportedReturns);
+                }
             }
         }
+
+        // An expression-form `using (resource)` disposes an existing local only when control exits
+        // that statement. Restrict analysis to returns inside that exact body so an earlier return
+        // from the method is not incorrectly treated as using-scoped.
+        foreach (var usingStatement in DescendantsInOwnScope(body).OfType<UsingStatementSyntax>())
+        {
+            if (usingStatement.Expression == null)
+                continue;
+
+            var resourceExpression = UnwrapParentheses(usingStatement.Expression);
+            if (context.SemanticModel.GetSymbolInfo(resourceExpression, context.CancellationToken).Symbol is not
+                ILocalSymbol resourceLocal)
+            {
+                continue;
+            }
+
+            foreach (var returnStatement in ReturnsInOwnScope(usingStatement.Statement))
+            {
+                var receiverSymbol = GetReceiverSymbol(context, returnStatement);
+                if (SymbolEqualityComparer.Default.Equals(receiverSymbol, resourceLocal))
+                {
+                    Report(context, returnStatement, resourceLocal, reportedReturns);
+                }
+            }
+        }
+    }
+
+    private static ISymbol? GetReceiverSymbol(
+        SyntaxNodeAnalysisContext context, ReturnStatementSyntax returnStatement)
+    {
+        if (returnStatement.Expression == null)
+            return null;
+
+        var receiver = GetLeftmostReceiver(returnStatement.Expression);
+        return context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol;
+    }
+
+    private static void Report(
+        SyntaxNodeAnalysisContext context,
+        ReturnStatementSyntax returnStatement,
+        ISymbol receiverSymbol,
+        HashSet<ReturnStatementSyntax> reportedReturns)
+    {
+        if (returnStatement.Expression != null && reportedReturns.Add(returnStatement))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                Rule, returnStatement.Expression.GetLocation(), receiverSymbol.Name));
+        }
+    }
+
+    private static IEnumerable<ReturnStatementSyntax> ReturnsInOwnScope(SyntaxNode scope)
+    {
+        if (scope is ReturnStatementSyntax returnStatement)
+            yield return returnStatement;
+
+        foreach (var descendant in DescendantsInOwnScope(scope).OfType<ReturnStatementSyntax>())
+            yield return descendant;
+    }
+
+    private static ExpressionSyntax UnwrapParentheses(ExpressionSyntax expression)
+    {
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        return expression;
     }
 
     /// <summary>
