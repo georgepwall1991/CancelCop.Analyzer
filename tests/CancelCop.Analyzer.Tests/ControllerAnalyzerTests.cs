@@ -22,6 +22,56 @@ public class ControllerAnalyzerTests
     }
 
     [Fact]
+    public async Task ControllerAction_AcceptVerbs_WithoutCancellationToken_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : ControllerBase
+{
+    [AcceptVerbs(""GET"")]
+    public async Task<IActionResult> {|#0:GetUsers|}()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC005B", Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("GetUsers");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ControllerAction_CustomAcceptVerbsAttribute_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+public sealed class AcceptVerbsAttribute : Attribute
+{
+    public AcceptVerbsAttribute(string method) { }
+}
+
+public class UsersController : ControllerBase
+{
+    [AcceptVerbs(""GET"")]
+    public async Task<IActionResult> GetUsers()
+    {
+        await Task.Delay(100);
+        return Ok();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task ControllerAction_HttpPatch_WithoutCancellationToken_ShouldReportDiagnostic()
     {
         // [HttpPatch] is an MVC HTTP-method attribute like the others, so a tokenless action carrying

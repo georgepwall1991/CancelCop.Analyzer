@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.221] - 2026-07-22
+
+### Fixed
+
+- **CC005B** false negative: MVC controller actions decorated with `[AcceptVerbs(...)]` are now
+  analyzed and fixed; same-named attributes outside `Microsoft.AspNetCore.Mvc` remain excluded.
+
 ## [1.27.220] - 2026-07-22
 
 ### Fixed

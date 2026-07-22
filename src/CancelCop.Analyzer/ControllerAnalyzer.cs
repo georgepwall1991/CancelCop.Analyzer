@@ -23,10 +23,10 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What it detects:</b> a public, non-static, async (or <c>Task</c>/<c>ValueTask</c>-returning)
 /// method on a <c>Microsoft.AspNetCore.Mvc.ControllerBase</c>/<c>Controller</c> subclass that carries
-/// an MVC HTTP-method attribute (<c>[HttpGet]</c>, …, matched by namespace identity including
-/// subclasses) and has no token. Inherited <c>[NonAction]</c> methods and externally controlled
-/// signatures such as overrides and interface implementations are excluded. The "Add
-/// CancellationToken parameter" code fix applies.
+/// an MVC HTTP-method attribute (<c>[HttpGet]</c>, <c>[AcceptVerbs]</c>, …, matched by namespace
+/// identity including subclasses) and has no token. Inherited <c>[NonAction]</c> methods and
+/// externally controlled signatures such as overrides and interface implementations are excluded. The
+/// "Add CancellationToken parameter" code fix applies.
 /// </para>
 /// </remarks>
 /// <example>
@@ -58,7 +58,7 @@ public class ControllerAnalyzer : DiagnosticAnalyzer
 
     // HTTP method attributes
     private static readonly ImmutableHashSet<string> HttpMethodAttributes = ImmutableHashSet.Create(
-        "HttpGet", "HttpPost", "HttpPut", "HttpDelete", "HttpPatch", "HttpHead", "HttpOptions"
+        "HttpGet", "HttpPost", "HttpPut", "HttpDelete", "HttpPatch", "HttpHead", "HttpOptions", "AcceptVerbs"
     );
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
