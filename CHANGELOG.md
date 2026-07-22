@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.204] - 2026-07-22
+
+### Fixed
+
+- **CC013** false positive: provably zero `TimeSpan` sleep forms (`TimeSpan.Zero`,
+  defaults, and zero-argument construction) are no longer diagnosed or rewritten to
+  the behaviorally different synchronously-completing `Task.Delay(TimeSpan.Zero)`.
+
 ## [1.27.203] - 2026-07-22
 
 ### Fixed
