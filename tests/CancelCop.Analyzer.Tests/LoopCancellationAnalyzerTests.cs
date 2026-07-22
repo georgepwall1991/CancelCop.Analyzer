@@ -186,6 +186,58 @@ public class TestClass
     }
 
     [Fact]
+    public async Task WhileLoop_CheckOnlyInsideNestedLambda_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(CancellationToken ct)
+    {
+        {|#0:while|} (true)
+        {
+            Action deferred = () => ct.ThrowIfCancellationRequested();
+            _ = deferred;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("ct");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task WhileLoop_CheckOnlyInsideNestedLocalFunction_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(CancellationToken ct)
+    {
+        {|#0:while|} (true)
+        {
+            void CheckLater() => _ = ct.IsCancellationRequested;
+            _ = (Action)CheckLater;
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009")
+            .WithLocation(0)
+            .WithArguments("ct");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task WhileLoop_WithConditionCheck_ShouldNotReportDiagnostic()
     {
         var test = @"

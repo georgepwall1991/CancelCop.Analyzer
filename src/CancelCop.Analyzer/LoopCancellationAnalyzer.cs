@@ -32,10 +32,11 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>What satisfies the check:</b>
 /// <list type="bullet">
-/// <item>Calling <c>ThrowIfCancellationRequested()</c> inside the loop at runtime</item>
-/// <item>Checking <c>IsCancellationRequested</c> inside the loop at runtime</item>
+/// <item>Calling <c>ThrowIfCancellationRequested()</c> directly inside the loop at runtime</item>
+/// <item>Checking <c>IsCancellationRequested</c> directly inside the loop at runtime</item>
 /// </list>
-/// Compile-time-only references inside <c>nameof</c> do not observe cancellation.
+/// Compile-time-only references inside <c>nameof</c> and checks deferred to nested functions do not
+/// observe cancellation for the enclosing loop.
 /// </para>
 /// <para>
 /// <b>Scope:</b>
@@ -171,7 +172,9 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
         if (loopBody == null)
             return false;
 
-        foreach (var node in loopBody.DescendantNodesAndSelf())
+        foreach (var node in loopBody.DescendantNodesAndSelf(
+                     descendIntoChildren: child =>
+                         child is not LocalFunctionStatementSyntax and not AnonymousFunctionExpressionSyntax))
         {
             // ThrowIfCancellationRequested() invocation on the in-scope token.
             if (node is InvocationExpressionSyntax invocation &&
