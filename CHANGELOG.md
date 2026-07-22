@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.222] - 2026-07-22
+
+### Fixed
+
+- **CC022** false positive: `Cancel()` is now reported only when the analyzed target framework
+  provides the `CancellationTokenSource.CancelAsync()` API, avoiding non-compiling advice on
+  .NET 6 and .NET 7.
+
 ## [1.27.221] - 2026-07-22
 
 ### Fixed

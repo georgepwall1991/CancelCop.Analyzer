@@ -25,7 +25,7 @@ namespace CancelCop.Analyzer;
 /// <b>What it detects:</b> a parameterless <c>Cancel()</c> call (including null-conditional
 /// calls) on a <c>System.Threading.CancellationTokenSource</c> inside an <c>async</c> method,
 /// local function, lambda, anonymous method, or top-level program whose synthesized entry point
-/// contains <c>await</c>.
+/// contains <c>await</c>, when the target framework provides <c>CancelAsync()</c>.
 /// </para>
 /// </remarks>
 /// <example>
@@ -92,11 +92,33 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
         if (method.ContainingType?.Name != "CancellationTokenSource" ||
             method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading")
             return;
+        if (!HasCancelAsyncCounterpart(method.ContainingType))
+            return;
 
         // The fix introduces an await, so it only applies in async code.
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation()));
+    }
+
+    private static bool HasCancelAsyncCounterpart(INamedTypeSymbol cancellationTokenSourceType)
+    {
+        foreach (var member in cancellationTokenSourceType.GetMembers("CancelAsync"))
+        {
+            if (member is IMethodSymbol
+                {
+                    IsStatic: false,
+                    DeclaredAccessibility: Accessibility.Public,
+                    Parameters.Length: 0,
+                    ReturnType.Name: "Task",
+                } method &&
+                method.ReturnType.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
