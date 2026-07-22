@@ -64,6 +64,55 @@ public class TestClass
     }
 
     [Fact]
+    public async Task NullConditionalCancel_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts)
+    {
+        cts?.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NullConditionalIneligibleCalls_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Custom { public void Cancel() { } }
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, Custom? custom)
+    {
+        cts?.Cancel(true);
+        custom?.Cancel();
+        await Task.Yield();
+    }
+
+    public void Stop(CancellationTokenSource? cts)
+    {
+        cts?.Cancel();
+    }
+}";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task Cancel_InAsyncLambda_ShouldReportDiagnostic()
     {
         var test = @"

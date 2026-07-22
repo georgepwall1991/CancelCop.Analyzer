@@ -22,10 +22,10 @@ namespace CancelCop.Analyzer;
 /// code it should be awaited instead. Reported as <b>Info</b> because <c>Cancel()</c> remains valid.
 /// </para>
 /// <para>
-/// <b>What it detects:</b> a parameterless <c>Cancel()</c> call on a
-/// <c>System.Threading.CancellationTokenSource</c> inside an <c>async</c> method, local function,
-/// lambda, anonymous method, or top-level program whose synthesized entry point contains
-/// <c>await</c>.
+/// <b>What it detects:</b> a parameterless <c>Cancel()</c> call (including null-conditional
+/// calls) on a <c>System.Threading.CancellationTokenSource</c> inside an <c>async</c> method,
+/// local function, lambda, anonymous method, or top-level program whose synthesized entry point
+/// contains <c>await</c>.
 /// </para>
 /// </remarks>
 /// <example>
@@ -72,9 +72,15 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+        var invokedName = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            _ => null,
+        };
+        if (invokedName == null)
             return;
-        if (memberAccess.Name.Identifier.Text != "Cancel")
+        if (invokedName.Identifier.Text != "Cancel")
             return;
 
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
@@ -91,6 +97,6 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, memberAccess.Name.GetLocation()));
+        context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation()));
     }
 }
