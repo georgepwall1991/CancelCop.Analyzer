@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.224] - 2026-07-22
+
+### Changed
+
+- Reworked the GitHub and NuGet README around CancellationToken and async Roslyn search intent,
+  corrected stale build, test, sample, compatibility, and package-link claims, and made the root
+  README the package's single documentation source.
+- Expanded NuGet title, description, and tags so C#/.NET developers can discover the analyzer by
+  its supported frameworks and async bug classes.
+- Corrected contributor guidance to use the repository's `master` default branch and current
+  analyzer/code-fix project layout.
+
 ## [1.27.223] - 2026-07-22
 
 ### Fixed

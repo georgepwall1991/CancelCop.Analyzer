@@ -1,17 +1,25 @@
-# CancelCop Analyzer
+# CancelCop.Analyzer: CancellationToken and Async Roslyn Analyzer for C#/.NET
 
 [![NuGet](https://img.shields.io/nuget/v/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![NuGet downloads](https://img.shields.io/nuget/dt/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
+[![CI](https://github.com/georgepwall1991/CancelCop.Analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/LICENSE)
 
-A surgical Roslyn analyzer focused on **CancellationToken** best practices: propagation, parameter positioning, loop cancellation checks, and more. Includes automatic code fixes.
+CancelCop.Analyzer is a Roslyn analyzer and code-fix package for correct **CancellationToken** and
+async/await usage in C# and .NET. Its 28 diagnostics catch missing cancellation propagation,
+ignored ASP.NET Core, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, sync-over-async,
+blocking I/O, `async void`, and resource-lifetime bugs at compile time.
 
 ## Why CancelCop?
 
-CancellationToken is essential for building responsive .NET applications, but it's easy to forget:
-- Adding tokens to public async methods
-- Propagating tokens to inner async calls
-- Checking for cancellation in loops
-- Following parameter ordering conventions
+CancellationToken is essential for responsive .NET applications, but cancellation bugs often hide
+across API boundaries. CancelCop detects common failures such as:
+
+- missing tokens on public async methods and framework handlers;
+- tokens that are accepted but not propagated or observed;
+- loops and async streams that ignore cancellation;
+- blocking calls inside async code; and
+- unsafe async and resource-lifetime patterns.
 
 CancelCop catches these issues at compile time and offers one-click fixes.
 
@@ -21,9 +29,19 @@ CancelCop catches these issues at compile time and offers one-click fixes.
 dotnet add package CancelCop.Analyzer
 ```
 
-Or via Package Manager:
+For reusable libraries, keep the analyzer private to the consuming project:
+
+```xml
+<PackageReference Include="CancelCop.Analyzer" Version="1.27.224">
+  <PrivateAssets>all</PrivateAssets>
+  <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+</PackageReference>
+```
+
+Or use Package Manager Console:
+
 ```powershell
-Install-Package CancelCop.Analyzer
+Install-Package CancelCop.Analyzer -Version 1.27.224
 ```
 
 ## Analyzer Rules
@@ -471,21 +489,23 @@ dotnet_diagnostic.CC002.severity = error
 dotnet_diagnostic.CC006.severity = warning
 ```
 
-## Supported Frameworks
+## Compatibility and Supported Frameworks
 
-- **.NET 6.0+** (including .NET 8, .NET 9, .NET 10)
+- Analyzer assemblies target **.NET Standard 2.0** and compile against **Roslyn 4.8**, compatible
+  with Visual Studio 2022 17.8+ and .NET SDK 8+ compiler hosts
+- Consumer projects can target any framework supported by a compatible compiler host
 - **ASP.NET Core** (Controllers, Minimal APIs, SignalR hubs, middleware via `HttpContext.RequestAborted`)
 - **Hosted services** (`BackgroundService.ExecuteAsync`)
 - **gRPC** (`ServerCallContext.CancellationToken`)
-- **Entity Framework Core** (all async methods)
-- **HttpClient** (all async methods)
+- **Entity Framework Core** (curated cancellable query and save methods)
+- **HttpClient** (curated cancellable request and content methods)
 - **MediatR** (IRequestHandler implementations)
 - **Async streams** (`IAsyncEnumerable<T>`, `[EnumeratorCancellation]`)
 - **ValueTask** and **ValueTask<T>** return types
 
 ## Project Quality
 
-- **350+ unit tests** with comprehensive coverage, plus a cross-analyzer false-positive guard that
+- **700+ regression tests** with comprehensive coverage, plus a cross-analyzer false-positive guard that
   runs every analyzer over idiomatic code (core, framework, nested-scope, exotic-syntax) and asserts
   zero diagnostics
 - **Test-Driven Development** approach
@@ -508,7 +528,7 @@ dotnet build
 dotnet test
 
 # Pack NuGet package
-dotnet pack src/CancelCop.Analyzer/CancelCop.Analyzer.csproj -c Release
+dotnet pack src/CancelCop.Analyzer.Package/CancelCop.Analyzer.Package.csproj -c Release
 ```
 
 ## Project Structure
@@ -516,10 +536,11 @@ dotnet pack src/CancelCop.Analyzer/CancelCop.Analyzer.csproj -c Release
 ```
 CancelCop.Analyzer/
 ├── src/
-│   ├── CancelCop.Analyzer/           # Analyzers and code fix providers
+│   ├── CancelCop.Analyzer/           # Diagnostic analyzers
+│   ├── CancelCop.Analyzer.CodeFixes/ # Code-fix providers
 │   └── CancelCop.Analyzer.Package/   # NuGet packaging
 ├── tests/
-│   └── CancelCop.Analyzer.Tests/     # XUnit tests (111 tests)
+│   └── CancelCop.Analyzer.Tests/     # xUnit regression suite
 ├── samples/
 │   └── CancelCop.Sample/             # Example project with all rules
 ├── .github/workflows/                # CI/CD (build, test, publish)
@@ -528,8 +549,9 @@ CancelCop.Analyzer/
 
 ## Sample Project
 
-The `samples/CancelCop.Sample` project demonstrates all analyzer rules with:
-- Separate files for each rule (CC001, CC002, etc.)
+The `samples/CancelCop.Sample` project demonstrates the analyzer rules with:
+
+- focused examples grouped by diagnostic family;
 - Both violation examples (triggering warnings) and correct patterns
 - Detailed comments explaining why each rule matters
 
@@ -540,7 +562,8 @@ dotnet build samples/CancelCop.Sample
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please see the
+[contribution guidelines](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/CONTRIBUTING.md).
 
 Key points:
 - Follow TDD approach (tests first)
@@ -559,7 +582,7 @@ and false-positive hardening continue each release.
 
 ## License
 
-[MIT License](LICENSE)
+[MIT License](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/master/LICENSE)
 
 ## Author
 

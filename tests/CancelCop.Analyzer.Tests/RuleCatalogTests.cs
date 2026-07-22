@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -166,5 +167,28 @@ public class RuleCatalogTests
                 string.IsNullOrEmpty(descriptor.HelpLinkUri),
                 $"{descriptor.Id} has no helpLinkUri; IDEs will not show a 'learn more' link for it.");
         }
+    }
+
+    [Fact]
+    public void Package_UsesRootReadmeAsTheSinglePublicReadme()
+    {
+        var repoRoot = GetRepoRoot();
+        var packageProjectPath = Path.Combine(
+            repoRoot,
+            "src",
+            "CancelCop.Analyzer.Package",
+            "CancelCop.Analyzer.Package.csproj");
+        var packageProject = XDocument.Load(packageProjectPath);
+
+        var packedReadmes = packageProject
+            .Descendants("None")
+            .Where(element =>
+                string.Equals((string?)element.Attribute("Pack"), "true", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals((string?)element.Attribute("PackagePath"), @"\", StringComparison.Ordinal))
+            .Select(element => (string?)element.Attribute("Include"))
+            .Where(include => include?.EndsWith("README.md", StringComparison.OrdinalIgnoreCase) == true)
+            .ToArray();
+
+        Assert.Equal(new[] { @"..\..\README.md" }, packedReadmes);
     }
 }
