@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.215] - 2026-07-22
+
+### Fixed
+
+- **CC022** false negative: null-conditional `CancellationTokenSource?.Cancel()` calls
+  are now diagnosed in async code; no automatic fix is offered because preserving null
+  semantics requires a control-flow rewrite.
+
 ## [1.27.214] - 2026-07-22
 
 ### Fixed
