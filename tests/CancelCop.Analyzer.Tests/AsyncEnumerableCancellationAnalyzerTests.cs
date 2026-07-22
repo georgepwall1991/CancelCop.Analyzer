@@ -260,6 +260,56 @@ public class TestClass
     }
 
     [Fact]
+    public async Task AwaitForeach_CustomConfigureAwait_OnlyTokenOverloadShouldSuppressDiagnostic()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public sealed class CustomStream : IAsyncEnumerable<int>
+{
+    public CustomStream ConfigureAwait(CancellationToken cancellationToken) => this;
+    public CustomStream ConfigureAwait(bool continueOnCapturedContext) => this;
+
+    public IAsyncEnumerator<int> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+        => new Enumerator();
+
+    private sealed class Enumerator : IAsyncEnumerator<int>
+    {
+        public int Current => 0;
+        public ValueTask DisposeAsync() => default;
+        public ValueTask<bool> MoveNextAsync() => new(false);
+    }
+}
+
+public class TestClass
+{
+    public async Task ConsumeAsync(CustomStream source, CancellationToken cancellationToken)
+    {
+        await foreach (var item in source.ConfigureAwait(cancellationToken))
+        {
+        }
+    }
+
+    public async Task ConsumeWithoutTokenFlowAsync(
+        CustomStream source,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var item in {|#0:source|}.ConfigureAwait(false))
+        {
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC010", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("cancellationToken");
+
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task AwaitForeach_ConfiguredCancelable_ShouldNotReportDiagnostic()
     {
         var test = @"

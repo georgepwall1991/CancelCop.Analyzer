@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.199] - 2026-07-22
+
+### Fixed
+
+- **CC010** false positive: custom async-enumerable `ConfigureAwait` overloads receiving a
+  `CancellationToken` are no longer stripped as framework-only configuration. Boolean
+  `ConfigureAwait(false)` without token flow remains diagnosed.
+
 ## [1.27.198] - 2026-07-22
 
 ### Fixed
