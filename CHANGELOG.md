@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.212] - 2026-07-22
+
+### Fixed
+
+- **CC009** false negative: cancellation checks inside nested lambdas or local functions
+  no longer satisfy an enclosing loop; direct body and condition checks remain recognized.
+
 ## [1.27.211] - 2026-07-22
 
 ### Fixed
