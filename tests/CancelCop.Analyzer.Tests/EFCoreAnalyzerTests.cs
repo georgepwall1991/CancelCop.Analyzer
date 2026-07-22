@@ -155,6 +155,30 @@ public class User { public int Id { get; set; } }";
     }
 
     [Fact]
+    public async Task ToListAsync_WithDefaultToken_ShouldNotReportDiagnostic()
+    {
+        var test = @"
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+public class TestClass
+{
+    public async Task<List<User>> GetUsersAsync(CancellationToken cancellationToken)
+    {
+        IQueryable<User> query = null;
+        return await query.ToListAsync(default);
+    }
+}
+
+public class User { public int Id { get; set; } }";
+
+        await CreateTest(test).RunAsync();
+    }
+
+    [Fact]
     public async Task SingleOrDefaultAsync_WithoutToken_WhenTokenAvailable_ShouldReportDiagnostic()
     {
         var test = @"

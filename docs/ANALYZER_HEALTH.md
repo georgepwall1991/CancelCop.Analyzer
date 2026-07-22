@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-07-22 (refreshed through the v1.27.213 hardening loop)
+Reviewed: 2026-07-22 (refreshed through the v1.27.214 hardening loop)
 
 A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -31,7 +31,7 @@ Calibration notes:
 | Rule | Title | Category | Severity | Analyzer | False Positives | Fix Strategy | Tests | Docs/Samples | Importance | Priority | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | CC001 | Public async method missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | Public/protected async returning Task/ValueTask, excludes override/interface/extern signatures (v1.4.0), compilable fixer (using insertion, name-collision, `params`). Solid entry-point guard. |
-| CC002 | CancellationToken not propagated | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.2:** walks lambdas/local functions/containing method via the shared `FindEnclosingCancellationTokenParameter` (also CC009); expression-tree lambdas excluded. **v1.27.1/v1.27.7 (FP+fix):** firing now requires a *type-compatible* token overload (`GetTypeCompatibleTokenParameterName`) — case A (a sibling overload whose non-token params match the call by type) or case B (the bound overload's own omitted optional token). A merely-same-name token overload with different params no longer yields a non-compiling fix (e.g. `StreamWriter.WriteAsync(string)`, whose token overload takes `ReadOnlyMemory<char>`, is left alone). Parameter types compare with an ordinal-aware equivalence so generic overload pairs (`FooAsync<T>(T)` / `FooAsync<T>(T, CancellationToken)`) still fire. |
+| CC002 | CancellationToken not propagated | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.2:** walks lambdas/local functions/containing method via the shared `FindEnclosingCancellationTokenParameter` (also CC009); expression-tree lambdas excluded. **v1.27.1/v1.27.7 (FP+fix):** firing now requires a *type-compatible* token overload (`GetTypeCompatibleTokenParameterName`) — case A (a sibling overload whose non-token params match the call by type) or case B (the bound overload's own omitted optional token). A merely-same-name token overload with different params no longer yields a non-compiling fix (e.g. `StreamWriter.WriteAsync(string)`, whose token overload takes `ReadOnlyMemory<char>`, is left alone). Parameter types compare with an ordinal-aware equivalence so generic overload pairs (`FooAsync<T>(T)` / `FooAsync<T>(T, CancellationToken)`) still fire. **v1.27.214:** explicit arguments are classified by their parameter-converted type, so a token boxed into `object` does not masquerade as propagation while contextual `default` remains recognized. |
 | CC003 | EF Core async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.3:** now uses the shared `FindEnclosingCancellationTokenParameter` scope walk (local functions, lambdas, containing method) plus CC002's expression-tree guard, closing the scope-gap false negative and aligning all four propagation rules on one walk. Namespace-gated to `Microsoft.EntityFrameworkCore`, overload-checked. Class-level XML `<remarks>`/`<example>` doc present (v1.14.2). |
 | CC004 | HttpClient async call missing CancellationToken | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.4.3:** same shared scope walk + expression-tree guard as CC003. Type-gated to `System.Net.Http.HttpClient`, overload-checked. Class-level XML `<remarks>`/`<example>` doc present (v1.14.2). |
 | CC005A | MediatR handler missing CancellationToken | Usage | Warning | 3 | 4 | 4 | 4 | 3 | 2 | Low | Gated to `MediatR.IRequestHandler.Handle`. Real MediatR's interface already mandates the token, so the rule mostly assists a non-compiling handler rather than catching a live omission — low product importance. Uses the shared `HasCancellationTokenParameter`/`IsAsyncReturnType` helpers (moved off the hand-rolled checks in v1.14.3); only the `IRequestHandler.Handle` gating is rule-specific. |
@@ -168,6 +168,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.27.214: 701 tests, green locally. **CC002 FN fix:** explicit arguments are
+  classified by converted type; boxed tokens no longer hide missing propagation and contextual
+  token defaults remain clean across CC002/CC003/CC004.
 - v1.27.213: 697 tests, green locally. **CC019 FN fix:** conditional rethrows restricted
   to unrelated exception types no longer mask swallowed cancellation; cancellation guards remain quiet.
 - v1.27.212: 695 tests, green locally. **CC009 FN fix:** checks deferred to nested

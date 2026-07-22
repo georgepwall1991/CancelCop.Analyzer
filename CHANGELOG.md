@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.214] - 2026-07-22
+
+### Fixed
+
+- **CC002** false negative: a `CancellationToken` expression converted to a non-token
+  parameter no longer masquerades as token propagation; explicit token arguments, including
+  contextual `default`, remain recognized across CC002/CC003/CC004.
+
 ## [1.27.213] - 2026-07-22
 
 ### Fixed
