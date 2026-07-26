@@ -8,7 +8,7 @@
 
 ## Current status
 
-CancelCop ships **28 rules** (CC001–CC006, CC009–CC028) covering:
+CancelCop ships **29 rules** (CC001–CC006, CC009–CC029) covering:
 
 - **Token presence** — public async methods (CC001), MediatR/controller/Minimal-API/SignalR handlers
   (CC005A/B/C, CC018), async iterators (CC001 + CC011).
@@ -18,7 +18,7 @@ CancelCop ships **28 rules** (CC001–CC006, CC009–CC028) covering:
 - **Async streams** — `await foreach` should flow a token (CC010); async-iterator
   `[EnumeratorCancellation]` (CC011).
 - **Token misuse** — explicit `None`/`default` when a token is in scope (CC012); unused token
-  parameter (CC016).
+  parameter (CC016); timeout CTS not linked to the in-scope parent (CC029).
 - **Blocking sync-over-async** — `Thread.Sleep` (CC013), `.Result`/`.Wait()`/`GetAwaiter().GetResult()`
   (CC015), `SemaphoreSlim.Wait()` (CC026), blocking `File`/`StreamReader` I/O (CC028).
 - **Resource lifecycle** — undisposed `CancellationTokenSource` (CC014), prefer `CancelAsync()`

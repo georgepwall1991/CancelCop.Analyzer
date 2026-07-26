@@ -7,9 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.1] - 2026-07-26
+
 ### Changed
 
+- Discoverability release: keyword-rich NuGet title, description, and tags for CancellationToken
+  and async/await search (sync-over-async, RequestAborted, ASP.NET Core, EF Core, HttpClient);
+  conversion-funnel README with product-flow visuals; packs `assets/` for NuGet README rendering;
+  adds discoverability metadata tests and `scripts/verify-packages.sh`. Diagnostic IDs and
+  severities are unchanged from 1.28.0.
 - Migrated the repository's default branch from `master` to `main` and refreshed documentation links.
+
+## [1.28.0] - 2026-07-22
+
+### Added
+
+- **CC029** (`LinkedTimeoutTokenSourceAnalyzer`): flags a timeout
+  `CancellationTokenSource` (`new CancellationTokenSource(TimeSpan|int)` or
+  `CancelAfter` on a parameterless local) when an in-scope parent token is not
+  linked. Code fix rewrites to `CreateLinkedTokenSource(token)` + `CancelAfter(delay)`.
+  Catches the common ASP.NET / worker bug where a timeout silently drops
+  `RequestAborted` or the caller's cancellation.
 
 ## [1.27.224] - 2026-07-22
 
