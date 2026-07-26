@@ -176,22 +176,6 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        // Only flag when the framework in use actually offers a signature-compatible async counterpart,
-        // so the suggested fix always compiles. A counterpart matches when its parameters equal the
-        // blocking call's parameters, optionally followed by a single trailing CancellationToken. The
-        // overloads vary by type and target framework (e.g. StreamWriter.Write(bool) has no async form),
-        // so this signature check — not a name-only lookup — is what keeps the rewrite valid.
-        if (
-            !HasAsyncCounterpart(
-                containingType,
-                method,
-                methodName + "Async",
-                out var asyncCounterpart,
-                out var asyncTakesToken
-            )
-        )
-            return;
-
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
@@ -200,30 +184,35 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             context.SemanticModel
         );
 
-        // Only ask the fixer to flow the token when the matched async overload actually accepts one;
-        // adding a token argument to a tokenless overload (e.g. StreamWriter.WriteAsync(string)) would
-        // not compile.
-        var flowToken = asyncTakesToken && tokenParameter != null;
+        // Resolve the counterpart the way the *rewritten* call will be resolved: by overload
+        // resolution starting at the receiver's own type. Using the declaring type instead would miss
+        // members declared on a subclass — `stream.CopyTo(...)` on a subclass resolves to
+        // Stream.CopyTo, so the declaring type is Stream and a subclass's own `CopyToAsync` is
+        // invisible to the search even though it is what the rewrite would bind to.
+        var searchRoot = GetReceiverType(context, invocation) as INamedTypeSymbol ?? containingType;
+        var asyncName = methodName + "Async";
 
-        // The counterpart search finds a signature-compatible member anywhere in the hierarchy, but
-        // the rewritten call is resolved by ordinary overload resolution from the receiver's type
-        // down — and a derived member can hide the one that was matched. A subclass declaring
-        // `new int ReadAsync(byte[], int, int)` is not awaitable, so `await stream.ReadAsync(b, 0, n)`
-        // binds to it and fails with CS1061. Verify against the argument count the fix will actually
-        // emit; with no token in scope that is the tokenless arity, which is what makes the shadowing
-        // member applicable in the first place.
-        var emittedArity = invocation.ArgumentList.Arguments.Count + (flowToken ? 1 : 0);
-        if (!AsyncCallBindsToAwaitable(containingType, methodName + "Async", emittedArity))
+        // Prefer the token-taking form when a token is in scope; otherwise the tokenless one (which
+        // includes an overload whose trailing token is optional, e.g. File.ReadAllTextAsync).
+        IMethodSymbol? asyncCounterpart = null;
+        var flowToken =
+            tokenParameter != null
+            && TryFindBoundCounterpart(searchRoot, method, asyncName, true, out asyncCounterpart);
+
+        if (
+            !flowToken
+            && !TryFindBoundCounterpart(searchRoot, method, asyncName, false, out asyncCounterpart)
+        )
             return;
 
         var properties = ImmutableDictionary<string, string?>.Empty;
 
-        // The fix copies the original argument list verbatim, so any named argument has to name a
-        // parameter that exists at the same position on the *async* overload. A subclass that renames
-        // its override's parameters breaks that: `stream.Read(data: b, start: 0, …)` is a valid call,
-        // but the inherited Stream.ReadAsync names them `buffer`/`offset`, so the rewrite would fail
-        // with CS1739. The call is still genuinely blocking, so the diagnostic stands — only the fix
-        // is withheld.
+        // The fix copies the original argument list verbatim, so every named argument has to name a
+        // parameter that exists on the *async* overload. A subclass that renames its override's
+        // parameters breaks that: `stream.Read(data: b, start: 0, …)` is a valid call, but the
+        // inherited Stream.ReadAsync names them `buffer`/`offset`, so the rewrite would fail with
+        // CS1739. The call is still genuinely blocking, so the diagnostic stands — only the fix is
+        // withheld.
         if (!NamedArgumentsMatch(invocation, asyncCounterpart!))
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
         if (flowToken)
@@ -321,46 +310,53 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="type"/> declares an overload named
-    /// <paramref name="asyncName"/> whose parameters match the blocking call's parameters, optionally
-    /// followed by a single trailing <c>CancellationToken</c>. A token-taking overload is preferred;
-    /// <paramref name="takesToken"/> reports whether the chosen match accepts the token.
+    /// Finds the async counterpart that the rewritten call would actually bind to, and returns
+    /// <c>true</c> only when that member is usable — <c>public</c> and returning an awaitable.
     /// </summary>
+    /// <param name="searchRoot">The receiver's type; resolution starts here, not at the declaring type.</param>
+    /// <param name="sync">The blocking method being replaced; its parameters shape the emitted call.</param>
+    /// <param name="asyncName">The counterpart name (<c>&lt;name&gt;Async</c>).</param>
+    /// <param name="wantToken">
+    /// <c>true</c> to require an overload that accepts a trailing <c>CancellationToken</c> (a token is
+    /// in scope and will be flowed); <c>false</c> to accept a tokenless call, which also matches an
+    /// overload whose trailing token is optional (e.g. <c>File.ReadAllTextAsync</c>).
+    /// </param>
     /// <remarks>
     /// <para>
-    /// The lookup walks base types: a concrete stream overrides the blocking member but inherits the
-    /// async counterpart from <c>Stream</c>, so <c>FileStream.GetMembers("ReadAsync")</c> alone finds
-    /// nothing and the rule would silently never fire.
+    /// The walk mirrors C# overload resolution closely enough for this rule's purpose: it goes from
+    /// the most-derived type upwards and stops at the first member that the emitted arguments would
+    /// select. Stopping is what catches shadowing — a subclass declaring
+    /// <c>new int ReadAsync(byte[], int, int)</c> wins resolution over the inherited awaitable one,
+    /// so <c>await stream.ReadAsync(b, 0, n)</c> fails with CS1061. When the winner is unusable the
+    /// rule stays quiet: there is no async alternative to point at, so the diagnostic's premise is
+    /// false.
     /// </para>
     /// <para>
-    /// A candidate must be <c>public</c> and return an awaitable (<c>Task</c>/<c>ValueTask</c>). A
-    /// matching signature is not enough: a type can declare a member named <c>ReadAsync</c> that
-    /// returns <c>int</c>, and the suggested <c>await</c> would not compile against it. Since the
-    /// derived member also shadows the framework one at the call site, no async alternative exists
-    /// and the diagnostic's premise is false — so the rule stays quiet rather than reporting.
+    /// Candidacy is decided by parameter <i>types</i> (via <see cref="ParametersMatch"/>), not by
+    /// argument count. A same-arity but type-incompatible member such as
+    /// <c>int ReadAsync(string, int, int)</c> is not what a <c>byte[]</c> call binds to, so it must
+    /// not mask the inherited overload that the call really would select.
+    /// </para>
+    /// <para>
+    /// Walking base types also matters in the ordinary case: a concrete stream overrides the blocking
+    /// member but inherits the async counterpart, so a same-type-only lookup finds nothing and the
+    /// rule would never fire.
     /// </para>
     /// </remarks>
-    private static bool HasAsyncCounterpart(
-        INamedTypeSymbol type,
+    private static bool TryFindBoundCounterpart(
+        INamedTypeSymbol? searchRoot,
         IMethodSymbol sync,
         string asyncName,
-        out IMethodSymbol? match,
-        out bool takesToken
+        bool wantToken,
+        out IMethodSymbol? match
     )
     {
-        takesToken = false;
         match = null;
 
-        for (INamedTypeSymbol? current = type; current != null; current = current.BaseType)
+        for (INamedTypeSymbol? current = searchRoot; current != null; current = current.BaseType)
         {
             foreach (var candidate in current.GetMembers(asyncName).OfType<IMethodSymbol>())
             {
-                if (
-                    candidate.DeclaredAccessibility != Accessibility.Public
-                    || !CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType)
-                )
-                    continue;
-
                 if (
                     !ParametersMatch(
                         sync.Parameters,
@@ -370,89 +366,55 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 )
                     continue;
 
-                match ??= candidate;
-                if (candidateTakesToken)
+                if (wantToken)
                 {
-                    match = candidate;
-                    takesToken = true;
-                    return true;
+                    if (!candidateTakesToken)
+                        continue;
                 }
-            }
-        }
-
-        return match != null;
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> when a call to <paramref name="asyncName"/> with
-    /// <paramref name="arity"/> arguments, resolved from <paramref name="receiverType"/>, binds to a
-    /// public awaitable method — i.e. the <c>await</c> the fix inserts will compile.
-    /// </summary>
-    /// <remarks>
-    /// Overload resolution considers the most-derived type that declares an applicable member and
-    /// does not fall back to base types once one is found, so a shadowing member decides the binding
-    /// even when a perfectly good counterpart exists further up. Applicability is by argument count
-    /// against the required/total parameter range, which keeps optional parameters working:
-    /// <c>File.ReadAllTextAsync(path)</c> binds to a two-parameter method whose token is optional.
-    /// </remarks>
-    private static bool AsyncCallBindsToAwaitable(
-        INamedTypeSymbol receiverType,
-        string asyncName,
-        int arity
-    )
-    {
-        for (INamedTypeSymbol? current = receiverType; current != null; current = current.BaseType)
-        {
-            var applicable = current
-                .GetMembers(asyncName)
-                .OfType<IMethodSymbol>()
-                .Where(candidate =>
-                    arity >= candidate.Parameters.Count(p => !p.IsOptional && !p.IsParams)
-                    && (
-                        arity <= candidate.Parameters.Length
-                        || candidate.Parameters.Any(p => p.IsParams)
-                    )
+                else if (
+                    candidateTakesToken
+                    && !candidate.Parameters[candidate.Parameters.Length - 1].IsOptional
                 )
-                .ToList();
+                {
+                    // The emitted call passes no token, so an overload whose token is required is
+                    // not what it would bind to.
+                    continue;
+                }
 
-            if (applicable.Count == 0)
-                continue;
-
-            return applicable.Any(candidate =>
-                candidate.DeclaredAccessibility == Accessibility.Public
-                && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType)
-            );
+                // First applicable member wins resolution; if it is unusable, no rewrite exists.
+                match = candidate;
+                return candidate.DeclaredAccessibility == Accessibility.Public
+                    && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType);
+            }
         }
 
         return false;
     }
 
     /// <summary>
-    /// Returns <c>true</c> when every named argument in the call names a parameter that exists at
-    /// the same position on <paramref name="asyncCounterpart"/>, so copying the argument list into
-    /// the rewritten call still binds.
+    /// Returns <c>true</c> when every named argument in the call names a parameter declared by
+    /// <paramref name="asyncCounterpart"/>, so copying the argument list into the rewritten call
+    /// still binds.
     /// </summary>
     /// <remarks>
     /// A subclass may rename its override's parameters while inheriting the async counterpart, in
-    /// which case the names are valid on the blocking call but not on the async one.
+    /// which case the names are valid on the blocking call but not on the async one. Matching is by
+    /// name alone, not by position: named arguments may legally be reordered
+    /// (<c>File.WriteAllText(contents: text, path: path)</c>), and such a call rewrites safely as
+    /// long as the counterpart declares the same names.
     /// </remarks>
     private static bool NamedArgumentsMatch(
         InvocationExpressionSyntax invocation,
         IMethodSymbol asyncCounterpart
     )
     {
-        var arguments = invocation.ArgumentList.Arguments;
-
-        for (var i = 0; i < arguments.Count; i++)
+        foreach (var argument in invocation.ArgumentList.Arguments)
         {
-            var name = arguments[i].NameColon?.Name.Identifier.Text;
+            var name = argument.NameColon?.Name.Identifier.Text;
             if (name is null)
                 continue;
 
-            if (
-                i >= asyncCounterpart.Parameters.Length
-                || asyncCounterpart.Parameters[i].Name != name
-            )
+            if (!asyncCounterpart.Parameters.Any(p => p.Name == name))
                 return false;
         }
 

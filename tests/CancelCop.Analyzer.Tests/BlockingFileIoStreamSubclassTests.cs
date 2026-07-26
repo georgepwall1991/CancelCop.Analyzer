@@ -243,4 +243,166 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task NonAwaitableAsyncOnSubclass_WithInheritedSyncMember_ShouldNotReportDiagnostic()
+    {
+        // CopyTo is inherited, so the *declaring* type is Stream — but the rewrite binds from the
+        // receiver's type, where the subclass's own non-awaitable CopyToAsync wins. Resolution has to
+        // start at the receiver, not the declaring type, or this emits `await ...` on an int (CS1061).
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public new int CopyToAsync(Stream destination) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(CustomStream source, Stream destination)
+    {
+        source.CopyTo(destination);
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task TypeIncompatibleSameArityOverload_StillReportsDiagnostic()
+    {
+        // The subclass declares `int ReadAsync(string, int, int)` — same arity, wrong types. A byte[]
+        // call never binds to it, so it must not mask the inherited awaitable Stream.ReadAsync.
+        // Deciding candidacy by argument count alone would suppress a valid diagnostic here.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public int ReadAsync(string name, int offset, int count) => 0;
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] buffer, CancellationToken token)
+    {
+        var read = stream.{|#0:Read|}(buffer, 0, buffer.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public int ReadAsync(string name, int offset, int count) => 0;
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] buffer, CancellationToken token)
+    {
+        var read = await stream.ReadAsync(buffer, 0, buffer.Length, token);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Read")
+        );
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReorderedNamedArguments_AreStillFixed()
+    {
+        // Named arguments may legally be reordered. The names still exist on the async counterpart,
+        // so the rewrite binds — withholding the fix here would be a regression against the plain
+        // File case that has always worked.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, string text, CancellationToken cancellationToken)
+    {
+        File.{|#0:WriteAllText|}(contents: text, path: path);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(string path, string text, CancellationToken cancellationToken)
+    {
+        await File.WriteAllTextAsync(contents: text, path: path, cancellationToken: cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("WriteAllText")
+        );
+        await t.RunAsync();
+    }
 }

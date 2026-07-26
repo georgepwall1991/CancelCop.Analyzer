@@ -29,18 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `Stream.Flush`).
 - Overloads with no signature-compatible async form are still quiet, so the rewrite always compiles:
   `Read(Span<byte>)` has no counterpart (`ReadAsync` takes `Memory<byte>`) and is left alone.
-- **Shadowed counterparts.** A candidate must now be `public` and return an awaitable, and the rule
-  additionally verifies that a call with the argument count the fix will actually emit binds to such
-  a method. Overload resolution stops at the most-derived type declaring an applicable member, so a
-  subclass with `new int ReadAsync(byte[], int, int)` would capture the rewritten call and
-  `await` it as an `int` (CS1061). Applicability is checked by argument count against the
-  required/total parameter range, which keeps optional parameters working — `File.ReadAllTextAsync(path)`
-  binds to a two-parameter method whose token is optional.
+- **Shadowed counterparts.** The counterpart is now resolved the way the *rewritten* call will be:
+  by overload resolution starting at the receiver's own type, stopping at the first member the
+  emitted arguments would select, and requiring it to be `public` and awaitable. A subclass declaring
+  `new int ReadAsync(byte[], int, int)` wins resolution over the inherited awaitable overload, so
+  `await stream.ReadAsync(b, 0, n)` would fail with CS1061 — the rule now stays quiet instead, since
+  no async alternative actually exists. Starting at the receiver (not the declaring type) matters
+  whenever the blocking member is inherited: `stream.CopyTo(...)` declares on `Stream`, so a
+  subclass's own `CopyToAsync` is invisible to a declaring-type search yet is what the fix binds to.
+- Candidacy is decided by parameter **types**, not argument count, so a same-arity but
+  type-incompatible member (`int ReadAsync(string, int, int)`) cannot mask the inherited overload a
+  `byte[]` call really selects — that would have suppressed a valid diagnostic and its valid fix.
 - **Named arguments that cannot be carried over.** When a subclass renames its override's parameters,
   `stream.Read(data: b, start: 0, …)` is valid but the inherited `Stream.ReadAsync` names them
   `buffer`/`offset`, so copying the argument list emits CS1739. The call is still genuinely blocking,
-  so the diagnostic is reported and only the *fix* is withheld. Named calls whose names do line up
-  (`File.WriteAllText(path:, contents:)`) are fixed as before.
+  so the diagnostic is reported and only the *fix* is withheld. Names are matched by name rather than
+  by position, because named arguments may legally be reordered
+  (`File.WriteAllText(contents: text, path: path)` still rewrites cleanly).
 - The code fix title is now "Use the async I/O method" (was "Use the async File method"), which the
   rule outgrew once it covered readers, writers, and streams.
 
