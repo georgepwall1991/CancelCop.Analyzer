@@ -29,6 +29,7 @@
 // CC025_AwaitUsing.cs          - Prefer await using for IAsyncDisposable
 // CC026_BlockingSemaphore.cs   - Avoid SemaphoreSlim.Wait() in async code
 // CC027_PrematureDisposal.cs   - Returned task uses a disposed using resource
+// CC029_LinkedTimeoutTokenSource.cs - Timeout CTS should link the in-scope token
 // (CC017/CC018/CC020/CC021 are framework-specific; see their analyzer tests.)
 //
 // VIEWING WARNINGS:

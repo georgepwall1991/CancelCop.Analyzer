@@ -1,8 +1,8 @@
 # Analyzer Health
 
-Reviewed: 2026-07-22 (refreshed through the v1.27.223 hardening loop)
+Reviewed: 2026-07-22 (refreshed through CC029 / v1.28.0)
 
-A deliberately harsh health audit for the twenty-eight implemented CancelCop rule IDs (CC001–CC006, CC009–CC028).
+A deliberately harsh health audit for the twenty-nine implemented CancelCop rule IDs (CC001–CC006, CC009–CC029).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
 meaningfully incomplete, and `1` means unreliable or underbuilt. A `5` is rare.
 
@@ -40,6 +40,7 @@ Calibration notes:
 | CC006 | CancellationToken should be last parameter | Style | Info | 4 | 4 | n/a | 4 | 3 | 2 | Low | v1.4.0: methods, constructors, primary constructors, local functions; excludes externally-controlled signatures and unmovable tokens (before trailing `params`, extension `this`). Analyzer-only by design (reordering would touch every call site). Convention rule, low importance. |
 | CC009 | Loop missing cancellation check | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | v1.4.0: semantic receiver resolution (no name matching), walks methods/local functions/lambdas, all four loop kinds, fixer inserts `ThrowIfCancellationRequested()`. **v1.27.180/v1.27.212:** compile-time-only `nameof(token.IsCancellationRequested)` and checks deferred to a nested lambda/local function no longer satisfy the enclosing loop; loops inside those functions are analyzed independently. The strongest rule in the set. |
 | CC010 | `await foreach` missing CancellationToken flow | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.5.0 (new); fixes v1.27.183/v1.27.199:** flags `await foreach` over an `IAsyncEnumerable<T>` (or implementer) when a token is in scope, the source does not already pass a token argument, and it is not already a configured cancelable enumerable; fixer rewrites the source to `.WithCancellation(token)`. `WithCancellation` wrapper recognition is semantic and framework-gated, so look-alikes do not suppress the rule. Custom `ConfigureAwait` overloads that receive a `CancellationToken` remain visible to the producer-token check rather than being mistaken for framework-only configuration; boolean configuration without token flow still reports. Uses the shared `FindEnclosingCancellationTokenParameter` scope walk. Conservative: synchronous `foreach`, no-token scopes, and producer calls already receiving a token are quiet. No analyzer XML `<remarks>` example variety yet (P3). |
+| CC029 | Timeout CTS ignores in-scope parent token | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.28.0 (new):** flags `new CancellationTokenSource(TimeSpan|int)` and `CancelAfter` on a parameterless local CTS when `FindEnclosingCancellationTokenParameter` finds a parent token that is not linked. Symbol-gated to `System.Threading.CancellationTokenSource`; look-alikes quiet. Timeout-ctor path reports on the creation; parameterless + `CancelAfter` reports on `CancelAfter` only (no double-report when both appear). Fixer rewrites simple local declarations to `CreateLinkedTokenSource(token)` + `CancelAfter(delay)` without injecting `using` (CC014 owns disposal). Complements CC002/CC012/CC014 — a timeout source can look “propagated” while still ignoring request abort. Intentional isolated timeouts with a parent still in scope need a suppress (documented). |
 | CC028 | Blocking `System.IO` read/write/append in async code | Usage | Warning | 4 | 4 | 4 | 4 | 4 | 4 | Low | **v1.24.0 (new); fixes v1.25.0/v1.27.198/v1.27.202:** flags a blocking synchronous `System.IO` helper inside async code (method/local function/lambda/anonymous method) when a signature-compatible `<name>Async` counterpart exists on the type — `File` read/write/append (`ReadAllText`/`ReadAllBytes`/`ReadAllLines`, `WriteAll*`, `AppendAll*`), `StreamReader.ReadToEnd`/`ReadLine`, and (v1.27.0) `StreamWriter.Write`/`WriteLine`/`Flush` (generalised from `System.IO.File` to `System.IO` in v1.26.0). Qualified and `using static` File calls are supported. Null-conditional instance calls are diagnosed but intentionally receive no fix because preserving null semantics is context-dependent. **v1.27.0** replaced the name-only counterpart lookup with a parameter-signature match (overload equals the call's params, optionally + a trailing token), so the rewrite always compiles (`StreamWriter.Write(bool)` has no async form → quiet) and the token is only flowed when the matched overload accepts one (`Write(string)`→`await WriteAsync(text)` tokenless; `Flush()`→`await FlushAsync(token)`). Fixer rewrites safe direct-access shapes to `await …Async(…[, token])`, flowing the in-scope token via `FindEnclosingCancellationTokenParameter`. Symbol-resolved + namespace-gated to `System.IO` (look-alikes ignored); only in async context via the shared `IsInAsyncFunction`. Fix-All batches across the type→method map. Rounds out the blocking-in-async family (CC013/CC015/CC026). |
 | CC027 | Returned task uses a disposed `using` resource | Usage | Warning | 4 | 4 | n/a | 4 | 3 | 4 | Low | **v1.23.0 (new); fixes v1.27.184/v1.27.206:** flags a non-async `Task`-returning method/local function whose `return` is a call on a local disposed by a `using` declaration, declaration-form using statement, or expression-form `using (resource)` — the resource is disposed before the returned task completes (premature disposal). Expression-form analysis is scoped to returns inside that exact using body. Receiver walking unwraps interface/base casts, which do not change the using local's lifetime. High confidence: only the receiver case is flagged (a synchronous read into a completed task like `Task.FromResult(resource.Value)` is not). Analyzer-only (fix = make async + await). |
 | CC026 | `SemaphoreSlim.Wait()` in async code | Usage | Warning | 4 | 4 | 4 | 4 | 3 | 4 | Low | **v1.22.0 (new); fixes v1.27.185/v1.27.191/v1.27.193/v1.27.196:** flags potentially blocking `SemaphoreSlim.Wait()` overloads (parameterless, timeout, token), including null-conditional calls, inside async code — a classic deadlock source; fixer → `await gate.WaitAsync(…)` for safe direct-access shapes, carrying the original arguments through and injecting the in-scope token when `Wait()` was parameterless (v1.22.2). Provably zero integer and framework `TimeSpan` timeout forms (zero field, defaults, zero-argument construction) are excluded because they are immediate try-enter probes. Symbol-resolved to `System.Threading.SemaphoreSlim`. |
@@ -65,14 +66,14 @@ Calibration notes:
 | --- | --- | --- |
 | High | None | No rule has a correctness defect severe enough to block a release. |
 | Medium | None | No P0/P1 items open; two P2 (opportunistic) items remain — see backlog. |
-| Low | All 28 rules | Mature and FP-clean. Every rule is covered by a clean-code FP guard (`AllAnalyzersCleanCodeTests`) spanning core, framework (controllers/MediatR/SignalR/Minimal API/BackgroundService/gRPC), nested-scope, exotic-syntax, modern-C#-shape, async-File-I/O, and non-async `using` cases. Improve opportunistically. |
+| Low | All 29 rules | Mature and FP-clean. Every rule is covered by a clean-code FP guard (`AllAnalyzersCleanCodeTests`) spanning core, framework (controllers/MediatR/SignalR/Minimal API/BackgroundService/gRPC), nested-scope, exotic-syntax, modern-C#-shape, async-File-I/O, and non-async `using` cases. Improve opportunistically. |
 
-The rule set has grown from the original 9 (CC001–CC006, CC009) to 28 (adding CC010–CC028 across the
-async-stream, blocking, lifecycle, async-hygiene, and property-token families). Recent hardening loops
-have shifted from new rules to FP/FN edge cases found by reviewing each rule against representative
-code — three real false positives (CC009 loop condition, CC014 `cts?.Dispose()`, CC001 `async Main`)
-and several false negatives (CC023 local functions, CC024 anonymous methods, CC027 `using` statement)
-were fixed this way.
+The rule set has grown from the original 9 (CC001–CC006, CC009) to 29 (adding CC010–CC029 across the
+async-stream, blocking, lifecycle, async-hygiene, property-token, and linked-timeout families). Recent
+hardening loops have shifted from new rules to FP/FN edge cases found by reviewing each rule against
+representative code — three real false positives (CC009 loop condition, CC014 `cts?.Dispose()`,
+CC001 `async Main`) and several false negatives (CC023 local functions, CC024 anonymous methods,
+CC027 `using` statement) were fixed this way.
 
 ## Prioritized Fix Backlog
 
@@ -168,6 +169,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.28.0: 750 tests, green locally. **new rule CC029** — timeout
+  `CancellationTokenSource` not linked to in-scope parent token. Focused analyzer +
+  code-fix coverage; clean-code linked-timeout idiom remains quiet.
 - v1.27.223: 732 tests, green locally. **CC019 FN fix:** direct negated type-pattern
   rethrows are classified by polarity and cancellation-hierarchy overlap.
 - v1.27.222: 726 tests, green locally. **CC022 FP fix:** `Cancel()` is reported only
