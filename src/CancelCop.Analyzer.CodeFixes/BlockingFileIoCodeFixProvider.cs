@@ -12,13 +12,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace CancelCop.Analyzer;
 
 /// <summary>
-/// Code fix provider that rewrites a blocking qualified or <c>using static</c> call to its
-/// <c>await ...Async(..., token)</c> counterpart, flowing the in-scope token when one is available.
+/// Code fix provider that rewrites a blocking qualified or <c>using static</c> <c>System.IO</c> call
+/// (including the <c>Stream</c> primitives) to its <c>await ...Async(..., token)</c> counterpart,
+/// flowing the in-scope token when one is available.
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingFileIoCodeFixProvider)), Shared]
 public class BlockingFileIoCodeFixProvider : CodeFixProvider
 {
-    private const string Title = "Use the async File method";
+    private const string Title = "Use the async I/O method";
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(BlockingFileIoAnalyzer.DiagnosticId);

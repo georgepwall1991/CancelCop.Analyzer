@@ -10,9 +10,9 @@ namespace CancelCop.Analyzer;
 
 /// <summary>
 /// Analyzer that detects a blocking synchronous <c>System.IO</c> call (<c>File</c> read/write/append
-/// helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, or <c>StreamWriter.Write</c>/<c>WriteLine</c>/
-/// <c>Flush</c>) inside async code when a signature-compatible async counterpart (<c>&lt;name&gt;Async</c>)
-/// exists.
+/// helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, <c>StreamWriter.Write</c>/<c>WriteLine</c>/
+/// <c>Flush</c>, or the <c>Stream</c> primitives <c>Read</c>/<c>Write</c>/<c>CopyTo</c>/<c>Flush</c>)
+/// inside async code when a signature-compatible async counterpart (<c>&lt;name&gt;Async</c>) exists.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -35,6 +35,14 @@ namespace CancelCop.Analyzer;
 /// or anonymous method. Qualified calls and bare <c>File</c> calls imported with
 /// <c>using static</c> are supported. Overloads without an async form (e.g.
 /// <c>StreamWriter.Write(bool)</c>) are not flagged, so the rewrite always compiles.
+/// </para>
+/// <para>
+/// The <c>Stream</c> primitives (<c>Read</c>, <c>Write</c>, <c>CopyTo</c>, <c>Flush</c>) are matched
+/// by inheritance rather than by exact type name, so concrete framework streams
+/// (<c>FileStream</c>, <c>NetworkStream</c>, <c>GZipStream</c>) and user-defined subclasses declared
+/// outside <c>System.IO</c> are all covered. <c>MemoryStream</c> is excluded: it is backed by an
+/// in-memory buffer, so the call never leaves the CPU and the async counterpart only wraps the same
+/// synchronous work in a completed task.
 /// </para>
 /// </remarks>
 /// <example>
@@ -62,22 +70,50 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// The blocking <c>System.IO</c> methods (keyed by declaring type) that have a documented async
     /// counterpart of the form <c>&lt;name&gt;Async</c>.
     /// </summary>
-    private static readonly ImmutableDictionary<string, ImmutableHashSet<string>> BlockingMethodsByType =
-        ImmutableDictionary.CreateRange(new[]
+    private static readonly ImmutableDictionary<
+        string,
+        ImmutableHashSet<string>
+    > BlockingMethodsByType = ImmutableDictionary.CreateRange(
+        new[]
         {
-            new KeyValuePair<string, ImmutableHashSet<string>>("File", ImmutableHashSet.Create(
-                "ReadAllText", "ReadAllBytes", "ReadAllLines",
-                "WriteAllText", "WriteAllBytes", "WriteAllLines",
-                "AppendAllText", "AppendAllLines")),
-            new KeyValuePair<string, ImmutableHashSet<string>>("StreamReader", ImmutableHashSet.Create(
-                "ReadToEnd", "ReadLine")),
-            new KeyValuePair<string, ImmutableHashSet<string>>("StreamWriter", ImmutableHashSet.Create(
-                "Write", "WriteLine", "Flush")),
-        });
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "File",
+                ImmutableHashSet.Create(
+                    "ReadAllText",
+                    "ReadAllBytes",
+                    "ReadAllLines",
+                    "WriteAllText",
+                    "WriteAllBytes",
+                    "WriteAllLines",
+                    "AppendAllText",
+                    "AppendAllLines"
+                )
+            ),
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "StreamReader",
+                ImmutableHashSet.Create("ReadToEnd", "ReadLine")
+            ),
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "StreamWriter",
+                ImmutableHashSet.Create("Write", "WriteLine", "Flush")
+            ),
+        }
+    );
+
+    /// <summary>
+    /// The blocking primitives on <c>System.IO.Stream</c>. These are matched by inheritance rather
+    /// than by exact type name because the concrete streams that matter (<c>FileStream</c>,
+    /// <c>NetworkStream</c>, <c>GZipStream</c>, user-defined subclasses) each override them while
+    /// inheriting the async counterparts from <c>Stream</c>.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> StreamBlockingMethods =
+        ImmutableHashSet.Create("Read", "Write", "CopyTo", "Flush");
 
     private static readonly LocalizableString Title = "Avoid blocking I/O in async code";
-    private static readonly LocalizableString MessageFormat = "Blocking '{0}' in async code; use '{0}Async'";
-    private static readonly LocalizableString Description = "Synchronous System.IO calls block the thread in async code; use the async counterpart, which also accepts a CancellationToken.";
+    private static readonly LocalizableString MessageFormat =
+        "Blocking '{0}' in async code; use '{0}Async'";
+    private static readonly LocalizableString Description =
+        "Synchronous System.IO calls block the thread in async code; use the async counterpart, which also accepts a CancellationToken.";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -88,9 +124,11 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Description,
-        helpLinkUri: DiagnosticHelp.LinkUri);
+        helpLinkUri: DiagnosticHelp.LinkUri
+    );
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -115,15 +153,20 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
         var methodName = invokedName.Identifier.Text;
 
-        if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
+        if (
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is not IMethodSymbol method
+        )
             return;
 
         var containingType = method.ContainingType;
-        if (containingType?.ContainingNamespace?.ToDisplayString() != "System.IO")
+        if (containingType is null)
             return;
 
-        if (!BlockingMethodsByType.TryGetValue(containingType.Name, out var blockingMethods) ||
-            !blockingMethods.Contains(methodName))
+        if (
+            !IsCuratedBlockingCall(containingType, methodName)
+            && !IsBlockingStreamCall(context, invocation, containingType, methodName)
+        )
             return;
 
         // Only flag when the framework in use actually offers a signature-compatible async counterpart,
@@ -131,14 +174,23 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // blocking call's parameters, optionally followed by a single trailing CancellationToken. The
         // overloads vary by type and target framework (e.g. StreamWriter.Write(bool) has no async form),
         // so this signature check — not a name-only lookup — is what keeps the rewrite valid.
-        if (!HasAsyncCounterpart(containingType, method, methodName + "Async", out var asyncTakesToken))
+        if (
+            !HasAsyncCounterpart(
+                containingType,
+                method,
+                methodName + "Async",
+                out var asyncTakesToken
+            )
+        )
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
-            invocation, context.SemanticModel);
+            invocation,
+            context.SemanticModel
+        );
 
         // Only ask the fixer to flow the token when the matched async overload actually accepts one;
         // adding a token argument to a tokenless overload (e.g. StreamWriter.WriteAsync(string)) would
@@ -147,8 +199,95 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         if (asyncTakesToken && tokenParameter != null)
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
-        context.ReportDiagnostic(Diagnostic.Create(
-            Rule, invokedName.GetLocation(), properties, methodName));
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, methodName)
+        );
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> for the curated exact-type helpers: the <c>System.IO</c> types whose
+    /// blocking members are listed by name (<c>File</c>, <c>StreamReader</c>, <c>StreamWriter</c>).
+    /// </summary>
+    private static bool IsCuratedBlockingCall(INamedTypeSymbol containingType, string methodName) =>
+        containingType.ContainingNamespace?.ToDisplayString() == "System.IO"
+        && BlockingMethodsByType.TryGetValue(containingType.Name, out var blockingMethods)
+        && blockingMethods.Contains(methodName);
+
+    /// <summary>
+    /// Returns <c>true</c> for a blocking primitive on a <c>System.IO.Stream</c>. Matched by
+    /// inheritance so that concrete and user-defined streams — which override the sync members and
+    /// inherit the async ones — are covered, and so a subclass declared outside <c>System.IO</c> is
+    /// still recognised.
+    /// </summary>
+    /// <remarks>
+    /// <c>MemoryStream</c> and its subclasses are excluded: they are backed by an in-memory buffer,
+    /// so the "blocking" call never leaves the CPU and the async counterpart only wraps the same
+    /// synchronous work in an already-completed task. Flagging it would be noise, not a finding.
+    /// The exclusion tests the receiver's own type rather than the declaring type, because
+    /// <c>MemoryStream</c> does not override every member (e.g. <c>Flush</c> resolves to
+    /// <c>Stream.Flush</c>).
+    /// </remarks>
+    private static bool IsBlockingStreamCall(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        INamedTypeSymbol containingType,
+        string methodName
+    )
+    {
+        if (!StreamBlockingMethods.Contains(methodName) || !IsStream(containingType))
+            return false;
+
+        var receiverType = GetReceiverType(context, invocation) ?? containingType;
+        return !DerivesFrom(receiverType, "MemoryStream");
+    }
+
+    /// <summary>
+    /// Resolves the static type of the invocation's receiver, so the <c>MemoryStream</c> exclusion
+    /// sees the type the caller actually holds. Returns <c>null</c> for unqualified calls.
+    /// </summary>
+    private static ITypeSymbol? GetReceiverType(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
+    {
+        var receiver = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            // Null-conditional (`stream?.Read(...)`): the receiver lives on the enclosing
+            // conditional access, not on the member binding.
+            MemberBindingExpressionSyntax => invocation
+                .Ancestors()
+                .OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault()
+                ?.Expression,
+            _ => null,
+        };
+
+        return receiver is null
+            ? null
+            : context.SemanticModel.GetTypeInfo(receiver, context.CancellationToken).Type;
+    }
+
+    /// <summary>Returns <c>true</c> when <paramref name="type"/> is or derives from <c>System.IO.Stream</c>.</summary>
+    private static bool IsStream(ITypeSymbol type) => DerivesFrom(type, "Stream");
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> or any of its base types is the
+    /// <c>System.IO</c> type named <paramref name="name"/>. Namespace-gated so a same-named
+    /// user type is never mistaken for the framework one.
+    /// </summary>
+    private static bool DerivesFrom(ITypeSymbol? type, string name)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (
+                current.Name == name
+                && current.ContainingNamespace?.ToDisplayString() == "System.IO"
+            )
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -157,22 +296,40 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// followed by a single trailing <c>CancellationToken</c>. A token-taking overload is preferred;
     /// <paramref name="takesToken"/> reports whether the chosen match accepts the token.
     /// </summary>
+    /// <remarks>
+    /// The lookup walks base types: a concrete stream overrides the blocking member but inherits the
+    /// async counterpart from <c>Stream</c>, so <c>FileStream.GetMembers("ReadAsync")</c> alone finds
+    /// nothing and the rule would silently never fire.
+    /// </remarks>
     private static bool HasAsyncCounterpart(
-        INamedTypeSymbol type, IMethodSymbol sync, string asyncName, out bool takesToken)
+        INamedTypeSymbol type,
+        IMethodSymbol sync,
+        string asyncName,
+        out bool takesToken
+    )
     {
         takesToken = false;
         var found = false;
 
-        foreach (var candidate in type.GetMembers(asyncName).OfType<IMethodSymbol>())
+        for (INamedTypeSymbol? current = type; current != null; current = current.BaseType)
         {
-            if (!ParametersMatch(sync.Parameters, candidate.Parameters, out var candidateTakesToken))
-                continue;
-
-            found = true;
-            if (candidateTakesToken)
+            foreach (var candidate in current.GetMembers(asyncName).OfType<IMethodSymbol>())
             {
-                takesToken = true;
-                return true;
+                if (
+                    !ParametersMatch(
+                        sync.Parameters,
+                        candidate.Parameters,
+                        out var candidateTakesToken
+                    )
+                )
+                    continue;
+
+                found = true;
+                if (candidateTakesToken)
+                {
+                    takesToken = true;
+                    return true;
+                }
             }
         }
 
@@ -185,12 +342,17 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// (<paramref name="takesToken"/> set accordingly).
     /// </summary>
     private static bool ParametersMatch(
-        ImmutableArray<IParameterSymbol> sync, ImmutableArray<IParameterSymbol> async, out bool takesToken)
+        ImmutableArray<IParameterSymbol> sync,
+        ImmutableArray<IParameterSymbol> async,
+        out bool takesToken
+    )
     {
         takesToken = false;
 
-        if (async.Length == sync.Length + 1 &&
-            CancellationTokenHelpers.IsCancellationToken(async[sync.Length].Type))
+        if (
+            async.Length == sync.Length + 1
+            && CancellationTokenHelpers.IsCancellationToken(async[sync.Length].Type)
+        )
             takesToken = true;
         else if (async.Length != sync.Length)
             return false;

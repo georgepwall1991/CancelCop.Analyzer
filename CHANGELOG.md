@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-07-27
+
+### Changed
+
+- **CC028** now covers `System.IO.Stream` itself — `Read`, `Write`, `CopyTo`, and `Flush` — closing a
+  silent false negative. The rule's curated map keys on the exact declaring type name (`File`,
+  `StreamReader`, `StreamWriter`), so blocking on the stream primitives was never flagged even
+  though every one of them has a token-taking async counterpart. `source.CopyTo(destination)` inside
+  an async method is the same thread-blocking mistake as `File.ReadAllText`, and is arguably more
+  costly because it blocks for the whole transfer.
+- Stream types are matched by **inheritance**, not by exact type name, so concrete framework streams
+  (`FileStream`, `NetworkStream`, `GZipStream`) and user-defined subclasses declared outside
+  `System.IO` are all covered. The async-counterpart lookup now walks base types for the same
+  reason: a concrete stream overrides the blocking member but inherits `ReadAsync`/`CopyToAsync`
+  from `Stream`, so a same-type-only lookup would have found nothing and the rule would never fire.
+- `MemoryStream` and its subclasses are excluded. They are backed by an in-memory buffer, so the
+  "blocking" call never leaves the CPU and the async form only wraps the same synchronous work in a
+  completed task — flagging it would be noise. The exclusion tests the receiver's own type rather
+  than the declaring type, because `MemoryStream` does not override every member (`Flush` resolves
+  to `Stream.Flush`).
+- Overloads with no signature-compatible async form are still quiet, so the rewrite always compiles:
+  `Read(Span<byte>)` has no counterpart (`ReadAsync` takes `Memory<byte>`) and is left alone.
+- The code fix title is now "Use the async I/O method" (was "Use the async File method"), which the
+  rule outgrew once it covered readers, writers, and streams.
+
 ## [1.28.1] - 2026-07-26
 
 ### Changed

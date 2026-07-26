@@ -141,7 +141,7 @@ dotnet build samples/CancelCop.Sample
 | **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
 | **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
 | **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
-| **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`) in async code; use the async counterpart | Warning | ✅ |
+| **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`, `Stream`) in async code; use the async counterpart | Warning | ✅ |
 | **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
 
 ## Quick Examples
@@ -538,7 +538,23 @@ public async Task<string> LoadAsync(string path, CancellationToken cancellationT
     var text = await File.ReadAllTextAsync(path, cancellationToken);
     return text;
 }
+
+// ❌ Warning CC028 - the Stream primitives block too, on any Stream subclass
+public async Task ArchiveAsync(Stream source, Stream destination)
+{
+    source.CopyTo(destination);          // also flags Stream Read/Write/Flush
+    await Task.Yield();
+}
+
+// ✅ Fixed
+public async Task ArchiveAsync(Stream source, Stream destination, CancellationToken cancellationToken)
+{
+    await source.CopyToAsync(destination, cancellationToken);
+}
 ```
+
+> `MemoryStream` is excluded — it is backed by an in-memory buffer, so the "blocking" call never
+> leaves the CPU and the async form only wraps the same synchronous work.
 
 ### CC029: Timeout CTS Should Link the In-Scope Token
 
