@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-07-22 (refreshed through CC029 / v1.28.0)
+Reviewed: 2026-07-26 (refreshed through CC029 / v1.28.0; discoverability assets shipped in v1.28.1)
 
 A deliberately harsh health audit for the twenty-nine implemented CancelCop rule IDs (CC001–CC006, CC009–CC029).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but

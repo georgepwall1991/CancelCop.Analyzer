@@ -1,48 +1,114 @@
-# CancelCop.Analyzer: CancellationToken and Async Roslyn Analyzer for C#/.NET
+<p align="center">
+  <img src="https://raw.githubusercontent.com/georgepwall1991/CancelCop.Analyzer/main/assets/cancelcop-icon.png" width="96" height="96" alt="CancelCop.Analyzer icon — Roslyn analyzer for CancellationToken and async/await in C#/.NET">
+</p>
+
+# CancelCop.Analyzer
+
+**Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET** — catches missing cancellation propagation, ignored ASP.NET Core `RequestAborted`, EF Core and HttpClient token gaps, sync-over-async deadlocks, blocking I/O, `async void`, and resource-lifetime bugs so they fail in the editor and CI, not only at runtime.
 
 [![NuGet](https://img.shields.io/nuget/v/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
 [![NuGet downloads](https://img.shields.io/nuget/dt/CancelCop.Analyzer.svg)](https://www.nuget.org/packages/CancelCop.Analyzer/)
 [![CI](https://github.com/georgepwall1991/CancelCop.Analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/georgepwall1991/CancelCop.Analyzer/blob/main/LICENSE)
 
-CancelCop.Analyzer is a Roslyn analyzer and code-fix package for correct **CancellationToken** and
-async/await usage in C# and .NET. Its 29 diagnostics catch missing cancellation propagation,
-ignored ASP.NET Core, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, sync-over-async,
-blocking I/O, `async void`, and resource-lifetime bugs at compile time.
+Stop shipping async that cannot cancel.
 
-## Why CancelCop?
+## The problem
 
-CancellationToken is essential for responsive .NET applications, but cancellation bugs often hide
-across API boundaries. CancelCop detects common failures such as:
+`CancellationToken` and correct async/await usage are essential for responsive .NET apps, but cancellation bugs hide across API boundaries. A public method without a token, an `HttpClient` or EF Core call that ignores the caller's token, a controller that never sees `RequestAborted`, a timeout CTS that drops the parent token, or a `.Result` / `Thread.Sleep` inside async code often compiles cleanly and only fails under load, shutdown, or client disconnect.
 
-- missing tokens on public async methods and framework handlers;
-- tokens that are accepted but not propagated or observed;
-- loops and async streams that ignore cancellation;
-- blocking calls inside async code; and
-- unsafe async and resource-lifetime patterns.
+Runtime review and occasional CA rules miss what a dedicated cancellation-and-async analyzer can prove from your call sites.
 
-CancelCop catches these issues at compile time and offers one-click fixes.
+## What it catches
 
-## Installation
+CancelCop reports high-signal async and cancellation failures early (29 diagnostics, many with code fixes):
 
-```bash
-dotnet add package CancelCop.Analyzer
-```
+- missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
+- tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
+- loops and async streams that ignore cancellation (`ThrowIfCancellationRequested`, `.WithCancellation`, `[EnumeratorCancellation]`)
+- timeout `CancellationTokenSource` that silently drops a parent token (`CreateLinkedTokenSource` + `CancelAfter`)
+- sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream APIs)
+- `async void`, swallowed `OperationCanceledException`, and resource-lifetime bugs (undisposed CTS, premature `using` disposal)
 
-For reusable libraries, keep the analyzer private to the consuming project:
+When the analyzer cannot prove a problem statically, it **stays quiet**. High-signal feedback, not noisy guesses.
+
+## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.28.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.28.1">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
 ```
 
-Or use Package Manager Console:
+Or:
+
+```bash
+dotnet add package CancelCop.Analyzer
+```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.28.0
+Install-Package CancelCop.Analyzer -Version 1.28.1
 ```
+
+**No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
+
+## See it work
+
+Product-flow diagrams from the real sample build (CC001–CC029 diagnostic text):
+
+### 1. Build / IDE diagnostics (CancellationToken and async)
+
+![CancelCop Roslyn analyzer warnings for CancellationToken and async — CC001 missing token, CC002 propagation, CC003 EF Core, CC015 sync-over-async](https://raw.githubusercontent.com/georgepwall1991/CancelCop.Analyzer/main/assets/flow-ide-diagnostics.svg)
+
+### 2. Before / after code fix (HttpClient token propagation)
+
+![Before and after: HttpClient GetStringAsync missing CancellationToken fixed with CC002/CC004 code fix](https://raw.githubusercontent.com/georgepwall1991/CancelCop.Analyzer/main/assets/flow-before-after-fix.svg)
+
+### 3. Product loop — analyzer, code fixes, and CI
+
+![CancelCop product loop: Roslyn analyzer build diagnostics, one-click code fixes, and CI gate for CancellationToken and async/await](https://raw.githubusercontent.com/georgepwall1991/CancelCop.Analyzer/main/assets/flow-analyzer-ci-loop.svg)
+
+## 30-second path
+
+1. Reference the package with `PrivateAssets="all"`.
+2. Build in the IDE or with `dotnet build` so analyzers run.
+3. Fix any `CC00x` warnings (most have one-click code fixes).
+4. Optionally promote critical rules to errors in `.editorconfig` when the codebase is clean:
+
+```ini
+[*.cs]
+dotnet_diagnostic.CC002.severity = error
+dotnet_diagnostic.CC015.severity = error
+```
+
+5. Keep the sample project handy for rule demos:
+
+```bash
+dotnet build samples/CancelCop.Sample
+```
+
+## Feature snapshot
+
+| Area | What CancelCop does |
+|------|---------------------|
+| Token presence | Flags public/protected async methods and framework handlers missing `CancellationToken`. |
+| Propagation | Requires tokens to flow into HttpClient, EF Core, and other cancellable overloads when a token is in scope. |
+| ASP.NET Core | Controllers, Minimal APIs, SignalR hubs, middleware via `HttpContext.RequestAborted`. |
+| Hosted services | `BackgroundService.ExecuteAsync` must observe the stopping token. |
+| gRPC / MediatR | Observes `ServerCallContext.CancellationToken` and handler signatures. |
+| Async streams | `await foreach` + `.WithCancellation`; iterators need `[EnumeratorCancellation]`. |
+| Timeout CTS | Links parent tokens with `CreateLinkedTokenSource` + `CancelAfter` (CC029). |
+| Sync-over-async | `.Result` / `.Wait()` / `GetAwaiter().GetResult()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking file I/O. |
+| Async hygiene | `async void`, void-returning async lambdas, swallowed cancellation, `await using`, CTS disposal. |
+| Code fixes | Most rules offer compilable one-click fixes; Fix All is supported where safe. |
+
+## Compatibility
+
+- Analyzer assemblies target **.NET Standard 2.0** and compile against **Roslyn 4.8** (Visual Studio 2022 17.8+ / .NET SDK 8+ hosts)
+- Consumer projects can target any framework supported by a compatible compiler host
+- **ASP.NET Core**, **EF Core**, **HttpClient**, **gRPC**, **SignalR**, **MediatR**, **BackgroundService**
+- **`IAsyncEnumerable<T>`**, **ValueTask** / **`ValueTask<T>`**
 
 ## Analyzer Rules
 
