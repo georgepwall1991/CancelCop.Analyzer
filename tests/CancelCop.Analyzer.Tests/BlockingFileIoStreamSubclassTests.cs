@@ -405,4 +405,150 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task SubclassOwnOverload_NotAStreamPrimitive_ShouldNotReportDiagnostic()
+    {
+        // Write(string) is the subclass's own convenience overload, not the Stream primitive
+        // Write(byte[], int, int). It is not known to block, so matching on the name alone would be
+        // a false positive. Only members that resolve back to Stream qualify.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public void Write(string text) { }
+    public Task WriteAsync(string text) => Task.CompletedTask;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(CustomStream stream, string text)
+    {
+        stream.Write(text);
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task StaticAsyncCounterpart_ShouldNotReportDiagnostic()
+    {
+        // A static member cannot be called through an instance receiver (CS0176). The hiding static
+        // ReadAsync wins name resolution, so no valid instance rewrite exists.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public new static Task<int> ReadAsync(byte[] buffer, int offset, int count) => Task.FromResult(0);
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] buffer)
+    {
+        var read = stream.Read(buffer, 0, buffer.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task RenamedTokenParameterOnCounterpart_UsesThatNameInTheFix()
+    {
+        // The counterpart renames its token parameter to 'stop'. A named-argument call still gets a
+        // fix, so the emitted token argument must use 'stop:' — hardcoding 'cancellationToken:'
+        // would fail with CS1739.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public new Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken stop) => Task.FromResult(0);
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] bytes, CancellationToken token)
+    {
+        var read = stream.{|#0:Read|}(buffer: bytes, offset: 0, count: bytes.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+" + StreamStub + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public new Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken stop) => Task.FromResult(0);
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] bytes, CancellationToken token)
+    {
+        var read = await stream.ReadAsync(buffer: bytes, offset: 0, count: bytes.Length, stop: token);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Read")
+        );
+        await t.RunAsync();
+    }
 }

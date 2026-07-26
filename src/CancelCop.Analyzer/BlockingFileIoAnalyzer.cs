@@ -74,6 +74,14 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     public const string NoFixProperty = "NoFix";
 
     /// <summary>
+    /// Property key carrying the async counterpart's own token parameter name, so a fix that writes
+    /// a named token argument uses the name that overload actually declares. An override is free to
+    /// rename it (<c>ReadAsync(…, CancellationToken stop)</c>), and a hardcoded
+    /// <c>cancellationToken:</c> would then fail with CS1739.
+    /// </summary>
+    public const string TokenArgumentNameProperty = "TokenArgumentName";
+
+    /// <summary>
     /// The blocking <c>System.IO</c> methods (keyed by declaring type) that have a documented async
     /// counterpart of the form <c>&lt;name&gt;Async</c>.
     /// </summary>
@@ -172,7 +180,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
         if (
             !IsCuratedBlockingCall(containingType, methodName)
-            && !IsBlockingStreamCall(context, invocation, containingType, methodName)
+            && !IsBlockingStreamCall(context, invocation, method, containingType, methodName)
         )
             return;
 
@@ -216,7 +224,13 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         if (!NamedArgumentsMatch(invocation, asyncCounterpart!))
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
         if (flowToken)
+        {
             properties = properties.Add(TokenNameProperty, tokenParameter!.Name);
+            properties = properties.Add(
+                TokenArgumentNameProperty,
+                asyncCounterpart!.Parameters[asyncCounterpart.Parameters.Length - 1].Name
+            );
+        }
 
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invokedName.GetLocation(), properties, methodName)
@@ -249,11 +263,22 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     private static bool IsBlockingStreamCall(
         SyntaxNodeAnalysisContext context,
         InvocationExpressionSyntax invocation,
+        IMethodSymbol method,
         INamedTypeSymbol containingType,
         string methodName
     )
     {
-        if (!StreamBlockingMethods.Contains(methodName) || !IsStream(containingType))
+        if (!StreamBlockingMethods.Contains(methodName))
+            return false;
+
+        // Match the framework primitive, not merely a same-named member on a Stream subclass. A
+        // subclass is free to declare its own `Write(string)` convenience overload; that is not a
+        // known-blocking stream primitive and must not be flagged. Walking to the root definition
+        // resolves overrides back to Stream, so FileStream.Read still qualifies.
+        // Exact identity, not "derives from": a subclass's own Write(string) is declared on the
+        // subclass, which does derive from Stream — only members whose original definition sits on
+        // Stream itself are the known-blocking primitives.
+        if (!IsExactlySystemIoType(RootDefinition(method).ContainingType, "Stream"))
             return false;
 
         var receiverType = GetReceiverType(context, invocation) ?? containingType;
@@ -287,14 +312,30 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             : context.SemanticModel.GetTypeInfo(receiver, context.CancellationToken).Type;
     }
 
-    /// <summary>Returns <c>true</c> when <paramref name="type"/> is or derives from <c>System.IO.Stream</c>.</summary>
-    private static bool IsStream(ITypeSymbol type) => DerivesFrom(type, "Stream");
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> <i>is</i> the <c>System.IO</c> type named
+    /// <paramref name="name"/> — not merely derived from it.
+    /// </summary>
+    private static bool IsExactlySystemIoType(ITypeSymbol? type, string name) =>
+        type?.Name == name && type.ContainingNamespace?.ToDisplayString() == "System.IO";
 
     /// <summary>
     /// Returns <c>true</c> when <paramref name="type"/> or any of its base types is the
     /// <c>System.IO</c> type named <paramref name="name"/>. Namespace-gated so a same-named
     /// user type is never mistaken for the framework one.
     /// </summary>
+    /// <summary>
+    /// Walks an override chain back to the method that originally declared it, so a member inherited
+    /// from <c>Stream</c> is recognised through any depth of subclassing.
+    /// </summary>
+    private static IMethodSymbol RootDefinition(IMethodSymbol method)
+    {
+        var current = method;
+        while (current.OverriddenMethod != null)
+            current = current.OverriddenMethod;
+        return current;
+    }
+
     private static bool DerivesFrom(ITypeSymbol? type, string name)
     {
         for (var current = type; current != null; current = current.BaseType)
@@ -382,8 +423,12 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 }
 
                 // First applicable member wins resolution; if it is unusable, no rewrite exists.
+                // A static member cannot be invoked through an instance receiver (CS0176) — and a
+                // hiding static member still captures the name, so it must end the search rather
+                // than be skipped over in favour of the inherited instance one.
                 match = candidate;
                 return candidate.DeclaredAccessibility == Accessibility.Public
+                    && candidate.IsStatic == sync.IsStatic
                     && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType);
             }
         }

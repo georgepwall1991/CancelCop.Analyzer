@@ -62,11 +62,27 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
             ? name
             : null;
 
+        // The counterpart's own token parameter name; an override may rename it, so a named token
+        // argument must not assume "cancellationToken".
+        var tokenArgumentName = diagnostic.Properties.TryGetValue(
+            BlockingFileIoAnalyzer.TokenArgumentNameProperty,
+            out var argumentName
+        )
+            ? argumentName
+            : "cancellationToken";
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
                 createChangedDocument: c =>
-                    ReplaceAsync(context.Document, invocation, invokedName, tokenName, c),
+                    ReplaceAsync(
+                        context.Document,
+                        invocation,
+                        invokedName,
+                        tokenName,
+                        tokenArgumentName,
+                        c
+                    ),
                 equivalenceKey: Title
             ),
             diagnostic
@@ -78,6 +94,7 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         InvocationExpressionSyntax invocation,
         SimpleNameSyntax invokedName,
         string? tokenName,
+        string tokenArgumentName,
         CancellationToken cancellationToken
     )
     {
@@ -94,7 +111,7 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
             argumentList = CancellationTokenFixHelpers.AddTokenArgument(
                 argumentList,
                 tokenName,
-                "cancellationToken"
+                tokenArgumentName
             );
         }
 

@@ -17,11 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   though every one of them has a token-taking async counterpart. `source.CopyTo(destination)` inside
   an async method is the same thread-blocking mistake as `File.ReadAllText`, and is arguably more
   costly because it blocks for the whole transfer.
-- Stream types are matched by **inheritance**, not by exact type name, so concrete framework streams
-  (`FileStream`, `NetworkStream`, `GZipStream`) and user-defined subclasses declared outside
-  `System.IO` are all covered. The async-counterpart lookup now walks base types for the same
-  reason: a concrete stream overrides the blocking member but inherits `ReadAsync`/`CopyToAsync`
-  from `Stream`, so a same-type-only lookup would have found nothing and the rule would never fire.
+- Stream calls are matched by resolving the invoked member back to its **original definition** on
+  `System.IO.Stream`, so concrete framework streams (`FileStream`, `NetworkStream`, `GZipStream`) and
+  user-defined subclasses are covered through any depth of overriding — while a subclass's own
+  same-named convenience overload (`Write(string)`) is not, since it is not a known-blocking
+  primitive. The async-counterpart lookup walks base types for the mirror-image reason: a concrete
+  stream overrides the blocking member but inherits `ReadAsync`/`CopyToAsync` from `Stream`, so a
+  same-type-only lookup would have found nothing and the rule would never fire.
 - `MemoryStream` and its subclasses are excluded. They are backed by an in-memory buffer, so the
   "blocking" call never leaves the CPU and the async form only wraps the same synchronous work in a
   completed task — flagging it would be noise. The exclusion tests the receiver's own type rather
@@ -40,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Candidacy is decided by parameter **types**, not argument count, so a same-arity but
   type-incompatible member (`int ReadAsync(string, int, int)`) cannot mask the inherited overload a
   `byte[]` call really selects — that would have suppressed a valid diagnostic and its valid fix.
+  Static/instance binding is part of usability too: a hiding `static ReadAsync` captures the name but
+  cannot be called through an instance receiver (CS0176), so the rule stays quiet rather than
+  offering that rewrite.
+- The fix now carries the **counterpart's own token parameter name**. An override may rename it
+  (`ReadAsync(…, CancellationToken stop)`), and a named-argument call would otherwise be rewritten
+  with a hardcoded `cancellationToken:` and fail with CS1739.
+- `PackageReleaseNotes` describes this release rather than 1.28.1's discoverability work.
 - **Named arguments that cannot be carried over.** When a subclass renames its override's parameters,
   `stream.Read(data: b, start: 0, …)` is valid but the inherited `Stream.ReadAsync` names them
   `buffer`/`offset`, so copying the argument list emits CS1739. The call is still genuinely blocking,

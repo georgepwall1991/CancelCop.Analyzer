@@ -1,56 +1,64 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <!-- Packaging host only: it contains no compiled output of its own. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
 
-    <PropertyGroup>
-        <TargetFramework>netstandard2.0</TargetFramework>
-        <IncludeBuildOutput>false</IncludeBuildOutput>
-        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
-        <DevelopmentDependency>true</DevelopmentDependency>
-        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-        <!-- Packaging host only: it contains no compiled output of its own. -->
-        <NoWarn>$(NoWarn);NU5128</NoWarn>
-
-        <!-- NuGet Package Info -->
-        <PackageId>CancelCop.Analyzer</PackageId>
-        <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
+    <!-- NuGet Package Info -->
+    <PackageId>CancelCop.Analyzer</PackageId>
+    <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-        <Version>1.29.0</Version>
-        <Authors>George Wall</Authors>
-        <Title>CancelCop.Analyzer — CancellationToken and async/await Roslyn analyzer for C#/.NET</Title>
-        <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 29 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
-        <PackageTags>roslyn;roslyn-analyzer;analyzers;analyzer;codefix;code-fix;static-analysis;codeanalysis;csharp;dotnet;cancellation;cancellationtoken;async;async-await;sync-over-async;deadlock;async-void;aspnetcore;RequestAborted;BackgroundService;efcore;httpclient;grpc;signalr;mediatr;WithCancellation;OperationCanceledException;blocking</PackageTags>
-        <PackageReleaseNotes>Discoverability release: keyword-rich package title, description, and tags for CancellationToken and async/await Roslyn search (sync-over-async, RequestAborted, ASP.NET Core, EF Core, HttpClient); conversion-funnel README with product-flow visuals for IDE diagnostics, code fixes, and the analyzer+CI loop; packs assets for NuGet README rendering; adds discoverability metadata tests and package verification. Diagnostic IDs and severities are unchanged from 1.28.0 (including CC029).</PackageReleaseNotes>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageIcon>icon.png</PackageIcon>
+    <Version>1.29.0</Version>
+    <Authors>George Wall</Authors>
+    <Title>CancelCop.Analyzer — CancellationToken and async/await Roslyn analyzer for C#/.NET</Title>
+    <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 29 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
+    <PackageTags>roslyn;roslyn-analyzer;analyzers;analyzer;codefix;code-fix;static-analysis;codeanalysis;csharp;dotnet;cancellation;cancellationtoken;async;async-await;sync-over-async;deadlock;async-void;aspnetcore;RequestAborted;BackgroundService;efcore;httpclient;grpc;signalr;mediatr;WithCancellation;OperationCanceledException;blocking</PackageTags>
+    <PackageReleaseNotes>CC028 now covers the System.IO.Stream primitives — Read, Write, CopyTo, and Flush — closing a silent false negative: the rule previously keyed on the exact declaring type name (File, StreamReader, StreamWriter), so blocking stream calls in async code were never flagged despite each having a token-taking async counterpart. Stream types match by inheritance, so FileStream, NetworkStream, GZipStream, and user-defined subclasses are covered; MemoryStream is excluded as in-memory. The suggested rewrite is validated against the overload the call would actually bind to, so it always compiles. Diagnostic IDs and severities are unchanged from 1.28.1.</PackageReleaseNotes>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
 
-        <!-- Pack both the analyzer and code-fix assemblies into analyzers/dotnet/cs. -->
-        <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);AddAnalyzerAssembliesToPackage</TargetsForTfmSpecificContentInPackage>
-    </PropertyGroup>
+    <!-- Pack both the analyzer and code-fix assemblies into analyzers/dotnet/cs. -->
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);AddAnalyzerAssembliesToPackage</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Build-order + bundling references; do not flow as compile/runtime dependencies. -->
+    <ProjectReference
+      Include="..\CancelCop.Analyzer\CancelCop.Analyzer.csproj"
+      PrivateAssets="all"
+      ReferenceOutputAssembly="false"
+    />
+    <ProjectReference
+      Include="..\CancelCop.Analyzer.CodeFixes\CancelCop.Analyzer.CodeFixes.csproj"
+      PrivateAssets="all"
+      ReferenceOutputAssembly="false"
+    />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\CancelCop.Analyzer\icon.png" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\**\*" Pack="true" PackagePath="assets\" />
+  </ItemGroup>
+
+  <Target Name="AddAnalyzerAssembliesToPackage">
     <ItemGroup>
-        <!-- Build-order + bundling references; do not flow as compile/runtime dependencies. -->
-        <ProjectReference Include="..\CancelCop.Analyzer\CancelCop.Analyzer.csproj"
-                          PrivateAssets="all" ReferenceOutputAssembly="false" />
-        <ProjectReference Include="..\CancelCop.Analyzer.CodeFixes\CancelCop.Analyzer.CodeFixes.csproj"
-                          PrivateAssets="all" ReferenceOutputAssembly="false" />
+      <TfmSpecificPackageFile
+        Include="..\CancelCop.Analyzer\bin\$(Configuration)\netstandard2.0\CancelCop.Analyzer.dll"
+        PackagePath="analyzers/dotnet/cs"
+      />
+      <TfmSpecificPackageFile
+        Include="..\CancelCop.Analyzer.CodeFixes\bin\$(Configuration)\netstandard2.0\CancelCop.Analyzer.CodeFixes.dll"
+        PackagePath="analyzers/dotnet/cs"
+      />
     </ItemGroup>
-
-    <ItemGroup>
-        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-        <None Include="..\CancelCop.Analyzer\icon.png" Pack="true" PackagePath="\" />
-        <None Include="..\..\assets\**\*" Pack="true" PackagePath="assets\" />
-    </ItemGroup>
-
-    <Target Name="AddAnalyzerAssembliesToPackage">
-        <ItemGroup>
-            <TfmSpecificPackageFile Include="..\CancelCop.Analyzer\bin\$(Configuration)\netstandard2.0\CancelCop.Analyzer.dll"
-                                    PackagePath="analyzers/dotnet/cs" />
-            <TfmSpecificPackageFile Include="..\CancelCop.Analyzer.CodeFixes\bin\$(Configuration)\netstandard2.0\CancelCop.Analyzer.CodeFixes.dll"
-                                    PackagePath="analyzers/dotnet/cs" />
-        </ItemGroup>
-    </Target>
-
+  </Target>
 </Project>
