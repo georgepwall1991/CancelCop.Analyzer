@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `Stream.Flush`).
 - Overloads with no signature-compatible async form are still quiet, so the rewrite always compiles:
   `Read(Span<byte>)` has no counterpart (`ReadAsync` takes `Memory<byte>`) and is left alone.
+- **Shadowed counterparts.** A candidate must now be `public` and return an awaitable, and the rule
+  additionally verifies that a call with the argument count the fix will actually emit binds to such
+  a method. Overload resolution stops at the most-derived type declaring an applicable member, so a
+  subclass with `new int ReadAsync(byte[], int, int)` would capture the rewritten call and
+  `await` it as an `int` (CS1061). Applicability is checked by argument count against the
+  required/total parameter range, which keeps optional parameters working — `File.ReadAllTextAsync(path)`
+  binds to a two-parameter method whose token is optional.
+- **Named arguments that cannot be carried over.** When a subclass renames its override's parameters,
+  `stream.Read(data: b, start: 0, …)` is valid but the inherited `Stream.ReadAsync` names them
+  `buffer`/`offset`, so copying the argument list emits CS1739. The call is still genuinely blocking,
+  so the diagnostic is reported and only the *fix* is withheld. Named calls whose names do line up
+  (`File.WriteAllText(path:, contents:)`) are fixed as before.
 - The code fix title is now "Use the async I/O method" (was "Use the async File method"), which the
   rule outgrew once it covered readers, writers, and streams.
 
