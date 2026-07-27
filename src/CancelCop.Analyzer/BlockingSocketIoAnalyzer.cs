@@ -166,14 +166,29 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Returns <c>true</c> when the enclosing function assigns <c>false</c> to <c>Socket.Blocking</c>.
+    /// Returns <c>true</c> when the enclosing function assigns <c>false</c> to
+    /// <c>Socket.Blocking</c>.
     /// </summary>
+    /// <remarks>
+    /// The assigned member is resolved to a symbol rather than matched by shape. That covers the
+    /// forms syntax matching misses — an object initializer (<c>new Socket(…) { Blocking = false }</c>)
+    /// and an unqualified inherited <c>Blocking = false</c>, both of which put an identifier on the
+    /// left — while rejecting an unrelated property that merely shares the name. The walk stops at
+    /// nested functions: an assignment inside an uninvoked lambda may never run.
+    /// </remarks>
     private static bool NonBlockingModeIsSetNearby(
         SyntaxNode node,
         SyntaxNodeAnalysisContext context,
         INamedTypeSymbol socketType
     )
     {
+        var blockingProperty = socketType
+            .GetMembers("Blocking")
+            .OfType<IPropertySymbol>()
+            .FirstOrDefault();
+        if (blockingProperty is null)
+            return false;
+
         var scope = node.Ancestors()
             .FirstOrDefault(candidate =>
                 candidate
@@ -186,23 +201,21 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
             return false;
 
         return scope
-            .DescendantNodes()
+            .DescendantNodes(descendIntoChildren: child =>
+                child == scope
+                || child
+                    is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax)
+            )
             .OfType<AssignmentExpressionSyntax>()
             .Any(assignment =>
                 // A plain `=` only. `Blocking |= false` and `^= false` leave the property unchanged
                 // despite the constant operand.
                 assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-                && assignment.Left is MemberAccessExpressionSyntax
-                {
-                    Name.Identifier.ValueText: "Blocking"
-                } target
-                // Derived socket types set the same property, matching the override-chain handling
-                // used for the blocking members themselves.
-                && DerivesFromSocket(
+                && SymbolEqualityComparer.Default.Equals(
                     context
-                        .SemanticModel.GetTypeInfo(target.Expression, context.CancellationToken)
-                        .Type,
-                    socketType
+                        .SemanticModel.GetSymbolInfo(assignment.Left, context.CancellationToken)
+                        .Symbol,
+                    blockingProperty
                 )
                 && context.SemanticModel.GetConstantValue(
                     assignment.Right,
@@ -212,14 +225,4 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
             );
     }
 
-    private static bool DerivesFromSocket(ITypeSymbol? type, INamedTypeSymbol socketType)
-    {
-        for (var current = type; current != null; current = current.BaseType)
-        {
-            if (SymbolEqualityComparer.Default.Equals(current, socketType))
-                return true;
-        }
-
-        return false;
-    }
 }

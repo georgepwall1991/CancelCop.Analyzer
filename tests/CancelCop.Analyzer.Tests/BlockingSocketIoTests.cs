@@ -304,4 +304,82 @@ public class Server
         t.ExpectedDiagnostics.Add(Expected("Receive"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task BlockingSetInAnObjectInitializer_ShouldNotReportDiagnostic()
+    {
+        // An initializer puts an identifier on the left, not a member access, so shape matching
+        // missed it. The assigned member is resolved to a symbol instead.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(byte[] buffer)
+    {
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { Blocking = false };
+        socket.Receive(buffer);
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingSetOnlyInsideALambda_ShouldReportDiagnostic()
+    {
+        // The lambda may never be invoked, so its assignment does not make the outer call
+        // non-blocking.
+        var test =
+            @"
+using System;
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer)
+    {
+        Action configure = () => socket.Blocking = false;
+        socket.{|#0:Receive|}(buffer);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Receive"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task UnrelatedPropertyNamedBlocking_ShouldReportDiagnostic()
+    {
+        // A different type's property that merely shares the name says nothing about this socket.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Options
+{
+    public bool Blocking { get; set; }
+}
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, Options options, byte[] buffer)
+    {
+        options.Blocking = false;
+        socket.{|#0:Receive|}(buffer);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Receive"));
+        await t.RunAsync();
+    }
 }
