@@ -1,3 +1,11 @@
+## Release 1.32.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC031 | Usage | Warning | Avoid blocking synchronization primitives in async code
+
 ## Release 1.30.0
 
 ### New Rules
