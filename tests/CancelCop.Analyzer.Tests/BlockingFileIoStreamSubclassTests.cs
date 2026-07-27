@@ -977,4 +977,94 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CounterpartWithDifferentAwaitedResult_ShouldNotReportDiagnostic()
+    {
+        // The hiding ReadAsync is awaitable but yields string where the blocking call yields int, so
+        // `int read = await stream.ReadAsync(...)` would fail with CS0029. Awaitable is not the same
+        // as substitutable.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public new Task<string> ReadAsync(byte[] buffer, int offset, int count) => Task.FromResult("""");
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] buffer)
+    {
+        var read = stream.Read(buffer, 0, buffer.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingCallInUnsafeAsyncMethod_ReportsWithoutOfferingAFix()
+    {
+        // An unsafe context forbids await (CS4004), and here it comes from the method's modifier
+        // rather than an `unsafe { }` block — detecting only the block form would offer a fix that
+        // breaks the build. The method is async without an await — precisely the shape in which an
+        // unsafe async method can exist at all, since any await in it would already be CS4004.
+        var source =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public unsafe async Task RunAsync(Stream stream, CancellationToken token)
+    {
+        stream.{|#0:Flush|}();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+            SolutionTransforms =
+            {
+                (solution, projectId) =>
+                {
+                    var options = (Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions)
+                        solution.GetProject(projectId)!.CompilationOptions!;
+                    return solution.WithProjectCompilationOptions(
+                        projectId,
+                        options.WithAllowUnsafe(true)
+                    );
+                },
+            },
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Flush")
+        );
+        await t.RunAsync();
+    }
 }

@@ -465,7 +465,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 return candidate.DeclaredAccessibility == Accessibility.Public
                     && candidate.IsStatic == sync.IsStatic
                     && candidate.TypeParameters.Length == sync.TypeParameters.Length
-                    && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType);
+                    && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType)
+                    && AwaitedResultMatches(sync, candidate);
             }
         }
 
@@ -609,6 +610,31 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
+    /// Returns <c>true</c> when awaiting <paramref name="candidate"/> yields the same type the
+    /// blocking call produced, so the rewrite can stand in for it.
+    /// </summary>
+    /// <remarks>
+    /// A hiding counterpart can be awaitable and still be the wrong method: <c>Task&lt;string&gt;</c>
+    /// where the blocking call returned <c>int</c> compiles as a counterpart but makes
+    /// <c>int n = await stream.ReadAsync(…)</c> fail with CS0029.
+    /// </remarks>
+    private static bool AwaitedResultMatches(IMethodSymbol sync, IMethodSymbol candidate)
+    {
+        var results =
+            candidate.ReturnType is INamedTypeSymbol named
+                ? named.TypeArguments
+                : ImmutableArray<ITypeSymbol>.Empty;
+
+        // Task / ValueTask — awaiting produces nothing, which suits a void-returning blocking call.
+        if (results.Length == 0)
+            return sync.ReturnsVoid;
+
+        return !sync.ReturnsVoid
+            && results.Length == 1
+            && SymbolEqualityComparer.Default.Equals(results[0], sync.ReturnType);
+    }
+
+    /// <summary>
     /// Returns <c>true</c> when the enclosing syntax forbids <c>await</c>, so inserting one would
     /// turn compiling source into a compiler error.
     /// </summary>
@@ -621,6 +647,23 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// </remarks>
     private static bool AwaitIsForbiddenHere(SyntaxNode node)
     {
+        // An unsafe context is lexical and propagates into nested functions, and it can come from an
+        // `unsafe` modifier on the method or type rather than an `unsafe { }` block — so this walk
+        // runs to the top rather than stopping at a function boundary (CS4004).
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            var isUnsafe = current switch
+            {
+                UnsafeStatementSyntax => true,
+                LocalFunctionStatementSyntax local => local.Modifiers.Any(SyntaxKind.UnsafeKeyword),
+                MemberDeclarationSyntax member => member.Modifiers.Any(SyntaxKind.UnsafeKeyword),
+                _ => false,
+            };
+
+            if (isUnsafe)
+                return true;
+        }
+
         for (var current = node.Parent; current != null; current = current.Parent)
         {
             switch (current)
@@ -628,7 +671,6 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 // CS1996 / CS7013: await is not permitted anywhere inside these.
                 case LockStatementSyntax:
                 case CatchFilterClauseSyntax:
-                case UnsafeStatementSyntax:
                     return true;
 
                 // CS1995: inside a query, await is permitted only in the first `from` clause's

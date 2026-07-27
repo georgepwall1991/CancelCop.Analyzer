@@ -56,9 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   premised on. Signature comparison is good enough to choose a candidate and decide whether a token
   can flow, but it is not overload resolution: a subclass overload taking `object` wins a `byte[]`
   argument by implicit conversion even though the parameter types are not equal.
+- A counterpart must also yield the **same type** when awaited. A hiding `Task<string> ReadAsync(…)`
+  is awaitable but not substitutable for an `int`-returning blocking call, and the rewrite would fail
+  with CS0029.
 - No fix is offered where `await` is illegal — a `lock` body (CS1996), an exception filter, an
-  `unsafe` block, or a query clause other than the initial `from` source or a `join` source, which
-  are the two positions CS1995 permits. The blocking call is still reported: holding a lock across
+  unsafe context (CS4004, from an `unsafe` modifier as well as an `unsafe { }` block, and lexically
+  through nested functions), or a query clause other than the initial `from` source or a `join`
+  source, which are the two positions CS1995 permits. The blocking call is still reported: holding a lock across
   synchronous I/O is exactly the stall this rule exists to surface, but resolving it means
   restructuring the lock, which is the author's decision rather than a mechanical rewrite. The walk
   stops at function boundaries, so a lambda inside a `lock` body is fixed normally.
