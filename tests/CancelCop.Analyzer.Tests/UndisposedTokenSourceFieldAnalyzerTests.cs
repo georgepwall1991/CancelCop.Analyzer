@@ -503,4 +503,72 @@ public class Worker
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task ReturnedThroughAConditional_ShouldNotReportDiagnostic()
+    {
+        // `return expose ? _cts : null;` escapes exactly as much as `return _cts;`, but the
+        // reference's immediate parent is the conditional rather than the return.
+        var test =
+            @"
+using System.Threading;
+
+public class Worker
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public CancellationTokenSource? Source(bool expose)
+    {
+        return expose ? _cts : null;
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task DisposedByUsingStatement_ShouldNotReportDiagnostic()
+    {
+        // `using (_cts) { }` disposes at the end of the block just as deterministically as a call.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker : IDisposable
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        using (_cts)
+        {
+        }
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task DisposedThroughAnInterfaceCast_ShouldNotReportDiagnostic()
+    {
+        // A cast changes the static type, not the object.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker : IDisposable
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        ((IDisposable)_cts).Dispose();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }

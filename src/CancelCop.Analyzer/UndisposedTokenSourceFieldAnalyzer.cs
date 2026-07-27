@@ -219,21 +219,63 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
             return;
         }
 
+        // `using (_cts) { }` disposes at the end of the block just as deterministically as an
+        // explicit call.
+        if (reference.Parent is UsingStatementSyntax usingStatement && usingStatement.Expression == reference)
+        {
+            exonerated[field] = true;
+            return;
+        }
+
         // Returned, passed to something that may take ownership, or copied into another location —
         // including a local alias, which disposal routinely goes through
         // (`var source = _cts; source.Dispose();`).
+        var escaping = FollowValueForwarding(reference);
         if (
-            reference.Parent
+            escaping.Parent
                 is ArgumentSyntax
                     or ReturnStatementSyntax
                     or ArrowExpressionClauseSyntax
                     or EqualsValueClauseSyntax
             || (
-                reference.Parent is AssignmentExpressionSyntax assignment
-                && assignment.Right == reference
+                escaping.Parent is AssignmentExpressionSyntax assignment
+                && assignment.Right == escaping
             )
         )
             exonerated[field] = true;
+    }
+
+    /// <summary>
+    /// Walks outward through expressions that pass their operand's value straight through, so an
+    /// escape is recognised however the value reaches the exit.
+    /// </summary>
+    /// <remarks>
+    /// <c>return expose ? _cts : null;</c> escapes exactly as much as <c>return _cts;</c>, but the
+    /// reference's immediate parent is the conditional rather than the return.
+    /// </remarks>
+    private static ExpressionSyntax FollowValueForwarding(ExpressionSyntax expression)
+    {
+        var value = expression;
+        while (true)
+        {
+            switch (value.Parent)
+            {
+                case ConditionalExpressionSyntax conditional
+                    when conditional.WhenTrue == value || conditional.WhenFalse == value:
+                    value = conditional;
+                    continue;
+                case BinaryExpressionSyntax coalesce
+                    when coalesce.IsKind(SyntaxKind.CoalesceExpression):
+                    value = coalesce;
+                    continue;
+                case SwitchExpressionArmSyntax { Expression: var armValue } arm
+                    when armValue == value && arm.Parent is SwitchExpressionSyntax switchExpression:
+                    value = switchExpression;
+                    continue;
+                default:
+                    return value;
+            }
+        }
     }
 
     /// <summary>
@@ -342,6 +384,11 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
                 case ParenthesizedExpressionSyntax parenthesized
                     when parenthesized.Expression == value:
                     value = parenthesized;
+                    continue;
+                // A cast changes the static type, not the object — `((IDisposable)_cts).Dispose()`
+                // disposes the same source.
+                case CastExpressionSyntax cast when cast.Expression == value:
+                    value = cast;
                     continue;
                 default:
                     return value;
