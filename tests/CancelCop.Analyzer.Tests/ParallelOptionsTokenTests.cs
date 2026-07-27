@@ -594,4 +594,31 @@ public class Runner
         t.ExpectedDiagnostics.Add(Expected());
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task AnotherInstancesOptionsConfigured_ShouldReportDiagnostic()
+    {
+        // `this.options` and `other.options` bind to the same field symbol, so symbol equality alone
+        // would treat configuring another object's options as configuring this one.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    private ParallelOptions _options = null!;
+
+    public void Run(int[] items, Runner other, CancellationToken cancellationToken)
+    {
+        this._options = {|#0:new ParallelOptions()|};
+        other._options.CancellationToken = cancellationToken;
+        Parallel.ForEach(items, this._options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
 }

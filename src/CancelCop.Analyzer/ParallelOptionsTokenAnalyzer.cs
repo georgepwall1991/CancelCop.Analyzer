@@ -244,6 +244,7 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                     .Any(node =>
                         node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
                     )
+                && RefersToTheSameInstance(argument.Expression)
                 && SymbolEqualityComparer.Default.Equals(
                     context
                         .SemanticModel.GetSymbolInfo(argument.Expression, context.CancellationToken)
@@ -270,6 +271,7 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                 && assignment.SpanStart > creation.SpanStart
                 && (firstUse is null || assignment.SpanStart < firstUse)
                 && Dominates(assignment, scope, firstUse)
+                && RefersToTheSameInstance(assignmentTarget.Expression)
                 && SymbolEqualityComparer.Default.Equals(
                     context
                         .SemanticModel.GetSymbolInfo(
@@ -285,6 +287,18 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
 
         return reachingWrite != null && CancelsSomething(reachingWrite.Right, context);
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when an expression names the member on <i>this</i> instance.
+    /// </summary>
+    /// <remarks>
+    /// Symbol equality alone cannot tell <c>this.options</c> from <c>other.options</c> — both bind
+    /// to the same field symbol — so configuring another object's options would otherwise look like
+    /// configuring this one.
+    /// </remarks>
+    private static bool RefersToTheSameInstance(ExpressionSyntax expression) =>
+        expression is IdentifierNameSyntax
+        || expression is MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax };
 
     /// <summary>
     /// Returns <c>true</c> when <paramref name="assignment"/> runs on every path that reaches
