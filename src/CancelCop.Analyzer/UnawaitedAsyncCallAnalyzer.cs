@@ -251,9 +251,15 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
     private static bool IsCoveredByCompilerWarning(ITypeSymbol? type) =>
         IsDiscardedAsyncResult(type) && !IsAwaiter(type);
 
-    /// <summary>Awaiter types — what <c>GetAwaiter()</c> hands back.</summary>
+    /// <summary>
+    /// Awaiter types — what <c>GetAwaiter()</c> hands back. Identity-checked, not name-checked: a
+    /// user's <c>Task</c> subclass called <c>TaskAwaiter</c> is a task, and CS4014 does report it,
+    /// so treating it as an awaiter would emit CC032 alongside the compiler warning.
+    /// </summary>
     private static bool IsAwaiter(ITypeSymbol? type) =>
-        type?.Name
+        type is not null
+        && IsCompilerServicesAwaitable(type)
+        && type.Name
             is "TaskAwaiter"
                 or "ValueTaskAwaiter"
                 or "ConfiguredTaskAwaiter"

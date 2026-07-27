@@ -592,4 +592,34 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("GetAwaiter"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task UserTaskSubclassNamedTaskAwaiter_DefersToTheCompilerInAsyncCode()
+    {
+        // The type is a Task, so CS4014 does report it. Classifying it as an awaiter by name alone
+        // would emit CC032 alongside the compiler warning, which the rule promises not to do.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TaskAwaiter : Task
+{
+    public TaskAwaiter() : base(() => { }) { }
+}
+
+public class TestClass
+{
+    private TaskAwaiter StartAsync() => new TaskAwaiter();
+
+    public async Task RunAsync()
+    {
+        StartAsync();
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.CompilerDiagnostics = CompilerDiagnostics.Errors;
+        await t.RunAsync();
+    }
 }
