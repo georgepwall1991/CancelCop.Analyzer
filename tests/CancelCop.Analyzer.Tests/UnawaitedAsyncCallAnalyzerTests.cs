@@ -414,4 +414,80 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("ConfigureAwait"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task DiscardedTaskSubclass_ShouldReportDiagnostic()
+    {
+        // A Task subclass is still awaitable and still dropped, but an exact-name check sees only
+        // the derived name.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class DerivedTask : Task
+{
+    public DerivedTask() : base(() => { }) { }
+}
+
+public class TestClass
+{
+    private DerivedTask StartAsync() => new DerivedTask();
+
+    public void Run()
+    {
+        {|#0:StartAsync()|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("StartAsync"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DiscardedConstrainedTypeParameter_ShouldReportDiagnostic()
+    {
+        // A type parameter carries its awaitability through constraints rather than a base type.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private T StartAsync<T>() where T : Task => default!;
+
+    public void Run()
+    {
+        {|#0:StartAsync<Task>()|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("StartAsync"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DiscardedAwaiter_ShouldReportDiagnostic()
+    {
+        // GetAwaiter() starts the work and throws the awaiter away; the compiler never reports this
+        // in either context.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task SaveAsync() => Task.CompletedTask;
+
+    public void Run()
+    {
+        {|#0:SaveAsync().GetAwaiter()|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("GetAwaiter"));
+        await t.RunAsync();
+    }
 }
