@@ -29,10 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CC002/CC012 — with nothing to suggest the rule stays quiet. It also stays quiet when the token is
   assigned afterwards (`options.CancellationToken = cancellationToken;`), which is equally correct
   and common when the options are built up conditionally — but only when that assignment actually
-  runs first and on every path. One placed *after* the loop, inside a lambda that may never execute,
-  or inside an `if`/`switch`/loop leaves a path on which the loop is still uncancellable, which is
-  the finding rather than an exemption. A use inside a lambda does not count as the first use, since
-  the lambda may be invoked long after the token is assigned.
+  runs first and on every path reaching the loop. Being nested in an `if` is not itself
+  disqualifying — when the creation, the assignment and the loop all sit inside the same branch,
+  every path to the loop passes through the assignment; what disqualifies it is a conditional the
+  *use* is outside of, or a different branch of the same one. A nested function is always
+  disqualifying, since it may never be invoked, and for the same reason a use inside a lambda does
+  not bound when the assignment must happen. Only the **last** write before the first use counts, so
+  a valid assignment later overwritten with `default` no longer exonerates.
 
   A token that cannot cancel does not count as set: `CancellationToken = default`,
   `= CancellationToken.None`, `= new CancellationToken()`, and `= new CancellationToken(false)` all

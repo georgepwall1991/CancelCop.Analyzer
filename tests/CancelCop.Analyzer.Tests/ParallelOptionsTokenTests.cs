@@ -542,4 +542,56 @@ public class Runner
         t.ExpectedDiagnostics.Add(Expected());
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CreationAssignmentAndLoopInTheSameBranch_ShouldNotReportDiagnostic()
+    {
+        // Every path that reaches this loop passes through the assignment, so being nested in an
+        // `if` is not itself disqualifying — what matters is whether the use is inside the same
+        // branch.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, bool parallel, CancellationToken cancellationToken)
+    {
+        if (parallel)
+        {
+            var options = new ParallelOptions();
+            options.CancellationToken = cancellationToken;
+            Parallel.ForEach(items, options, i => { });
+        }
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task LaterAssignmentOverwritesTheToken_ShouldReportDiagnostic()
+    {
+        // The write that reaches the loop is the last one, and it cancels nothing.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions()|};
+        options.CancellationToken = cancellationToken;
+        options.CancellationToken = default;
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
 }

@@ -254,50 +254,85 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
             .Select(argument => (int?)argument.SpanStart)
             .FirstOrDefault();
 
-        return scope
+        // The write that actually reaches the loop: the last one before the first use. An earlier
+        // valid assignment followed by `options.CancellationToken = default` must not exonerate.
+        var reachingWrite = scope
             .DescendantNodes()
             .OfType<AssignmentExpressionSyntax>()
-            .Any(assignment =>
+            .Where(assignment =>
                 assignment.Left
                     is MemberAccessExpressionSyntax
                     {
                         Name.Identifier.ValueText: "CancellationToken"
-                    } target
+                    } assignmentTarget
                 // After this creation and before the options are used: an assignment configuring a
                 // previous object does not carry over to the one created here.
                 && assignment.SpanStart > creation.SpanStart
                 && (firstUse is null || assignment.SpanStart < firstUse)
-                // The assignment has to happen on every path. One nested in a nested function may
-                // never run at all, and one inside an `if`, `switch`, or loop leaves a path on which
-                // the loop is still uncancellable — which is exactly the finding, not an exemption.
-                && !assignment
-                    .Ancestors()
-                    .TakeWhile(node => node != scope)
-                    .Any(node =>
-                        node
-                            is AnonymousFunctionExpressionSyntax
-                                or LocalFunctionStatementSyntax
-                                // A branch of a conditional, or the right side of a short-circuiting
-                                // operator, runs only sometimes.
-                                or ConditionalExpressionSyntax
-                                or BinaryExpressionSyntax
-                                or IfStatementSyntax
-                                or SwitchStatementSyntax
-                                or SwitchExpressionSyntax
-                                or ForStatementSyntax
-                                or WhileStatementSyntax
-                                or DoStatementSyntax
-                                or CommonForEachStatementSyntax
-                                or TryStatementSyntax
-                    )
-                && CancelsSomething(assignment.Right, context)
+                && Dominates(assignment, scope, firstUse)
                 && SymbolEqualityComparer.Default.Equals(
                     context
-                        .SemanticModel.GetSymbolInfo(target.Expression, context.CancellationToken)
+                        .SemanticModel.GetSymbolInfo(
+                            assignmentTarget.Expression,
+                            context.CancellationToken
+                        )
                         .Symbol,
                     owner
                 )
-            );
+            )
+            .OrderBy(assignment => assignment.SpanStart)
+            .LastOrDefault();
+
+        return reachingWrite != null && CancelsSomething(reachingWrite.Right, context);
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="assignment"/> runs on every path that reaches
+    /// <paramref name="usePosition"/>.
+    /// </summary>
+    /// <remarks>
+    /// Being nested in an <c>if</c> is not itself disqualifying — when the creation, the assignment
+    /// and the loop all sit inside the same branch, every path to the loop passes through the
+    /// assignment. What disqualifies it is a conditional the <i>use</i> is outside of, or a different
+    /// branch of the same one. A nested function is always disqualifying: it may never be invoked.
+    /// </remarks>
+    private static bool Dominates(SyntaxNode assignment, SyntaxNode scope, int? usePosition)
+    {
+        for (var current = assignment.Parent; current != null && current != scope; current = current.Parent)
+        {
+            if (current is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
+                return false;
+
+            var isConditional = current
+                is ConditionalExpressionSyntax
+                    or BinaryExpressionSyntax
+                    or IfStatementSyntax
+                    or SwitchStatementSyntax
+                    or SwitchExpressionSyntax
+                    or ForStatementSyntax
+                    or WhileStatementSyntax
+                    or DoStatementSyntax
+                    or CommonForEachStatementSyntax
+                    or TryStatementSyntax;
+
+            if (!isConditional)
+                continue;
+
+            // The branch of this construct that contains the assignment must also contain the use;
+            // otherwise there is a path to the loop that skips the assignment.
+            var branch = current
+                .ChildNodes()
+                .FirstOrDefault(child => child.Span.Contains(assignment.Span));
+
+            if (
+                usePosition is null
+                || branch is null
+                || !branch.Span.Contains(usePosition.Value)
+            )
+                return false;
+        }
+
+        return true;
     }
 
     private static bool IsParallelOptions(ITypeSymbol type) =>
