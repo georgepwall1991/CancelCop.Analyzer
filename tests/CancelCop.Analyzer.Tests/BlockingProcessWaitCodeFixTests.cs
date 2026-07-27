@@ -806,4 +806,33 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task RefForeachIterationVariable_ReportsWithoutOfferingAFix()
+    {
+        // `foreach (ref int item in …)` binds a ref local, which cannot survive an await (CS9217).
+        // It is not a variable declarator, and neither the collection nor its enumerator is ref-like,
+        // so nothing else in the lifetime check sees it.
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        foreach (ref int item in data.AsSpan())
+        {
+            process.{|#0:WaitForExit|}();
+            item = 0;
+        }
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }

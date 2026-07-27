@@ -1041,6 +1041,15 @@ public static class CancellationTokenHelpers
                     || semanticModel.GetTypeInfo(forEach.Expression).Type?.IsRefLikeType == true
                 )
                     return true;
+
+                // `foreach (ref int item in …)` binds a ref local that cannot survive an await
+                // (CS9217). It is not a VariableDeclarator, so the declarator scan below never sees
+                // it, and neither the collection nor the enumerator need be ref-like.
+                if (
+                    semanticModel.GetDeclaredSymbol(forEach) is ILocalSymbol iteration
+                    && (iteration.RefKind != RefKind.None || iteration.Type.IsRefLikeType)
+                )
+                    return true;
             }
 
             // A ref-like resource in a `using` statement is disposed at the end of the block, so it
