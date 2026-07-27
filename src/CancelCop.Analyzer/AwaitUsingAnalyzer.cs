@@ -47,6 +47,12 @@ public class AwaitUsingAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string DiagnosticId = "CC025";
 
+    /// <summary>
+    /// Property key set when the diagnostic is correct but inserting an <c>await</c> here would not
+    /// compile, so the code fix must not offer a rewrite.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
     private static readonly LocalizableString Title = "Prefer await using for IAsyncDisposable";
     private static readonly LocalizableString MessageFormat = "Resource is IAsyncDisposable; use 'await using' so DisposeAsync is awaited";
     private static readonly LocalizableString Description = "An IAsyncDisposable resource should be disposed with 'await using' in async code so DisposeAsync runs without blocking.";
@@ -119,7 +125,22 @@ public class AwaitUsingAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(node))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, usingKeyword.GetLocation()));
+        // The construct is just as problematic either way, but where an inserted await would not
+        // compile — a lock body, an exception filter, an unsafe context, most query clauses, or
+        // across a ref-like lifetime — the diagnostic is reported without a fix.
+        var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
+            context.SemanticModel,
+            usingKeyword.Parent ?? context.Node
+        )
+            ? ImmutableDictionary<string, string?>.Empty.Add(
+                NoFixProperty,
+                CancellationTokenHelpers.AwaitUnsafeReason
+            )
+            : ImmutableDictionary<string, string?>.Empty;
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, usingKeyword.GetLocation(), properties)
+        );
     }
 
     private static bool ImplementsAsyncDisposable(ITypeSymbol? type)

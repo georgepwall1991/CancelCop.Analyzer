@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-07-27
+
+### Fixed
+
+- Every rule whose code fix inserts an `await` now withholds that fix where the `await` would not
+  compile, and reports the diagnostic without one. CC030 shipped with this guard in 1.30.0 and
+  CC028 had half of it; **CC013, CC015, CC022, CC025, and CC026 had none**, so applying their fix
+  in these positions turned compiling code into a build error:
+
+  - a `lock` body (CS1996), an exception filter, an unsafe context (CS4004 — from an `unsafe`
+    modifier as well as an `unsafe { }` block), or a query clause outside the two positions CS1995
+    permits;
+  - anywhere the inserted `await` would cut across a **ref-like lifetime** (CS4007/CS9217): a live
+    `Span<T>` local, a `using var` ref struct, a ref-struct `foreach` enumerator, a `ref` iteration
+    variable, an `out Span<T>` declaration expression, or a loop header that runs after the body.
+
+  CC025 is included because `using` → `await using` is an await insertion like any other.
+
+  The finding itself is unchanged — blocking I/O inside a `lock` is exactly the stall these rules
+  exist to surface. What is withheld is the automated rewrite, because resolving it means
+  restructuring the surrounding code, which is the author's decision.
+
+### Changed
+
+- The two halves of the check are combined behind `CancellationTokenHelpers.AwaitInsertionIsUnsafe`,
+  so a future await-inserting rule gets the guard by asking one question rather than by
+  rediscovering seven compiler errors.
+
 ## [1.30.0] - 2026-07-27
 
 ### Added

@@ -33,6 +33,10 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
+        // The diagnostic stands but the analyzer determined that inserting an await here would not
+        // compile, so no rewrite is offered.
+        if (diagnostic.Properties.ContainsKey(BlockingOnAsyncAnalyzer.NoFixProperty))
+            return;
         var name = root.FindToken(diagnostic.Location.SourceSpan.Start).Parent;
         if (name?.Parent is not MemberAccessExpressionSyntax memberAccess)
             return;

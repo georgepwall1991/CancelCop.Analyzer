@@ -55,6 +55,12 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string TokenNameProperty = "TokenName";
 
+    /// <summary>
+    /// Property key set when the diagnostic is correct but inserting an <c>await</c> here would not
+    /// compile, so the code fix must not offer a rewrite.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
     private static readonly LocalizableString Title = "Avoid Thread.Sleep in async code";
     private static readonly LocalizableString MessageFormat = "Thread.Sleep blocks the thread in an async method; use 'await Task.Delay' instead";
     private static readonly LocalizableString Description = "Thread.Sleep blocks the calling thread and ignores cancellation. In async code use await Task.Delay(delay, token).";
@@ -108,6 +114,15 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
         var properties = ImmutableDictionary<string, string?>.Empty;
         if (tokenParameter != null)
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
+
+        // The call is blocking either way, but where an inserted await would not compile — a lock
+        // body, an exception filter, an unsafe context, most query clauses, or across a ref-like
+        // lifetime — the diagnostic is reported without a fix.
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+            properties = properties.Add(
+                NoFixProperty,
+                CancellationTokenHelpers.AwaitUnsafeReason
+            );
 
         var diagnostic = Diagnostic.Create(Rule, invocation.GetLocation(), properties);
         context.ReportDiagnostic(diagnostic);

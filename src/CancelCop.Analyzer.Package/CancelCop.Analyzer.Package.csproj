@@ -12,12 +12,12 @@
     <PackageId>CancelCop.Analyzer</PackageId>
     <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-    <Version>1.30.0</Version>
+    <Version>1.31.0</Version>
     <Authors>George Wall</Authors>
     <Title>CancelCop.Analyzer — CancellationToken and async/await Roslyn analyzer for C#/.NET</Title>
     <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 30 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
     <PackageTags>roslyn;roslyn-analyzer;analyzers;analyzer;codefix;code-fix;static-analysis;codeanalysis;csharp;dotnet;cancellation;cancellationtoken;async;async-await;sync-over-async;deadlock;async-void;aspnetcore;RequestAborted;BackgroundService;efcore;httpclient;grpc;signalr;mediatr;WithCancellation;OperationCanceledException;blocking</PackageTags>
-    <PackageReleaseNotes>Adds CC030: flags a blocking parameterless Process.WaitForExit() inside async code and rewrites it to await process.WaitForExitAsync(cancellationToken). The wait is unbounded and depends on an external program, so a hung child process pins a thread-pool thread that no cancellation or shutdown signal can reclaim; CC002 cannot catch it because the async form is a differently-named method rather than an overload. Symbol-gated to System.Diagnostics.Process, quiet unless the target framework exposes WaitForExitAsync (.NET 5+), and the WaitForExit(int) timeout overload is not flagged. 30 diagnostics.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fix-safety release. Every rule whose code fix inserts an await now withholds that fix where the await would not compile — a lock body, an exception filter, an unsafe context, most query clauses, or across a ref-like lifetime such as a live Span&lt;T&gt; — and reports the diagnostic without one. CC013, CC015, CC022, CC025, and CC026 previously offered rewrites that turned compiling code into a build error in those positions; CC028 gained the ref-like half. The findings are unchanged: only the automated rewrite is withheld, because resolving it means restructuring the surrounding code. 30 diagnostics.</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>

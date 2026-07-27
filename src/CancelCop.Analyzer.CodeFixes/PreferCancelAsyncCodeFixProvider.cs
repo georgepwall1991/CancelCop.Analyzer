@@ -33,6 +33,10 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
+        // The diagnostic stands but the analyzer determined that inserting an await here would not
+        // compile, so no rewrite is offered.
+        if (diagnostic.Properties.ContainsKey(PreferCancelAsyncAnalyzer.NoFixProperty))
+            return;
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
             .Parent?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)

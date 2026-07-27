@@ -34,6 +34,10 @@ public class BlockingSleepCodeFixProvider : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
+        // The diagnostic stands but the analyzer determined that inserting an await here would not
+        // compile, so no rewrite is offered.
+        if (diagnostic.Properties.ContainsKey(BlockingSleepAnalyzer.NoFixProperty))
+            return;
         var invocation = root.FindNode(diagnostic.Location.SourceSpan, getInnermostNodeForTie: true)
             ?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
         if (invocation == null)

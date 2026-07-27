@@ -1192,4 +1192,22 @@ public static class CancellationTokenHelpers
                 )
             );
 
+
+    /// <summary>
+    /// Property value used by every rule whose fix inserts an <c>await</c>, to record that the
+    /// diagnostic stands but no compilable rewrite exists at this position.
+    /// </summary>
+    public const string AwaitUnsafeReason = "await-insertion-unsafe";
+
+    /// <summary>
+    /// Returns <c>true</c> when inserting an <c>await</c> at <paramref name="node"/> would not
+    /// compile — either the syntax position forbids it, or it would cut across a ref-like lifetime.
+    /// </summary>
+    /// <remarks>
+    /// The blocking call these rules flag is just as blocking in such a position; what is missing is
+    /// a mechanical rewrite, so callers should report the diagnostic and withhold the fix rather than
+    /// stay silent.
+    /// </remarks>
+    public static bool AwaitInsertionIsUnsafe(SemanticModel semanticModel, SyntaxNode node) =>
+        AwaitIsForbiddenHere(node) || AwaitWouldSpanRefLikeLocal(semanticModel, node);
 }

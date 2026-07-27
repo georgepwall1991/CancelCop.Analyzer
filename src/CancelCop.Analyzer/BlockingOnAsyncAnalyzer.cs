@@ -47,6 +47,12 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string DiagnosticId = "CC015";
 
+    /// <summary>
+    /// Property key set when the diagnostic is correct but inserting an <c>await</c> here would not
+    /// compile, so the code fix must not offer a rewrite.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
     private static readonly LocalizableString Title = "Avoid blocking on async code";
     private static readonly LocalizableString MessageFormat = "Blocking on a task with '{0}' can deadlock; await the task instead";
     private static readonly LocalizableString Description = "Synchronously blocking on a task (.Result/.Wait()/.GetAwaiter().GetResult()) inside async code can deadlock and discards cancellation; await the task instead.";
@@ -216,7 +222,22 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(context.Node))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, location.GetLocation(), display));
+        // The construct is just as problematic either way, but where an inserted await would not
+        // compile — a lock body, an exception filter, an unsafe context, most query clauses, or
+        // across a ref-like lifetime — the diagnostic is reported without a fix.
+        var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
+            context.SemanticModel,
+            location
+        )
+            ? ImmutableDictionary<string, string?>.Empty.Add(
+                NoFixProperty,
+                CancellationTokenHelpers.AwaitUnsafeReason
+            )
+            : ImmutableDictionary<string, string?>.Empty;
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, location.GetLocation(), properties, display)
+        );
     }
 
     private static bool IsTaskLike(ITypeSymbol? type)

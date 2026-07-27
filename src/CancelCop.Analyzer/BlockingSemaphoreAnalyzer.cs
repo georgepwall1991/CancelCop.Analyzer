@@ -48,6 +48,12 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string TokenNameProperty = "TokenName";
 
+    /// <summary>
+    /// Property key set when the diagnostic is correct but inserting an <c>await</c> here would not
+    /// compile, so the code fix must not offer a rewrite.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
     private static readonly LocalizableString Title = "Avoid SemaphoreSlim.Wait() in async code";
     private static readonly LocalizableString MessageFormat = "SemaphoreSlim.Wait blocks the thread in async code; use 'await WaitAsync(...)'";
     private static readonly LocalizableString Description = "SemaphoreSlim.Wait() blocks the calling thread; in async code use await WaitAsync().";
@@ -110,6 +116,15 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
         var properties = ImmutableDictionary<string, string?>.Empty;
         if (tokenParameter != null)
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
+
+        // The call is blocking either way, but where an inserted await would not compile — a lock
+        // body, an exception filter, an unsafe context, most query clauses, or across a ref-like
+        // lifetime — the diagnostic is reported without a fix.
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+            properties = properties.Add(
+                NoFixProperty,
+                CancellationTokenHelpers.AwaitUnsafeReason
+            );
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, memberName.GetLocation(), properties));
     }

@@ -232,8 +232,13 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         var namesWouldBeRemapped = !NamedArgumentsMatch(invocation, method, asyncCounterpart!);
         if (namesWouldBeRemapped)
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
-        else if (CancellationTokenHelpers.AwaitIsForbiddenHere(invocation))
-            properties = properties.Add(NoFixProperty, "await-not-allowed-here");
+        else if (
+            CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation)
+        )
+            properties = properties.Add(
+                NoFixProperty,
+                CancellationTokenHelpers.AwaitUnsafeReason
+            );
 
         // Final authority: ask Roslyn to bind the call. The search above approximates overload
         // resolution well enough to *choose* a counterpart and decide whether a token can flow, but

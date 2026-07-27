@@ -44,6 +44,12 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string DiagnosticId = "CC022";
 
+    /// <summary>
+    /// Property key set when the diagnostic is correct but inserting an <c>await</c> here would not
+    /// compile, so the code fix must not offer a rewrite.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
     private static readonly LocalizableString Title = "Prefer CancelAsync over Cancel in async code";
     private static readonly LocalizableString MessageFormat = "Use 'await CancelAsync()' instead of 'Cancel()' in async code";
     private static readonly LocalizableString Description = "CancellationTokenSource.Cancel() runs callbacks synchronously; in async code prefer await CancelAsync().";
@@ -99,7 +105,22 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation()));
+        // The construct is just as problematic either way, but where an inserted await would not
+        // compile — a lock body, an exception filter, an unsafe context, most query clauses, or
+        // across a ref-like lifetime — the diagnostic is reported without a fix.
+        var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
+            context.SemanticModel,
+            invocation
+        )
+            ? ImmutableDictionary<string, string?>.Empty.Add(
+                NoFixProperty,
+                CancellationTokenHelpers.AwaitUnsafeReason
+            )
+            : ImmutableDictionary<string, string?>.Empty;
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties)
+        );
     }
 
     private static bool HasCancelAsyncCounterpart(INamedTypeSymbol cancellationTokenSourceType)
