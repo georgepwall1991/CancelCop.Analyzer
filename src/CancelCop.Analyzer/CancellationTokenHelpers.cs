@@ -1144,6 +1144,41 @@ public static class CancellationTokenHelpers
             )
                 return true;
 
+            // A backward `goto` is a loop the syntax does not show: control returns to a label
+            // before the call, so a reference between the label and the jump runs again after the
+            // inserted await.
+            foreach (var jump in body.DescendantNodes().OfType<GotoStatementSyntax>())
+            {
+                if (jump.Expression is not IdentifierNameSyntax labelName)
+                    continue;
+
+                var label = body.DescendantNodes()
+                    .OfType<LabeledStatementSyntax>()
+                    .FirstOrDefault(candidate =>
+                        candidate.Identifier.Text == labelName.Identifier.Text
+                    );
+
+                if (
+                    label is null
+                    || label.SpanStart > jump.SpanStart
+                    || position < label.SpanStart
+                    || position > jump.Span.End
+                )
+                    continue;
+
+                if (
+                    ReferencesLocal(
+                        semanticModel,
+                        body,
+                        local,
+                        reference =>
+                            reference.SpanStart >= label.SpanStart
+                            && reference.SpanStart <= jump.Span.End
+                    )
+                )
+                    return true;
+            }
+
             // Inside a loop, position is not execution order: a `for` condition or incrementor is
             // written before the body but runs again after it, so any reference within an enclosing
             // loop crosses the inserted await on the next iteration.
@@ -1283,6 +1318,16 @@ public static class CancellationTokenHelpers
                         or EqualsValueClauseSyntax
             )
                 break;
+
+            // The receiver of a call whose arguments contain the node: `span.Slice(task.Result)`
+            // keeps the span pending while the argument is evaluated. It reaches PrecedingOperands
+            // only as a method-group expression, whose type is null.
+            if (
+                current.Parent is InvocationExpressionSyntax enclosingCall
+                && enclosingCall.Expression is MemberAccessExpressionSyntax callTarget
+                && semanticModel.GetTypeInfo(callTarget.Expression).Type?.IsRefLikeType == true
+            )
+                return true;
 
             foreach (var sibling in PrecedingOperands(current))
             {

@@ -848,4 +848,68 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC015_RefLikeInvocationReceiver_ReportsWithoutOfferingAFix()
+    {
+        // The span is the receiver of the call whose argument is being awaited, so it stays pending
+        // across the await (CS4007). It reaches the operand scan only as a method-group expression
+        // with no type.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Task<int> work, int[] data)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        var slice = span.Slice(work.{|#0:Result|});
+    }
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC013_BackwardGoto_ReportsWithoutOfferingAFix()
+    {
+        // A backward goto is a loop the syntax does not show: control returns to Use(span) after the
+        // call, so the span crosses an await inserted here even though no reference follows it
+        // lexically and there is no loop statement to find.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Use(Span<int> buffer) { }
+
+    public async Task RunAsync(int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+    retry:
+        Use(span);
+        {|#0:Thread.Sleep(100)|};
+        if (data.Length > 0)
+            goto retry;
+    }
+}";
+
+        await NoFix<BlockingSleepAnalyzer, BlockingSleepCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        ).RunAsync();
+    }
 }
