@@ -364,9 +364,15 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
             is IMethodSymbol { Name: "Dispose", Parameters.Length: 0, IsExtensionMethod: false } target
         && (
-            IsCancellationTokenSource(target.ContainingType)
+            // Exactly the framework type, not a subclass: CancellationTokenSource.Dispose() is not
+            // virtual, so a derived `new void Dispose() { }` hides it without disposing anything.
+            IsExactlyCancellationTokenSource(target.ContainingType)
             || target.ContainingType?.SpecialType == SpecialType.System_IDisposable
         );
+
+    private static bool IsExactlyCancellationTokenSource(ITypeSymbol? type) =>
+        type is { ContainingType: null, Name: "CancellationTokenSource" }
+        && type.ContainingNamespace?.ToDisplayString() == "System.Threading";
 
     /// <summary>
     /// Walks outward past parentheses and null-forgiving operators, which are compile-time only and

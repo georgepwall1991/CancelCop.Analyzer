@@ -623,4 +623,34 @@ public class Worker
         t.ExpectedDiagnostics.Add(Expected("_cts"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task SubclassHidingDisposeWithANoOp_ShouldReportDiagnostic()
+    {
+        // CancellationTokenSource.Dispose() is not virtual, so a derived `new void Dispose() { }`
+        // hides it without disposing anything. Accepting any Dispose declared on a CTS-derived type
+        // would undo the symbol-based protection against methods merely named Dispose.
+        var test =
+            @"
+using System.Threading;
+
+public class SilentSource : CancellationTokenSource
+{
+    public new void Dispose() { }
+}
+
+public class Worker
+{
+    private readonly SilentSource {|#0:_cts|} = new SilentSource();
+
+    public void Cleanup()
+    {
+        _cts.Dispose();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
 }
