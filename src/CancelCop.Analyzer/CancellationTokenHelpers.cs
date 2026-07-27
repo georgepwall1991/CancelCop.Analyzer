@@ -931,6 +931,18 @@ public static class CancellationTokenHelpers
         string? tokenName
     )
     {
+        // `host?.Process.WaitForExit()` reaches here as an ordinary member access, but the whole
+        // invocation is the WhenNotNull branch of a conditional access. Wrapping just that branch in
+        // an await yields `host?await.Process...`, which is not valid syntax — the await has to go
+        // outside the `?.`, which is a restructuring rather than a rewrite.
+        for (var current = invocation.Parent; current != null; current = current.Parent)
+        {
+            if (current is ConditionalAccessExpressionSyntax)
+                return null;
+            if (current is StatementSyntax or MemberDeclarationSyntax)
+                break;
+        }
+
         var target = invocation.Expression switch
         {
             MemberAccessExpressionSyntax memberAccess => (ExpressionSyntax)
@@ -1016,10 +1028,27 @@ public static class CancellationTokenHelpers
         // implicit, so a use-site scan never sees it.
         for (var current = node.Parent; current != null && current != body; current = current.Parent)
         {
+            if (current.Parent is ForEachStatementSyntax forEach && forEach.Statement == current)
+            {
+                // The enumerator is what stays live, and it can be a ref struct even when the
+                // collection is an ordinary reference type — so ask for the bound enumerator rather
+                // than reading the collection expression's type.
+                var enumerator = semanticModel
+                    .GetForEachStatementInfo(forEach)
+                    .GetEnumeratorMethod?.ReturnType;
+                if (
+                    enumerator?.IsRefLikeType == true
+                    || semanticModel.GetTypeInfo(forEach.Expression).Type?.IsRefLikeType == true
+                )
+                    return true;
+            }
+
+            // A ref-like resource in a `using` statement is disposed at the end of the block, so it
+            // is live across everything inside it.
             if (
-                current.Parent is ForEachStatementSyntax forEach
-                && forEach.Statement == current
-                && semanticModel.GetTypeInfo(forEach.Expression).Type?.IsRefLikeType == true
+                current.Parent is UsingStatementSyntax usingStatement
+                && usingStatement.Statement == current
+                && UsingResourceIsRefLike(semanticModel, usingStatement)
             )
                 return true;
         }
@@ -1034,6 +1063,14 @@ public static class CancellationTokenHelpers
                 || (!local.Type.IsRefLikeType && local.RefKind == RefKind.None)
             )
                 continue;
+
+            // A `using var` local is disposed at scope exit, so it is live past the call whether or
+            // not the identifier appears again — the implicit Dispose is the later use.
+            if (
+                declarator.Parent?.Parent is LocalDeclarationStatementSyntax localDeclaration
+                && localDeclaration.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
+            )
+                return true;
 
             var usedAfter = body.DescendantNodes()
                 .OfType<IdentifierNameSyntax>()
@@ -1052,4 +1089,26 @@ public static class CancellationTokenHelpers
 
         return false;
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when a <c>using</c> statement's resource — declared or expression form —
+    /// has a ref-like type.
+    /// </summary>
+    private static bool UsingResourceIsRefLike(
+        SemanticModel semanticModel,
+        UsingStatementSyntax usingStatement
+    )
+    {
+        if (usingStatement.Declaration is { } declaration)
+        {
+            return declaration.Variables.Any(variable =>
+                semanticModel.GetDeclaredSymbol(variable) is ILocalSymbol local
+                && local.Type.IsRefLikeType
+            );
+        }
+
+        return usingStatement.Expression is { } expression
+            && semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true;
+    }
+
 }

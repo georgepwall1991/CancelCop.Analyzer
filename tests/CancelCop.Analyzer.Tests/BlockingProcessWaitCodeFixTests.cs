@@ -622,4 +622,102 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    {
+        // `host?.Child.WaitForExit()` reaches the fixer as an ordinary member access, but the whole
+        // invocation is the WhenNotNull branch of a conditional access. Wrapping just that branch
+        // gives `host?await.Child...`, which is not valid syntax — the await belongs outside the
+        // `?.`, which is a restructuring rather than a rewrite.
+        var source =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public Process Child { get; } = new Process();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        host?.Child.{|#0:WaitForExit|}();
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task RefLikeUsingVarLocal_ReportsWithoutOfferingAFix()
+    {
+        // The local is never named again, but a `using var` is disposed at scope exit — that implicit
+        // Dispose is a later use, so the lifetime still spans an inserted await (CS4007).
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct Lease
+{
+    public void Dispose() { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        using var lease = new Lease();
+        process.{|#0:WaitForExit|}();
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task RefStructEnumeratorOverAReferenceType_ReportsWithoutOfferingAFix()
+    {
+        // The collection is an ordinary class, but its GetEnumerator returns a ref struct that stays
+        // live for the body — so the enumerator's type, not the collection's, is what matters.
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct RefEnumerator
+{
+    public int Current => 0;
+    public bool MoveNext() => false;
+}
+
+public class RefCollection
+{
+    public RefEnumerator GetEnumerator() => new RefEnumerator();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, RefCollection items, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        foreach (var item in items)
+        {
+            process.{|#0:WaitForExit|}();
+        }
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }

@@ -165,7 +165,7 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         var tokenName = tokenParameter?.Name;
         if (
             tokenName != null
-            && !ResolvesToTheFrameworkCounterpart(context, invocation, tokenName, asyncCounterpart!)
+            && !ResolvesToTheFrameworkCounterpart(context, invocation, method, tokenName, asyncCounterpart!)
         )
         {
             // The token is in scope by symbol but its *name* may be shadowed here — a nested function
@@ -175,7 +175,7 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
             tokenName = null;
         }
 
-        if (!ResolvesToTheFrameworkCounterpart(context, invocation, tokenName, asyncCounterpart!))
+        if (!ResolvesToTheFrameworkCounterpart(context, invocation, method, tokenName, asyncCounterpart!))
             return;
 
         if (tokenName != null)
@@ -185,17 +185,20 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Returns <c>true</c> when a call to <c>WaitForExitAsync</c> in this position resolves to
+    /// Returns <c>true</c> when a call to <c>WaitForExitAsync</c> here would reach
     /// <paramref name="asyncCounterpart"/>, the framework method the diagnostic is premised on.
     /// </summary>
     /// <remarks>
-    /// A null-conditional call has no rewritable member access, so its receiver is lifted out of the
-    /// enclosing conditional access and bound directly. No fix is offered for that shape, but the
-    /// diagnostic still asserts an async alternative exists and that claim has to hold.
+    /// Where the rewritten call can be constructed, the compiler answers: it accounts for hiding,
+    /// accessibility, and implicit conversions exactly as the user's build will. Conditional-access
+    /// shapes cannot be rebuilt as a plain invocation — their receiver is spread across the
+    /// <c>?.</c> chain — and get no fix anyway, so those fall back to walking the receiver's type for
+    /// the member a call of this arity would select.
     /// </remarks>
     private static bool ResolvesToTheFrameworkCounterpart(
         SyntaxNodeAnalysisContext context,
         InvocationExpressionSyntax invocation,
+        IMethodSymbol method,
         string? tokenName,
         IMethodSymbol asyncCounterpart
     )
@@ -206,41 +209,55 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
             tokenName
         );
 
-        if (speculative is null)
+        if (speculative != null)
         {
-            var receiver = invocation
-                .Ancestors()
-                .OfType<ConditionalAccessExpressionSyntax>()
-                .FirstOrDefault()
-                ?.Expression;
-            if (receiver is null)
-                return false;
-
-            speculative = invocation
-                .WithExpression(
-                    SyntaxFactory.MemberAccessExpression(
-                        SyntaxKind.SimpleMemberAccessExpression,
-                        receiver,
-                        SyntaxFactory.IdentifierName("WaitForExitAsync")
-                    )
-                )
-                .WithArgumentList(
-                    tokenName is null
-                        ? invocation.ArgumentList
-                        : invocation.ArgumentList.AddArguments(
-                            SyntaxFactory.Argument(
-                                CancellationTokenHelpers.IdentifierNameFor(tokenName)
-                            )
-                        )
-                );
+            return CancellationTokenHelpers.SpeculativelyBindsTo(
+                context.SemanticModel,
+                invocation.SpanStart,
+                speculative,
+                asyncCounterpart
+            );
         }
 
-        return CancellationTokenHelpers.SpeculativelyBindsTo(
-            context.SemanticModel,
-            invocation.SpanStart,
-            speculative,
+        return ReachesCounterpart(
+            method.ReceiverType,
+            tokenName is null ? 0 : 1,
             asyncCounterpart
         );
+    }
+
+    /// <summary>
+    /// Walks <paramref name="receiverType"/> and its bases for the first <c>WaitForExitAsync</c> a
+    /// call with <paramref name="arity"/> arguments could select, and returns <c>true</c> when that
+    /// is <paramref name="asyncCounterpart"/>.
+    /// </summary>
+    /// <remarks>
+    /// C# hides methods by signature rather than by name, so a subclass declaring
+    /// <c>new int WaitForExitAsync(CancellationToken)</c> does not hide the inherited parameterless
+    /// form — a tokenless call still reaches the framework method.
+    /// </remarks>
+    private static bool ReachesCounterpart(
+        ITypeSymbol? receiverType,
+        int arity,
+        IMethodSymbol asyncCounterpart
+    )
+    {
+        for (var current = receiverType; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers("WaitForExitAsync").OfType<IMethodSymbol>())
+            {
+                var required = member.Parameters.Count(p => !p.IsOptional);
+                if (arity < required || arity > member.Parameters.Length)
+                    continue;
+
+                return SymbolEqualityComparer.Default.Equals(
+                    member.OriginalDefinition,
+                    asyncCounterpart.OriginalDefinition
+                );
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
