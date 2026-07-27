@@ -322,4 +322,35 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("ManualResetEventSlim.Wait"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task ZeroTimeoutMonitorWait_StillReportsDiagnostic()
+    {
+        // A zero timeout ends the condition wait, but Monitor.Wait cannot return until it reacquires
+        // the monitor — which can block behind another thread. The probe exclusion that applies to
+        // the other primitives would be a false negative here.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object _gate = new object();
+
+    public async Task RunAsync()
+    {
+        lock (_gate)
+        {
+            Monitor.{|#0:Wait|}(_gate, 0);
+        }
+
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Monitor.Wait"));
+        await t.RunAsync();
+    }
 }

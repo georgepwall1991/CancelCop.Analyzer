@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   immediate probe rather than a wait and is excluded, matching CC013/CC015/CC026 — including the
   framework `TimeSpan` spellings (`TimeSpan.Zero`, `default`, `new TimeSpan()`), none of which is a
   compiler constant, so a constant-value check alone would flag a non-blocking probe.
+  `Monitor.Wait` is exempt from that exclusion: a zero timeout only ends the condition wait, and the
+  call still cannot return until it reacquires the monitor, which can block behind another thread.
   `SemaphoreSlim.Wait` is left to CC026, which owns it and can offer a real fix.
 
 ### Changed

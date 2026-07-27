@@ -91,6 +91,13 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
         }
     );
 
+    /// <summary>
+    /// Declaring types whose members can block even with a zero timeout, so the probe exclusion must
+    /// not apply. <c>Monitor.Wait</c> releases the monitor and must reacquire it before returning.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> ZeroTimeoutStillBlocks =
+        ImmutableHashSet.Create("Monitor");
+
     private static readonly LocalizableString Title =
         "Avoid blocking synchronization primitives in async code";
     private static readonly LocalizableString MessageFormat =
@@ -158,9 +165,12 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
             return;
 
         // A provably zero timeout is an immediate probe, not a wait — the same exclusion CC013,
-        // CC015, and CC026 make.
+        // CC015, and CC026 make. Monitor.Wait is the exception: a zero timeout only ends the
+        // condition wait, and the call still cannot return until it reacquires the monitor, which
+        // can block behind another thread.
         if (
-            CancellationTokenHelpers.HasProvablyZeroTimeout(
+            !ZeroTimeoutStillBlocks.Contains(declaringType.Name)
+            && CancellationTokenHelpers.HasProvablyZeroTimeout(
                 invocation,
                 context.SemanticModel,
                 context.CancellationToken
