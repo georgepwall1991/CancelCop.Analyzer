@@ -263,6 +263,9 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                     {
                         Name.Identifier.ValueText: "CancellationToken"
                     } target
+                // After this creation and before the options are used: an assignment configuring a
+                // previous object does not carry over to the one created here.
+                && assignment.SpanStart > creation.SpanStart
                 && (firstUse is null || assignment.SpanStart < firstUse)
                 // The assignment has to happen on every path. One nested in a nested function may
                 // never run at all, and one inside an `if`, `switch`, or loop leaves a path on which
@@ -274,6 +277,10 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                         node
                             is AnonymousFunctionExpressionSyntax
                                 or LocalFunctionStatementSyntax
+                                // A branch of a conditional, or the right side of a short-circuiting
+                                // operator, runs only sometimes.
+                                or ConditionalExpressionSyntax
+                                or BinaryExpressionSyntax
                                 or IfStatementSyntax
                                 or SwitchStatementSyntax
                                 or SwitchExpressionSyntax

@@ -492,4 +492,54 @@ public class Runner
         t.ExpectedDiagnostics.Add(Expected());
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task TokenSetOnAPreviousObject_ShouldReportDiagnostic()
+    {
+        // Configuring the old object does not carry over to the one created here.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = new ParallelOptions();
+        options.CancellationToken = cancellationToken;
+        options = {|#0:new ParallelOptions()|};
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task TokenAssignedInsideAConditionalExpression_ShouldReportDiagnostic()
+    {
+        // A branch of a conditional runs only sometimes, so the false path still reaches the loop
+        // with an uncancellable options object.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, bool configure, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions()|};
+        var value = configure ? options.CancellationToken = cancellationToken : CancellationToken.None;
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
 }
