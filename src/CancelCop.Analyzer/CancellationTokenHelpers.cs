@@ -1011,6 +1011,19 @@ public static class CancellationTokenHelpers
         if (body is null)
             return false;
 
+        // A `foreach` over a ref-like collection holds an enumerator that stays live for the whole
+        // body, even though the collection identifier only appears in the header. Its lifetime is
+        // implicit, so a use-site scan never sees it.
+        for (var current = node.Parent; current != null && current != body; current = current.Parent)
+        {
+            if (
+                current.Parent is ForEachStatementSyntax forEach
+                && forEach.Statement == current
+                && semanticModel.GetTypeInfo(forEach.Expression).Type?.IsRefLikeType == true
+            )
+                return true;
+        }
+
         foreach (var declarator in body.DescendantNodes().OfType<VariableDeclaratorSyntax>())
         {
             if (declarator.SpanStart >= node.SpanStart)

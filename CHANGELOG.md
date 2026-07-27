@@ -44,7 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   No fix is offered when the inserted `await` would make a ref-like or `ref` local span it (CS4007).
   Since C# 13 an async method may hold a `Span<T>` provided its lifetime does not cross an `await`,
   so code that compiles today can be broken by a rewrite that introduces one — the call binds
-  perfectly well, and only a lifetime check catches it.
+  perfectly well, and only a lifetime check catches it. A `foreach` over a ref-like collection counts
+  too: its enumerator stays live for the whole body even though the collection identifier appears
+  only in the header.
+
+  When the in-scope token's *name* is shadowed at the call site, the rule falls back to the
+  parameterless `WaitForExitAsync()` rather than dropping the diagnostic. A name that cannot be
+  written in generated source makes the token unusable, not the blocking call acceptable. The same
+  fallback covers a subclass that hides the token-taking overload — C# hides methods by signature,
+  so the inherited parameterless form is still reachable.
 
 ### Changed
 

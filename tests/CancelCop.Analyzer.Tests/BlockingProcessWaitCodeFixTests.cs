@@ -202,11 +202,13 @@ public class TestClass
     }
 
     [Fact]
-    public async Task SubclassHidingWaitForExitAsync_ShouldNotReportDiagnostic()
+    public async Task SubclassHidingWaitForExitAsync_FallsBackToTheParameterlessForm()
     {
-        // Finding WaitForExitAsync on Process proves the API exists, not that the rewritten call
-        // reaches it. This subclass hides it with a non-awaitable member, so `await` would fail with
-        // CS1061 — there is no async alternative here and the rule stays quiet.
+        // The subclass hides the token-taking overload with a non-awaitable member, so passing the
+        // in-scope token would bind to that and await an int (CS1061). C# hides methods by signature,
+        // not by name, so the inherited parameterless form is still reachable — the rule falls back
+        // to it rather than dropping a real finding. The wait stops being cancellable, which is the
+        // subclass's doing, but the fix compiles.
         var test =
             @"
 using System.Diagnostics;
@@ -222,17 +224,32 @@ public class TestClass
 {
     public async Task RunAsync(FakeProcess process, CancellationToken cancellationToken)
     {
-        process.WaitForExit();
+        process.{|#0:WaitForExit|}();
         await Task.Yield();
     }
 }";
 
-        var t = new CSharpAnalyzerTest<BlockingProcessWaitAnalyzer, DefaultVerifier>
-        {
-            TestCode = test,
-            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
-        };
-        await t.RunAsync();
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class FakeProcess : Process
+{
+    public new int WaitForExitAsync(CancellationToken cancellationToken) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(FakeProcess process, CancellationToken cancellationToken)
+    {
+        await process.WaitForExitAsync();
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -313,12 +330,11 @@ public class Worker : Process
     }
 
     [Fact]
-    public async Task NullConditionalOnHidingSubclass_ShouldNotReportDiagnostic()
+    public async Task NullConditionalOnHidingSubclass_ReportsWithoutOfferingAFix()
     {
-        // A null-conditional call gets no fix, but it still claims an async alternative exists. Here
-        // the subclass hides WaitForExitAsync with a non-awaitable member, so that claim is false and
-        // the rule must stay quiet — exactly as it does for the equivalent direct call.
-        var test =
+        // Same fallback as the direct call — the inherited parameterless overload is reachable, so
+        // the claim holds — but a null-conditional call still gets no fix.
+        var source =
             @"
 using System.Diagnostics;
 using System.Threading;
@@ -333,17 +349,12 @@ public class TestClass
 {
     public async Task RunAsync(FakeProcess? process, CancellationToken cancellationToken)
     {
-        process?.WaitForExit();
+        process?.{|#0:WaitForExit|}();
         await Task.Yield();
     }
 }";
 
-        var t = new CSharpAnalyzerTest<BlockingProcessWaitAnalyzer, DefaultVerifier>
-        {
-            TestCode = test,
-            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
-        };
-        await t.RunAsync();
+        await CreateTest(source, source, Expected()).RunAsync();
     }
 
     [Fact]
@@ -526,6 +537,86 @@ public class TestClass
         var first = span[0];
         await process.WaitForExitAsync(cancellationToken);
         return first;
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task InsideForeachOverASpan_ReportsWithoutOfferingAFix()
+    {
+        // The span identifier only appears in the loop header, but its enumerator stays live for the
+        // whole body, so an await inserted here would span it (CS4007). That lifetime is implicit —
+        // a scan for later uses of the identifier never sees it.
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        foreach (var item in data.AsSpan())
+        {
+            process.{|#0:WaitForExit|}();
+        }
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task ShadowedTokenName_FallsBackToTheParameterlessForm()
+    {
+        // The outer token is in scope by symbol, but a nested lambda binds that identifier to a
+        // string. Emitting the name would reference the wrong thing, so the token is unusable in
+        // generated source — which makes the blocking call no less blocking. The rule falls back to
+        // the parameterless form instead of dropping the finding.
+        var test =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        Func<string, Task> f = async (cancellationToken) =>
+        {
+            process.{|#0:WaitForExit|}();
+            await Task.Yield();
+        };
+
+        await f(""x"");
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        Func<string, Task> f = async (cancellationToken) =>
+        {
+            await process.WaitForExitAsync();
+            await Task.Yield();
+        };
+
+        await f(""x"");
     }
 }";
 

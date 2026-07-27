@@ -156,23 +156,30 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
             invocation,
             context.SemanticModel
         );
-        if (tokenParameter != null)
-            properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
         // Finding the framework method on Process proves the API exists, not that the rewritten call
         // reaches it: a subclass may hide WaitForExitAsync with an unusable member, and the fix would
         // then await something that is not awaitable. Bind the call the fixer would emit and stay
         // quiet unless it resolves to the framework method this diagnostic is premised on. This runs
         // for null-conditional calls too, which get no fix but still make the claim.
+        var tokenName = tokenParameter?.Name;
         if (
-            !ResolvesToTheFrameworkCounterpart(
-                context,
-                invocation,
-                tokenParameter?.Name,
-                asyncCounterpart!
-            )
+            tokenName != null
+            && !ResolvesToTheFrameworkCounterpart(context, invocation, tokenName, asyncCounterpart!)
         )
+        {
+            // The token is in scope by symbol but its *name* may be shadowed here — a nested function
+            // can bind that identifier to something else entirely. That makes the token unusable in
+            // generated source, not the blocking call acceptable, so fall back to the parameterless
+            // form rather than dropping the diagnostic.
+            tokenName = null;
+        }
+
+        if (!ResolvesToTheFrameworkCounterpart(context, invocation, tokenName, asyncCounterpart!))
             return;
+
+        if (tokenName != null)
+            properties = properties.Add(TokenNameProperty, tokenName);
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation(), properties));
     }
