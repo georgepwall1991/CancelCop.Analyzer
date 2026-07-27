@@ -288,7 +288,10 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         SyntaxNodeAnalysisContext context
     )
     {
-        var parent = UnwrapCompileTimeWrappers(expression).Parent;
+        // Forwarding is followed here for the same reason it is when detecting escape:
+        // `_cts = enabled ? new() : new()` assigns each branch's source to the field, but each
+        // creation's immediate parent is the conditional.
+        var parent = FollowValueForwarding(UnwrapCompileTimeWrappers(expression)).Parent;
 
         if (parent is EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator })
         {
@@ -299,7 +302,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         }
 
         return parent is AssignmentExpressionSyntax assignment
-            && assignment.Right == UnwrapCompileTimeWrappers(expression)
+            && assignment.Right == FollowValueForwarding(UnwrapCompileTimeWrappers(expression))
             && SymbolEqualityComparer.Default.Equals(
                 context.SemanticModel.GetSymbolInfo(assignment.Left, context.CancellationToken)
                     .Symbol,
@@ -396,7 +399,25 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool IsCancellationTokenSource(ITypeSymbol? type) =>
-        type is { ContainingType: null, Name: "CancellationTokenSource" }
-        && type.ContainingNamespace?.ToDisplayString() == "System.Threading";
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> is, or derives from,
+    /// <c>System.Threading.CancellationTokenSource</c>.
+    /// </summary>
+    /// <remarks>
+    /// The type is not sealed, and a subclass owns the same timer and registration list, so it is
+    /// the same leak. Nested lookalikes are excluded — the framework type is top level.
+    /// </remarks>
+    private static bool IsCancellationTokenSource(ITypeSymbol? type)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (
+                current is { ContainingType: null, Name: "CancellationTokenSource" }
+                && current.ContainingNamespace?.ToDisplayString() == "System.Threading"
+            )
+                return true;
+        }
+
+        return false;
+    }
 }

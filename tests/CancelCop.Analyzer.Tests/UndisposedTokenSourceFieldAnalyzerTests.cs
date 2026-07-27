@@ -571,4 +571,56 @@ public class Worker : IDisposable
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task CreatedThroughAConditional_ShouldReportDiagnostic()
+    {
+        // Each creation's immediate parent is the conditional rather than the assignment, so
+        // creation detection has to follow forwarding for the same reason escape detection does.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker
+{
+    private CancellationTokenSource {|#0:_cts|};
+
+    public Worker(bool withTimeout)
+    {
+        _cts = withTimeout
+            ? new CancellationTokenSource(TimeSpan.FromSeconds(5))
+            : new CancellationTokenSource();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task SubclassSource_ShouldReportDiagnostic()
+    {
+        // CancellationTokenSource is not sealed, and a subclass owns the same timer and registration
+        // list — so it is the same leak.
+        var test =
+            @"
+using System.Threading;
+
+public class DerivedSource : CancellationTokenSource
+{
+}
+
+public class Worker
+{
+    private readonly DerivedSource {|#0:_cts|} = new DerivedSource();
+
+    public CancellationToken Token => _cts.Token;
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
 }
