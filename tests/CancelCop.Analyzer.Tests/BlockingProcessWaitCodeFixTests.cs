@@ -420,4 +420,43 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task ContextualKeywordTokenName_IsReEscapedInTheFix()
+    {
+        // `await` is a contextual keyword, so a keyword-only check treats it as a plain identifier —
+        // but it is reserved inside an async body, which is exactly where this rewrite lands. Emitted
+        // bare it produces `await process.WaitForExitAsync(await)`, which does not parse.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken @await)
+    {
+        process.{|#0:WaitForExit|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken @await)
+    {
+        await process.WaitForExitAsync(@await);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

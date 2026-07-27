@@ -964,9 +964,14 @@ public static class CancellationTokenHelpers
     /// </remarks>
     public static IdentifierNameSyntax IdentifierNameFor(string name)
     {
-        // Contextual keywords (`value`, `async`, …) are legal identifiers and must not be escaped;
-        // only reserved keywords need the `@`.
-        if (SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None)
+        // Contextual keywords are escaped as well as reserved ones. `await` is only reserved inside
+        // an async body — which is exactly where these rewrites land — and deciding per-context is
+        // both fiddly and easy to get wrong. `@` is legal on any identifier, so escaping a
+        // contextual keyword that did not strictly need it still compiles and still binds.
+        if (
+            SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None
+            && SyntaxFacts.GetContextualKeywordKind(name) == SyntaxKind.None
+        )
             return SyntaxFactory.IdentifierName(name);
 
         // The token needs the escape in its *text* but the bare name as its value — the single-string
