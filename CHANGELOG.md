@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-07-27
+
+### Added
+
+- **CC036** (`BlockingSocketIoAnalyzer`): flags a blocking `System.Net.Sockets.Socket` operation —
+  `Receive`, `ReceiveFrom`, `ReceiveMessageFrom`, `Send`, `SendTo`, `SendFile`, `Accept`, `Connect`,
+  `Disconnect` — inside async code.
+
+  A socket call blocks until the network responds, or until a TCP timeout that can run into minutes.
+  Inside async code that parks a thread-pool thread on a remote party's behaviour, which is the least
+  predictable thing a server waits on. `Accept` and `Connect` are worse still: they can block
+  indefinitely, with no data to wait for.
+
+  **Why this is a separate rule rather than an extension of CC028.** CC028 covers blocking
+  `System.IO` calls including every `Stream`, so a `NetworkStream` is already handled there. It can
+  offer a code fix only because it requires the async counterpart to be *signature-compatible* — the
+  same parameters, optionally plus a token. Socket's async APIs are not shaped that way:
+  `Receive(byte[])` pairs with `ReceiveAsync(Memory<byte>, CancellationToken)`, and `Accept()` with
+  `AcceptAsync(CancellationToken)` returning a different type. Loosening CC028's matching to reach
+  them would give up the property that makes its rewrites safe, so CC036 stands apart — and is
+  analyzer-only, because there is no mechanical rewrite.
+
+  A socket switched out of blocking mode is exempt: `socket.Blocking = false` makes the synchronous
+  calls return immediately or report `WouldBlock` rather than parking the thread. Detected
+  conservatively: the assigned member is resolved to `Socket.Blocking` by symbol (so an object
+  initializer or an unqualified inherited assignment counts, and an unrelated property of the same
+  name does not), only a plain `=` counts, the walk stops at nested functions, and only the last
+  assignment before the call is in effect — so one placed after it, or a later `Blocking = true`,
+  does not exempt. Deciding *which* socket a given assignment applied to would need aliasing this
+  analysis does not attempt, so a branch-conditional assignment is still accepted; erring toward
+  silence is the safer side for an exemption.
+
+  The named counterpart must actually exist on the target framework before the rule reports. Socket's
+  surface varies by target — `SendFileAsync` is absent on .NET Standard 2.0 — and recommending a
+  method that is not there would suggest a call that does not compile.
+
+  Verified against the shipped analyzer before the rule was written: a blocking `Socket.Receive` in
+  async code produced no diagnostic from any of the 35 existing rules. `Socket` is resolved from the
+  compilation and matched by symbol, through the override chain, so a consumer's own type of the same
+  name is not mistaken for it.
+
 ## [1.37.0] - 2026-07-27
 
 ### Added

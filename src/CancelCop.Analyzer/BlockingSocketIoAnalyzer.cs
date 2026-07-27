@@ -1,0 +1,236 @@
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+
+namespace CancelCop.Analyzer;
+
+/// <summary>
+/// Analyzer that detects a blocking <c>System.Net.Sockets.Socket</c> operation inside async code.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC036
+/// </para>
+/// <para>
+/// <b>Why this matters:</b>
+/// A socket call blocks until the network responds — or until a TCP timeout that can run into
+/// minutes. Inside async code that parks a thread-pool thread on a remote party's behaviour, which
+/// is the least predictable thing a server waits on. <c>Accept</c> and <c>Connect</c> are worse
+/// still: they can block indefinitely with no data to wait for.
+/// </para>
+/// <para>
+/// <b>How this differs from CC028:</b> CC028 covers blocking <c>System.IO</c> calls, including every
+/// <c>Stream</c> — so a <c>NetworkStream</c> is already handled. It offers a code fix, which it can
+/// only do safely because it requires the async counterpart to be <i>signature-compatible</i>: the
+/// same parameters, optionally plus a token. Socket's async APIs are not shaped that way —
+/// <c>Receive(byte[])</c> pairs with <c>ReceiveAsync(Memory&lt;byte&gt;, CancellationToken)</c>, and
+/// <c>Accept()</c> with <c>AcceptAsync(CancellationToken)</c> returning a different type. Loosening
+/// CC028's matching to reach them would give up the property that makes its rewrites safe, so this
+/// is a separate rule — and analyzer-only, because there is no mechanical rewrite.
+/// </para>
+/// <para>
+/// <b>Conservative by design:</b> only the blocking members that genuinely have an async
+/// counterpart are listed, matched through the override chain to <c>Socket</c> itself, and only
+/// inside async code. A synchronous method, or a synchronous lambda inside an async one, stays
+/// quiet.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// public async Task ServeAsync(Socket listener)
+/// {
+///     var client = listener.Accept();   // CC036: blocks a pooled thread until someone connects
+/// }
+/// </code>
+/// </example>
+[DiagnosticAnalyzer(LanguageNames.CSharp)]
+public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
+{
+    /// <summary>
+    /// The diagnostic ID for this analyzer rule.
+    /// </summary>
+    public const string DiagnosticId = "CC036";
+
+    /// <summary>
+    /// The blocking <c>Socket</c> members that have an asynchronous counterpart.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> BlockingMembers = ImmutableHashSet.Create(
+        "Receive",
+        "ReceiveFrom",
+        "ReceiveMessageFrom",
+        "Send",
+        "SendTo",
+        "SendFile",
+        "Accept",
+        "Connect",
+        "Disconnect"
+    );
+
+    private static readonly LocalizableString Title = "Avoid blocking socket calls in async code";
+    private static readonly LocalizableString MessageFormat =
+        "Blocking 'Socket.{0}' in async code; use '{0}Async'";
+    private static readonly LocalizableString Description =
+        "A blocking socket call parks a thread-pool thread until the network responds; in async code use the Async counterpart, which also accepts a CancellationToken.";
+    private const string Category = "Usage";
+
+    private static readonly DiagnosticDescriptor Rule = new(
+        DiagnosticId,
+        Title,
+        MessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri
+    );
+
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        ImmutableArray.Create(Rule);
+
+    public override void Initialize(AnalysisContext context)
+    {
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        context.EnableConcurrentExecution();
+
+        // Resolve Socket once per compilation and compare symbols, so a consumer's own type named
+        // System.Net.Sockets.Socket is not mistaken for the framework one.
+        context.RegisterCompilationStartAction(start =>
+        {
+            var socketType = start.Compilation.GetTypeByMetadataName("System.Net.Sockets.Socket");
+            if (socketType is null)
+                return;
+
+            start.RegisterSyntaxNodeAction(
+                nodeContext => AnalyzeInvocation(nodeContext, socketType),
+                SyntaxKind.InvocationExpression
+            );
+        });
+    }
+
+    private static void AnalyzeInvocation(
+        SyntaxNodeAnalysisContext context,
+        INamedTypeSymbol socketType
+    )
+    {
+        var invocation = (InvocationExpressionSyntax)context.Node;
+        var invokedName = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            IdentifierNameSyntax identifier => identifier,
+            _ => null,
+        };
+        if (invokedName is null || !BlockingMembers.Contains(invokedName.Identifier.Text))
+            return;
+
+        if (
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is not IMethodSymbol method
+        )
+            return;
+
+        // Walk to the original definition so a subclass's override still resolves to Socket.
+        var definition = method;
+        while (definition.OverriddenMethod != null)
+            definition = definition.OverriddenMethod;
+
+        if (
+            !SymbolEqualityComparer.Default.Equals(definition.ContainingType, socketType)
+            || !BlockingMembers.Contains(definition.Name)
+        )
+            return;
+
+        // Only claim an async alternative exists when this framework actually has one. Socket's
+        // surface varies by target: SendFileAsync, for instance, is absent on .NET Standard 2.0, and
+        // recommending it there would suggest a call that does not compile.
+        if (socketType.GetMembers(definition.Name + "Async").IsEmpty)
+            return;
+
+        if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
+            return;
+
+        // A socket switched out of blocking mode does not park the thread — the synchronous calls
+        // return immediately or report WouldBlock. Detected conservatively: any `Blocking = false`
+        // on a socket anywhere in the enclosing function silences the rule there, since deciding
+        // which socket it applied to would need aliasing the rest of this analysis does not attempt.
+        if (NonBlockingModeIsSetNearby(invocation, context, socketType))
+            return;
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invokedName.GetLocation(), definition.Name)
+        );
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the enclosing function assigns <c>false</c> to
+    /// <c>Socket.Blocking</c>.
+    /// </summary>
+    /// <remarks>
+    /// The assigned member is resolved to a symbol rather than matched by shape. That covers the
+    /// forms syntax matching misses — an object initializer (<c>new Socket(…) { Blocking = false }</c>)
+    /// and an unqualified inherited <c>Blocking = false</c>, both of which put an identifier on the
+    /// left — while rejecting an unrelated property that merely shares the name. The walk stops at
+    /// nested functions: an assignment inside an uninvoked lambda may never run. Only the last
+    /// assignment before the call counts, so one placed after it — or a later
+    /// <c>Blocking = true</c> — does not exempt. A branch-conditional assignment is still accepted:
+    /// this is an exemption, and erring toward silence on deliberately non-blocking code is the
+    /// safer side.
+    /// </remarks>
+    private static bool NonBlockingModeIsSetNearby(
+        SyntaxNode node,
+        SyntaxNodeAnalysisContext context,
+        INamedTypeSymbol socketType
+    )
+    {
+        var blockingProperty = socketType
+            .GetMembers("Blocking")
+            .OfType<IPropertySymbol>()
+            .FirstOrDefault();
+        if (blockingProperty is null)
+            return false;
+
+        var scope = node.Ancestors()
+            .FirstOrDefault(candidate =>
+                candidate
+                    is BaseMethodDeclarationSyntax
+                        or LocalFunctionStatementSyntax
+                        or AnonymousFunctionExpressionSyntax
+                        or AccessorDeclarationSyntax
+            );
+        if (scope is null)
+            return false;
+
+        // The last assignment before the call is the one in effect: one placed after it cannot make
+        // this call non-blocking, and a later `Blocking = true` re-enables blocking.
+        var effective = scope
+            .DescendantNodes(descendIntoChildren: child =>
+                child == scope
+                || child
+                    is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax)
+            )
+            .OfType<AssignmentExpressionSyntax>()
+            .Where(assignment =>
+                assignment.SpanStart < node.SpanStart
+                // A plain `=` only. `Blocking |= false` and `^= false` leave the property unchanged
+                // despite the constant operand.
+                && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                && SymbolEqualityComparer.Default.Equals(
+                    context
+                        .SemanticModel.GetSymbolInfo(assignment.Left, context.CancellationToken)
+                        .Symbol,
+                    blockingProperty
+                )
+            )
+            .OrderBy(assignment => assignment.SpanStart)
+            .LastOrDefault();
+
+        return effective != null
+            && context.SemanticModel.GetConstantValue(effective.Right, context.CancellationToken)
+                is { HasValue: true, Value: false };
+    }
+
+}
