@@ -1040,7 +1040,10 @@ public static class CancellationTokenHelpers
         // implicit, so a use-site scan never sees it.
         for (var current = node.Parent; current != null && current != body; current = current.Parent)
         {
-            if (current.Parent is ForEachStatementSyntax forEach && forEach.Statement == current)
+            if (
+                current.Parent is CommonForEachStatementSyntax forEach
+                && forEach.Statement == current
+            )
             {
                 // The enumerator is what stays live, and it can be a ref struct even when the
                 // collection is an ordinary reference type — so ask for the bound enumerator rather
@@ -1058,7 +1061,8 @@ public static class CancellationTokenHelpers
                 // (CS9217). It is not a VariableDeclarator, so the declarator scan below never sees
                 // it, and neither the collection nor the enumerator need be ref-like.
                 if (
-                    semanticModel.GetDeclaredSymbol(forEach) is ILocalSymbol iteration
+                    forEach is ForEachStatementSyntax simpleForEach
+                    && semanticModel.GetDeclaredSymbol(simpleForEach) is ILocalSymbol iteration
                     && (iteration.RefKind != RefKind.None || iteration.Type.IsRefLikeType)
                 )
                     return true;
@@ -1119,7 +1123,7 @@ public static class CancellationTokenHelpers
                         is ForStatementSyntax
                             or WhileStatementSyntax
                             or DoStatementSyntax
-                            or ForEachStatementSyntax
+                            or CommonForEachStatementSyntax
                     && ReferencesLocal(
                         semanticModel,
                         body,

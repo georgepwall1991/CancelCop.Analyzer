@@ -950,4 +950,78 @@ public class TestClass
 
         await CreateTest(source, source, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task NullConditionalOnSubclassWithItsOwnParameterlessAsync_ShouldNotReportDiagnostic()
+    {
+        // With no token in scope the rewrite is `process.WaitForExitAsync()`, which binds to the
+        // subclass's own unrelated parameterless member rather than the framework method — so the
+        // diagnostic's premise is false. Reading the receiver's static type is what sees this; the
+        // resolved method's ReceiverType is Process. (With a token in scope the arity-1 call still
+        // reaches the base overload, since C# hides by signature, and the rule reports as usual.)
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class FakeProcess : Process
+{
+    public new int WaitForExitAsync() => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(FakeProcess? process)
+    {
+        process?.WaitForExit();
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingProcessWaitAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DeconstructionForeachWithRefStructEnumerator_ReportsWithoutOfferingAFix()
+    {
+        // `foreach (var (a, b) in …)` is ForEachVariableStatementSyntax, a sibling of the ordinary
+        // form, so a check written against ForEachStatementSyntax alone misses the live enumerator.
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct PairEnumerator
+{
+    public (int, int) Current => (0, 0);
+    public bool MoveNext() => false;
+}
+
+public class PairCollection
+{
+    public PairEnumerator GetEnumerator() => new PairEnumerator();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, PairCollection items, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        foreach (var (a, b) in items)
+        {
+            process.{|#0:WaitForExit|}();
+        }
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }

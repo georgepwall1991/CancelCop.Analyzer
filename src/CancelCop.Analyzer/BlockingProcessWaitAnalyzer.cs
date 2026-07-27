@@ -220,10 +220,41 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         }
 
         return ReachesCounterpart(
-            method.ReceiverType,
+            ReceiverTypeOf(context, invocation) ?? method.ReceiverType,
             tokenName is null ? 0 : 1,
             asyncCounterpart
         );
+    }
+
+    /// <summary>
+    /// The static type of the expression the method is invoked on.
+    /// </summary>
+    /// <remarks>
+    /// Not <c>IMethodSymbol.ReceiverType</c>, which is where the resolved method was declared
+    /// (<c>Process</c>) rather than what the caller holds — a subclass's own members are what the
+    /// rewritten call would see. For <c>process?.WaitForExit()</c> the receiver sits on the enclosing
+    /// conditional access; for <c>host?.Child.WaitForExit()</c> it is <c>.Child</c>, and reading the
+    /// conditional access instead would give <c>host</c>.
+    /// </remarks>
+    private static ITypeSymbol? ReceiverTypeOf(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
+    {
+        var receiver = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            MemberBindingExpressionSyntax => invocation
+                .Ancestors()
+                .OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault()
+                ?.Expression,
+            _ => null,
+        };
+
+        return receiver is null
+            ? null
+            : context.SemanticModel.GetTypeInfo(receiver, context.CancellationToken).Type;
     }
 
     /// <summary>
