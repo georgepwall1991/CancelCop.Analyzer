@@ -194,7 +194,10 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        if (!CancellationTokenHelpers.IsAsyncReturnType(method.ReturnType))
+        if (
+            !CancellationTokenHelpers.IsAsyncReturnType(method.ReturnType)
+            && !IsConfiguredAwaitable(method.ReturnType)
+        )
             return;
 
         // Inside an async function the compiler already reports CS4014; a second diagnostic on the
@@ -218,4 +221,19 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
             )
         );
     }
+
+    /// <summary>
+    /// Returns <c>true</c> for the awaitables <c>ConfigureAwait</c> produces.
+    /// </summary>
+    /// <remarks>
+    /// <c>SaveAsync().ConfigureAwait(false);</c> as a statement discards the underlying task just as
+    /// completely, but the outer call returns <c>ConfiguredTaskAwaitable</c> rather than a
+    /// <c>Task</c>, so a Task/ValueTask-only check lets this await-shaped expression through.
+    /// </remarks>
+    private static bool IsConfiguredAwaitable(ITypeSymbol? type) =>
+        type is not null
+        && type.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"
+        && type.Name
+            is "ConfiguredTaskAwaitable"
+                or "ConfiguredValueTaskAwaitable";
 }

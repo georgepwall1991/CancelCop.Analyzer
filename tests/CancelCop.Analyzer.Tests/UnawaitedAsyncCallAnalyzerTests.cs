@@ -367,4 +367,51 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("StartAsync"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task DiscardedConfiguredAwaitable_ShouldReportDiagnostic()
+    {
+        // ConfigureAwait returns ConfiguredTaskAwaitable rather than a Task, so a Task-only check
+        // lets this through — but the underlying task is discarded identically, and the shape looks
+        // await-adjacent enough that the omission is easy to miss.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task SaveAsync() => Task.CompletedTask;
+
+    public void Run()
+    {
+        {|#0:SaveAsync().ConfigureAwait(false)|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ConfigureAwait"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DiscardedConfiguredValueTaskAwaitable_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private ValueTask SaveAsync() => default;
+
+    public void Run()
+    {
+        {|#0:SaveAsync().ConfigureAwait(false)|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ConfigureAwait"));
+        await t.RunAsync();
+    }
 }
