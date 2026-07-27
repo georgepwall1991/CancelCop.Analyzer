@@ -382,4 +382,53 @@ public class Server
         t.ExpectedDiagnostics.Add(Expected("Receive"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task BlockingDisabledAfterTheCall_ShouldReportDiagnostic()
+    {
+        // Too late: this call already blocked.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer)
+    {
+        socket.{|#0:Receive|}(buffer);
+        socket.Blocking = false;
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Receive"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingReEnabledBeforeTheCall_ShouldReportDiagnostic()
+    {
+        // The last assignment before the call wins, and it puts the socket back into blocking mode.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer)
+    {
+        socket.Blocking = false;
+        socket.Blocking = true;
+        socket.{|#0:Receive|}(buffer);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Receive"));
+        await t.RunAsync();
+    }
 }

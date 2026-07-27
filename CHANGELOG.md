@@ -31,8 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   A socket switched out of blocking mode is exempt: `socket.Blocking = false` makes the synchronous
   calls return immediately or report `WouldBlock` rather than parking the thread. Detected
-  conservatively — any such assignment in the enclosing function silences the rule there, since
-  deciding which socket it applied to would need aliasing this analysis does not attempt.
+  conservatively: the assigned member is resolved to `Socket.Blocking` by symbol (so an object
+  initializer or an unqualified inherited assignment counts, and an unrelated property of the same
+  name does not), only a plain `=` counts, the walk stops at nested functions, and only the last
+  assignment before the call is in effect — so one placed after it, or a later `Blocking = true`,
+  does not exempt. Deciding *which* socket a given assignment applied to would need aliasing this
+  analysis does not attempt, so a branch-conditional assignment is still accepted; erring toward
+  silence is the safer side for an exemption.
 
   The named counterpart must actually exist on the target framework before the rule reports. Socket's
   surface varies by target — `SendFileAsync` is absent on .NET Standard 2.0 — and recommending a

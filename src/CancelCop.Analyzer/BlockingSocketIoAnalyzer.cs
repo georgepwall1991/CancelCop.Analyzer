@@ -174,7 +174,11 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
     /// forms syntax matching misses — an object initializer (<c>new Socket(…) { Blocking = false }</c>)
     /// and an unqualified inherited <c>Blocking = false</c>, both of which put an identifier on the
     /// left — while rejecting an unrelated property that merely shares the name. The walk stops at
-    /// nested functions: an assignment inside an uninvoked lambda may never run.
+    /// nested functions: an assignment inside an uninvoked lambda may never run. Only the last
+    /// assignment before the call counts, so one placed after it — or a later
+    /// <c>Blocking = true</c> — does not exempt. A branch-conditional assignment is still accepted:
+    /// this is an exemption, and erring toward silence on deliberately non-blocking code is the
+    /// safer side.
     /// </remarks>
     private static bool NonBlockingModeIsSetNearby(
         SyntaxNode node,
@@ -200,29 +204,33 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
         if (scope is null)
             return false;
 
-        return scope
+        // The last assignment before the call is the one in effect: one placed after it cannot make
+        // this call non-blocking, and a later `Blocking = true` re-enables blocking.
+        var effective = scope
             .DescendantNodes(descendIntoChildren: child =>
                 child == scope
                 || child
                     is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax)
             )
             .OfType<AssignmentExpressionSyntax>()
-            .Any(assignment =>
+            .Where(assignment =>
+                assignment.SpanStart < node.SpanStart
                 // A plain `=` only. `Blocking |= false` and `^= false` leave the property unchanged
                 // despite the constant operand.
-                assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
                 && SymbolEqualityComparer.Default.Equals(
                     context
                         .SemanticModel.GetSymbolInfo(assignment.Left, context.CancellationToken)
                         .Symbol,
                     blockingProperty
                 )
-                && context.SemanticModel.GetConstantValue(
-                    assignment.Right,
-                    context.CancellationToken
-                )
-                    is { HasValue: true, Value: false }
-            );
+            )
+            .OrderBy(assignment => assignment.SpanStart)
+            .LastOrDefault();
+
+        return effective != null
+            && context.SemanticModel.GetConstantValue(effective.Right, context.CancellationToken)
+                is { HasValue: true, Value: false };
     }
 
 }
