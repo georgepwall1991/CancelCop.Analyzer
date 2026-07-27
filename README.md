@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (34 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (35 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.36.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.37.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.36.0
+Install-Package CancelCop.Analyzer -Version 1.37.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -148,6 +148,7 @@ dotnet build samples/CancelCop.Sample
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
+| **CC035** | Empty `catch (OperationCanceledException)` silently discards the cancellation | Info | ❌ |
 
 ## Quick Examples
 
@@ -691,6 +692,25 @@ var options = new ParallelOptions
 > object initializer and `Parallel.ForEach` has no token-taking overload at all. Fires only when a
 > token is actually in scope, and stays quiet when the token is assigned afterwards
 > (`options.CancellationToken = token`).
+
+### CC035: Cancellation Silently Swallowed by an Empty Catch
+
+```csharp
+// ❌ Info CC035 - the caller cannot tell the save did not happen
+try
+{
+    await SaveAsync(cancellationToken);
+}
+catch (OperationCanceledException)
+{
+}
+```
+
+> CC019 covers a **broad** catch that swallows cancellation among everything else; a clause naming
+> `OperationCanceledException` explicitly is outside its scope. Scoped to the **empty body**: any
+> statement, a `when` filter, a rethrow, or even a comment recording the intent means the author
+> considered the case, and the rule stays quiet. So `catch (TaskCanceledException) { /* expected on
+> shutdown */ }` — the idiomatic wait-until-cancelled — is clean.
 
 ## Configuration
 

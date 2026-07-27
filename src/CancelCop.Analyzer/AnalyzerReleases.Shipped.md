@@ -1,3 +1,11 @@
+## Release 1.37.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC035 | Usage | Info | Cancellation is silently swallowed by an empty catch
+
 ## Release 1.36.0
 
 ### New Rules

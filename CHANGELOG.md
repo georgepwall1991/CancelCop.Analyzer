@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-07-27
+
+### Added
+
+- **CC035** (`SilentlySwallowedCancellationAnalyzer`): reports an *empty*
+  `catch (OperationCanceledException)` — including `TaskCanceledException` and other subclasses —
+  which silently turns a cancellation into an apparent success. **Info** severity.
+
+  Cancellation is reported by an exception precisely so the caller learns the work did *not* finish.
+  An empty catch discards that signal: execution continues past the `try` as though the operation
+  succeeded, and downstream code acts on results that were never produced.
+
+  **Complements CC019.** CC019 covers a *broad* catch — `catch` or `catch (Exception)` — that
+  swallows cancellation among everything else. A clause naming the cancellation type explicitly is
+  outside its scope, yet it is the more deliberate-looking version of the same defect. Verified
+  against the shipped analyzer before the rule was written: an empty
+  `catch (OperationCanceledException)` produced no diagnostic from any of the 34 existing rules.
+
+  Scoped to the empty body deliberately: catching cancellation to stop quietly is a real pattern at
+  a boundary, and such handlers log, set state, or break a loop. Any statement, a `when` filter, a
+  rethrow — or a comment recording the intent — means the author considered the case, so
+  `catch (TaskCanceledException) { /* expected on shutdown */ }` stays clean. Analyzer-only: the
+  right resolution depends on what the caller needs to know.
+
 ## [1.36.0] - 2026-07-27
 
 ### Added
