@@ -197,9 +197,18 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
         if (!IsDiscardedAsyncResult(method.ReturnType))
             return;
 
-        // Inside an async function the compiler already reports CS4014; a second diagnostic on the
-        // same line would be pure noise.
-        if (CancellationTokenHelpers.IsInAsyncFunction(invocation))
+        // An expression-tree lambda's body is data, not code: it never runs, so nothing is
+        // discarded.
+        if (CancellationTokenHelpers.IsWithinExpressionTree(invocation, context.SemanticModel))
+            return;
+
+        // Inside an async function the compiler already reports CS4014, and a second diagnostic on
+        // the same line would be pure noise — but only for the shapes CS4014 actually covers. It
+        // says nothing about a discarded *awaiter* in any context, so those are still reported here.
+        if (
+            IsCoveredByCompilerWarning(method.ReturnType)
+            && CancellationTokenHelpers.IsInAsyncFunction(invocation)
+        )
             return;
 
         var invokedName = invocation.Expression switch
@@ -234,6 +243,15 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
     /// work and throws the awaiter away, and the compiler never reports it in either context.</item>
     /// </list>
     /// </remarks>
+    /// <summary>
+    /// Returns <c>true</c> for the value types CS4014 reports on when discarded inside an async
+    /// function — <c>Task</c>/<c>ValueTask</c> and the awaitables <c>ConfigureAwait</c> produces.
+    /// An awaiter is deliberately absent: the compiler never warns about discarding one.
+    /// </summary>
+    private static bool IsCoveredByCompilerWarning(ITypeSymbol? type) =>
+        IsDiscardedAsyncResult(type)
+        && type?.Name is not ("TaskAwaiter" or "ValueTaskAwaiter");
+
     private static bool IsDiscardedAsyncResult(ITypeSymbol? type)
     {
         if (type is null)

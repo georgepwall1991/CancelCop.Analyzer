@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   expression-bodied lambda, and null-conditional calls (`worker?.StartAsync();`) — the diagnostic
   underlines the whole expression rather than the fragment after the `?.`.
 
+  The CS4014 deference is scoped to the shapes CS4014 actually covers. The compiler says nothing
+  about a discarded *awaiter* (`SaveAsync().GetAwaiter();`) in any context, so those are reported
+  inside async methods too — otherwise neither the compiler nor the analyzer would report them.
+  Expression-tree lambdas are excluded: their body is data, not code, so nothing is discarded.
+
   Conservative by design: a task that is assigned, returned, passed as an argument, or explicitly
   discarded with `_ =` is not dropped and is not flagged. `_ =` in particular is the documented way
   to say "I know, and I mean it" — a rule that flagged the opt-in would be impossible to satisfy.

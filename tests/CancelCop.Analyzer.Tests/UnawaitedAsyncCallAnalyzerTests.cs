@@ -490,4 +490,52 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("GetAwaiter"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task ExpressionTreeLambda_ShouldNotReportDiagnostic()
+    {
+        // An expression tree's body is data, not code — it never runs, so nothing is discarded.
+        var test =
+            @"
+using System;
+using System.Linq.Expressions;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task SaveAsync() => Task.CompletedTask;
+
+    public void Run()
+    {
+        Expression<Action> e = () => SaveAsync();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task DiscardedAwaiter_InAsyncMethod_StillReportsDiagnostic()
+    {
+        // CS4014 says nothing about a discarded awaiter in any context, so suppressing CC032 inside
+        // async methods would leave this shape unreported by both.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task SaveAsync() => Task.CompletedTask;
+
+    public async Task RunAsync()
+    {
+        {|#0:SaveAsync().GetAwaiter()|};
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("GetAwaiter"));
+        await t.RunAsync();
+    }
 }
