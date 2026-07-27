@@ -1064,6 +1064,12 @@ public static class CancellationTokenHelpers
             )
                 continue;
 
+            // A local declared in a sibling or already-closed block is out of scope by the time the
+            // call runs, so nothing it does can span the inserted await.
+            var scope = DeclarationScopeOf(declarator);
+            if (scope is null || !scope.Span.Contains(node.Span))
+                continue;
+
             // A `using var` local is disposed at scope exit, so it is live past the call whether or
             // not the identifier appears again — the implicit Dispose is the later use.
             if (
@@ -1072,19 +1078,29 @@ public static class CancellationTokenHelpers
             )
                 return true;
 
-            var usedAfter = body.DescendantNodes()
-                .OfType<IdentifierNameSyntax>()
-                .Any(identifier =>
-                    identifier.SpanStart > node.Span.End
-                    && identifier.Identifier.Text == local.Name
-                    && SymbolEqualityComparer.Default.Equals(
-                        semanticModel.GetSymbolInfo(identifier).Symbol,
-                        local
-                    )
-                );
-
-            if (usedAfter)
+            if (ReferencesLocal(semanticModel, body, local, reference => reference.SpanStart > node.Span.End))
                 return true;
+
+            // Inside a loop, position is not execution order: a `for` condition or incrementor is
+            // written before the body but runs again after it, so any reference within an enclosing
+            // loop crosses the inserted await on the next iteration.
+            for (var current = node.Parent; current != null && current != body; current = current.Parent)
+            {
+                if (
+                    current
+                        is ForStatementSyntax
+                            or WhileStatementSyntax
+                            or DoStatementSyntax
+                            or ForEachStatementSyntax
+                    && ReferencesLocal(
+                        semanticModel,
+                        body,
+                        local,
+                        reference => current.Span.Contains(reference.Span)
+                    )
+                )
+                    return true;
+            }
         }
 
         return false;
@@ -1110,5 +1126,38 @@ public static class CancellationTokenHelpers
         return usingStatement.Expression is { } expression
             && semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true;
     }
+
+
+    /// <summary>
+    /// The syntax node bounding a local's scope: the enclosing block, <c>for</c> statement, or
+    /// switch section.
+    /// </summary>
+    private static SyntaxNode? DeclarationScopeOf(VariableDeclaratorSyntax declarator) =>
+        declarator
+            .Ancestors()
+            .FirstOrDefault(a =>
+                a is BlockSyntax or ForStatementSyntax or SwitchSectionSyntax or GlobalStatementSyntax
+            );
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="local"/> is referenced anywhere in
+    /// <paramref name="body"/> at a position satisfying <paramref name="predicate"/>.
+    /// </summary>
+    private static bool ReferencesLocal(
+        SemanticModel semanticModel,
+        SyntaxNode body,
+        ILocalSymbol local,
+        System.Func<IdentifierNameSyntax, bool> predicate
+    ) =>
+        body.DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Any(identifier =>
+                identifier.Identifier.Text == local.Name
+                && predicate(identifier)
+                && SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier).Symbol,
+                    local
+                )
+            );
 
 }

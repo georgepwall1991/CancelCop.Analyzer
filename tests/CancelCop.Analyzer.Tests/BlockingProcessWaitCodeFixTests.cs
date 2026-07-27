@@ -720,4 +720,90 @@ public class TestClass
 
         await CreateTest(source, source, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task RefLikeLocalUsedInALoopHeader_ReportsWithoutOfferingAFix()
+    {
+        // The condition and incrementor are written before the body but run again after it, so the
+        // span crosses an await inserted in the body on the next iteration. Position is not
+        // execution order inside a loop.
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        for (Span<int> span = data.AsSpan(); span.Length > 0; span = span.Slice(1))
+        {
+            process.{|#0:WaitForExit|}();
+        }
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task RefLikeUsingVarInAnEarlierClosedBlock_IsFixedNormally()
+    {
+        // The lease is disposed and out of scope before the call, so it cannot span the inserted
+        // await. Scanning the whole function without checking scope would withhold a valid fix.
+        var test =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct Lease
+{
+    public void Dispose() { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        {
+            using var lease = new Lease();
+        }
+
+        process.{|#0:WaitForExit|}();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct Lease
+{
+    public void Dispose() { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        {
+            using var lease = new Lease();
+        }
+
+        await process.WaitForExitAsync(cancellationToken);
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }
