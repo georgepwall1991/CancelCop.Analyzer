@@ -11,7 +11,10 @@ namespace CancelCop.Analyzer;
 /// <summary>
 /// Shared helper methods for CancellationToken analysis.
 /// </summary>
-internal static class CancellationTokenHelpers
+// Public rather than internal so the code-fix assembly can share the syntax builders: an analyzer
+// that speculatively binds the call it is about to suggest must emit *that* call, and duplicating the
+// builder across the two assemblies is how analyzer and fixer drift apart.
+public static class CancellationTokenHelpers
 {
     private const string CancellationTokenTypeName = "CancellationToken";
     private const string SystemThreadingNamespace = "System.Threading";
@@ -25,8 +28,8 @@ internal static class CancellationTokenHelpers
         if (type == null)
             return false;
 
-        return type.Name == CancellationTokenTypeName &&
-               type.ContainingNamespace?.ToString() == SystemThreadingNamespace;
+        return type.Name == CancellationTokenTypeName
+            && type.ContainingNamespace?.ToString() == SystemThreadingNamespace;
     }
 
     /// <summary>
@@ -54,7 +57,10 @@ internal static class CancellationTokenHelpers
     /// <summary>
     /// Checks if any argument in the invocation is converted to a CancellationToken parameter.
     /// </summary>
-    public static bool HasCancellationTokenArgument(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    public static bool HasCancellationTokenArgument(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel
+    )
     {
         return invocation.ArgumentList.Arguments.Any(arg =>
         {
@@ -98,7 +104,8 @@ internal static class CancellationTokenHelpers
     /// </remarks>
     public static IParameterSymbol? FindEnclosingCancellationTokenParameter(
         SyntaxNode node,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel
+    )
     {
         var current = node.Parent;
         while (current != null)
@@ -108,7 +115,8 @@ internal static class CancellationTokenHelpers
             if (current is LocalFunctionStatementSyntax localFunction)
             {
                 var token = FindCancellationTokenParameter(
-                    semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol);
+                    semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol
+                );
                 if (token != null)
                     return token;
                 if (localFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
@@ -117,7 +125,8 @@ internal static class CancellationTokenHelpers
             else if (current is AnonymousFunctionExpressionSyntax anonymousFunction)
             {
                 var token = FindCancellationTokenParameter(
-                    semanticModel.GetSymbolInfo(anonymousFunction).Symbol as IMethodSymbol);
+                    semanticModel.GetSymbolInfo(anonymousFunction).Symbol as IMethodSymbol
+                );
                 if (token != null)
                     return token;
                 if (anonymousFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
@@ -128,12 +137,14 @@ internal static class CancellationTokenHelpers
                 // A non-primary constructor's body cannot reference primary-constructor
                 // parameters (CS9105), so its own parameter list ends the search.
                 return FindCancellationTokenParameter(
-                    semanticModel.GetDeclaredSymbol(constructor) as IMethodSymbol);
+                    semanticModel.GetDeclaredSymbol(constructor) as IMethodSymbol
+                );
             }
             else if (current is MethodDeclarationSyntax method)
             {
                 var token = FindCancellationTokenParameter(
-                    semanticModel.GetDeclaredSymbol(method) as IMethodSymbol);
+                    semanticModel.GetDeclaredSymbol(method) as IMethodSymbol
+                );
                 if (token != null)
                     return token;
                 // A static member cannot capture primary-constructor parameters.
@@ -179,14 +190,17 @@ internal static class CancellationTokenHelpers
     /// </summary>
     private static IParameterSymbol? FindPrimaryConstructorTokenParameter(
         TypeDeclarationSyntax typeDeclaration,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel
+    )
     {
         if (typeDeclaration.ParameterList != null)
         {
             foreach (var parameter in typeDeclaration.ParameterList.Parameters)
             {
-                if (semanticModel.GetDeclaredSymbol(parameter) is IParameterSymbol parameterSymbol &&
-                    IsCancellationToken(parameterSymbol.Type))
+                if (
+                    semanticModel.GetDeclaredSymbol(parameter) is IParameterSymbol parameterSymbol
+                    && IsCancellationToken(parameterSymbol.Type)
+                )
                 {
                     return parameterSymbol;
                 }
@@ -229,7 +243,8 @@ internal static class CancellationTokenHelpers
         SyntaxNodeAnalysisContext context,
         InvocationExpressionSyntax invocation,
         IMethodSymbol methodSymbol,
-        DiagnosticDescriptor rule)
+        DiagnosticDescriptor rule
+    )
     {
         // Check if a CancellationToken was already passed in the invocation
         if (HasCancellationTokenArgument(invocation, context.SemanticModel))
@@ -237,7 +252,10 @@ internal static class CancellationTokenHelpers
 
         // Find the nearest in-scope CancellationToken parameter — from a containing local
         // function, lambda, constructor, method, or primary constructor.
-        var tokenParameter = FindEnclosingCancellationTokenParameter(invocation, context.SemanticModel);
+        var tokenParameter = FindEnclosingCancellationTokenParameter(
+            invocation,
+            context.SemanticModel
+        );
         if (tokenParameter == null)
             return;
 
@@ -265,7 +283,8 @@ internal static class CancellationTokenHelpers
                 : invocation.Expression.GetLocation(),
             properties.ToImmutable(),
             methodSymbol.Name,
-            tokenParameter.Name);
+            tokenParameter.Name
+        );
 
         context.ReportDiagnostic(diagnostic);
     }
@@ -310,9 +329,15 @@ internal static class CancellationTokenHelpers
 
                 // Await inside a nested lambda/local function belongs to that function, not the
                 // synthesized top-level entry point.
-                var belongsToNestedFunction = token.Parent?.AncestorsAndSelf()
-                    .TakeWhile(node => node != global)
-                    .Any(node => node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax) == true;
+                var belongsToNestedFunction =
+                    token
+                        .Parent?.AncestorsAndSelf()
+                        .TakeWhile(node => node != global)
+                        .Any(node =>
+                            node
+                                is AnonymousFunctionExpressionSyntax
+                                    or LocalFunctionStatementSyntax
+                        ) == true;
 
                 if (!belongsToNestedFunction)
                     return true;
@@ -333,15 +358,20 @@ internal static class CancellationTokenHelpers
         SyntaxNode body,
         IParameterSymbol parameter,
         SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
+        System.Threading.CancellationToken cancellationToken
+    )
     {
         foreach (var identifier in body.DescendantNodes().OfType<IdentifierNameSyntax>())
         {
             if (identifier.Identifier.Text != parameter.Name)
                 continue;
 
-            if (!SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
+            if (
+                !SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol,
+                    parameter
+                )
+            )
             {
                 continue;
             }
@@ -349,18 +379,23 @@ internal static class CancellationTokenHelpers
             if (IsInsideNameof(identifier, semanticModel, cancellationToken))
                 continue;
 
-            var parameterReference = semanticModel.GetOperation(identifier, cancellationToken)
+            var parameterReference =
+                semanticModel.GetOperation(identifier, cancellationToken)
                 as IParameterReferenceOperation;
 
-            if (parameterReference?.Parent is ISimpleAssignmentOperation assignment
-                && ReferenceEquals(assignment.Target, parameterReference))
+            if (
+                parameterReference?.Parent is ISimpleAssignmentOperation assignment
+                && ReferenceEquals(assignment.Target, parameterReference)
+            )
             {
                 continue;
             }
 
-            if (parameterReference?.Parent is IArgumentOperation argument
+            if (
+                parameterReference?.Parent is IArgumentOperation argument
                 && argument.Parameter?.RefKind == RefKind.Out
-                && ReferenceEquals(argument.Value, parameterReference))
+                && ReferenceEquals(argument.Value, parameterReference)
+            )
             {
                 continue;
             }
@@ -378,11 +413,14 @@ internal static class CancellationTokenHelpers
     public static bool IsInsideNameof(
         SyntaxNode node,
         SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
+        System.Threading.CancellationToken cancellationToken
+    )
     {
-        for (var operation = semanticModel.GetOperation(node, cancellationToken);
-             operation != null;
-             operation = operation.Parent)
+        for (
+            var operation = semanticModel.GetOperation(node, cancellationToken);
+            operation != null;
+            operation = operation.Parent
+        )
         {
             if (operation is INameOfOperation)
                 return true;
@@ -404,34 +442,45 @@ internal static class CancellationTokenHelpers
         IParameterSymbol parameter,
         string memberName,
         SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
+        System.Threading.CancellationToken cancellationToken
+    )
     {
         foreach (var memberAccess in body.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
         {
             if (memberAccess.Name.Identifier.Text != memberName)
                 continue;
 
-            if (SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol, parameter) &&
-                !IsInsideNameof(memberAccess, semanticModel, cancellationToken))
+            if (
+                SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken).Symbol,
+                    parameter
+                ) && !IsInsideNameof(memberAccess, semanticModel, cancellationToken)
+            )
                 return true;
         }
 
-        foreach (var memberBinding in body.DescendantNodes().OfType<MemberBindingExpressionSyntax>())
+        foreach (
+            var memberBinding in body.DescendantNodes().OfType<MemberBindingExpressionSyntax>()
+        )
         {
             if (memberBinding.Name.Identifier.Text != memberName)
                 continue;
 
-            var conditionalAccess = memberBinding.Ancestors()
+            var conditionalAccess = memberBinding
+                .Ancestors()
                 .OfType<ConditionalAccessExpressionSyntax>()
                 .FirstOrDefault();
             if (conditionalAccess == null)
                 continue;
 
-            if (SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(conditionalAccess.Expression, cancellationToken).Symbol,
-                    parameter) &&
-                !IsInsideNameof(memberBinding, semanticModel, cancellationToken))
+            if (
+                SymbolEqualityComparer.Default.Equals(
+                    semanticModel
+                        .GetSymbolInfo(conditionalAccess.Expression, cancellationToken)
+                        .Symbol,
+                    parameter
+                ) && !IsInsideNameof(memberBinding, semanticModel, cancellationToken)
+            )
             {
                 return true;
             }
@@ -450,34 +499,44 @@ internal static class CancellationTokenHelpers
         SyntaxNode body,
         IParameterSymbol parameter,
         SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
+        System.Threading.CancellationToken cancellationToken
+    )
     {
         foreach (var identifier in body.DescendantNodes().OfType<IdentifierNameSyntax>())
         {
             if (identifier.Identifier.Text != parameter.Name)
                 continue;
-            if (!SymbolEqualityComparer.Default.Equals(
-                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol, parameter))
+            if (
+                !SymbolEqualityComparer.Default.Equals(
+                    semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol,
+                    parameter
+                )
+            )
                 continue;
 
             if (identifier.Parent is ArgumentSyntax)
                 return true;
 
-            if (identifier.Parent is MemberAccessExpressionSyntax { Expression: var receiver } memberAccess &&
-                receiver == identifier &&
-                memberAccess.Parent is InvocationExpressionSyntax invocation &&
-                semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is
-                    IMethodSymbol { ReducedFrom: not null })
+            if (
+                identifier.Parent
+                    is MemberAccessExpressionSyntax { Expression: var receiver } memberAccess
+                && receiver == identifier
+                && memberAccess.Parent is InvocationExpressionSyntax invocation
+                && semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol
+                    is IMethodSymbol { ReducedFrom: not null }
+            )
             {
                 return true;
             }
 
-            if (identifier.Parent is ConditionalAccessExpressionSyntax conditionalAccess &&
-                conditionalAccess.Expression == identifier &&
-                conditionalAccess.WhenNotNull is InvocationExpressionSyntax conditionalInvocation &&
-                conditionalInvocation.Expression is MemberBindingExpressionSyntax &&
-                semanticModel.GetSymbolInfo(conditionalInvocation, cancellationToken).Symbol is
-                    IMethodSymbol { ReducedFrom: not null })
+            if (
+                identifier.Parent is ConditionalAccessExpressionSyntax conditionalAccess
+                && conditionalAccess.Expression == identifier
+                && conditionalAccess.WhenNotNull is InvocationExpressionSyntax conditionalInvocation
+                && conditionalInvocation.Expression is MemberBindingExpressionSyntax
+                && semanticModel.GetSymbolInfo(conditionalInvocation, cancellationToken).Symbol
+                    is IMethodSymbol { ReducedFrom: not null }
+            )
             {
                 return true;
             }
@@ -517,8 +576,10 @@ internal static class CancellationTokenHelpers
                     continue;
 
                 var implementation = containingType.FindImplementationForInterfaceMember(member);
-                if (implementation != null &&
-                    SymbolEqualityComparer.Default.Equals(implementation, method))
+                if (
+                    implementation != null
+                    && SymbolEqualityComparer.Default.Equals(implementation, method)
+                )
                 {
                     return true;
                 }
@@ -539,8 +600,10 @@ internal static class CancellationTokenHelpers
     {
         for (var current = node.Parent; current != null; current = current.Parent)
         {
-            if (current is LambdaExpressionSyntax lambda &&
-                IsExpressionTreeType(semanticModel.GetTypeInfo(lambda).ConvertedType))
+            if (
+                current is LambdaExpressionSyntax lambda
+                && IsExpressionTreeType(semanticModel.GetTypeInfo(lambda).ConvertedType)
+            )
                 return true;
 
             // A method or local-function body is executable code and can never sit inside an
@@ -556,8 +619,10 @@ internal static class CancellationTokenHelpers
     {
         for (var current = type; current != null; current = current.BaseType)
         {
-            if (current.Name == "Expression" &&
-                current.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions")
+            if (
+                current.Name == "Expression"
+                && current.ContainingNamespace?.ToDisplayString() == "System.Linq.Expressions"
+            )
                 return true;
         }
 
@@ -590,21 +655,27 @@ internal static class CancellationTokenHelpers
 
         // Compare against the unreduced original definition so extension methods include their
         // `this` parameter on both sides.
-        var boundParameters = (methodSymbol.ReducedFrom ?? methodSymbol).OriginalDefinition.Parameters;
+        var boundParameters = (methodSymbol.ReducedFrom ?? methodSymbol)
+            .OriginalDefinition
+            .Parameters;
 
         string? countMatch = null;
         string? fallback = null;
 
-        foreach (var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>())
+        foreach (
+            var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>()
+        )
         {
-            var tokenParameter = overload.Parameters.FirstOrDefault(p => IsCancellationToken(p.Type));
+            var tokenParameter = overload.Parameters.FirstOrDefault(p =>
+                IsCancellationToken(p.Type)
+            );
             if (tokenParameter == null)
                 continue;
 
             fallback ??= tokenParameter.Name;
 
-            var nonTokenParameters = overload.Parameters
-                .Where(p => !IsCancellationToken(p.Type))
+            var nonTokenParameters = overload
+                .Parameters.Where(p => !IsCancellationToken(p.Type))
                 .ToImmutableArray();
             if (nonTokenParameters.Length != boundParameters.Length)
                 continue;
@@ -614,8 +685,7 @@ internal static class CancellationTokenHelpers
             var typesMatch = true;
             for (var i = 0; i < nonTokenParameters.Length; i++)
             {
-                if (!ParameterTypesEquivalent(
-                        nonTokenParameters[i].Type, boundParameters[i].Type))
+                if (!ParameterTypesEquivalent(nonTokenParameters[i].Type, boundParameters[i].Type))
                 {
                     typesMatch = false;
                     break;
@@ -662,14 +732,18 @@ internal static class CancellationTokenHelpers
         // (e.g. `Task.Delay(100)` → `Task.Delay(int, CancellationToken)`).
         var boundParameters = method.Parameters;
 
-        foreach (var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>())
+        foreach (
+            var overload in containingType.GetMembers(methodSymbol.Name).OfType<IMethodSymbol>()
+        )
         {
-            var tokenParameter = overload.Parameters.FirstOrDefault(p => IsCancellationToken(p.Type));
+            var tokenParameter = overload.Parameters.FirstOrDefault(p =>
+                IsCancellationToken(p.Type)
+            );
             if (tokenParameter == null)
                 continue;
 
-            var nonTokenParameters = overload.Parameters
-                .Where(p => !IsCancellationToken(p.Type))
+            var nonTokenParameters = overload
+                .Parameters.Where(p => !IsCancellationToken(p.Type))
                 .ToImmutableArray();
             if (nonTokenParameters.Length != boundParameters.Length)
                 continue;
@@ -677,8 +751,7 @@ internal static class CancellationTokenHelpers
             var typesMatch = true;
             for (var i = 0; i < nonTokenParameters.Length; i++)
             {
-                if (!ParameterTypesEquivalent(
-                        nonTokenParameters[i].Type, boundParameters[i].Type))
+                if (!ParameterTypesEquivalent(nonTokenParameters[i].Type, boundParameters[i].Type))
                 {
                     typesMatch = false;
                     break;
@@ -708,9 +781,16 @@ internal static class CancellationTokenHelpers
         if (a is IArrayTypeSymbol aa && b is IArrayTypeSymbol ab)
             return aa.Rank == ab.Rank && ParameterTypesEquivalent(aa.ElementType, ab.ElementType);
 
-        if (a is INamedTypeSymbol na && b is INamedTypeSymbol nb && na.IsGenericType && nb.IsGenericType)
+        if (
+            a is INamedTypeSymbol na
+            && b is INamedTypeSymbol nb
+            && na.IsGenericType
+            && nb.IsGenericType
+        )
         {
-            if (!SymbolEqualityComparer.Default.Equals(na.OriginalDefinition, nb.OriginalDefinition))
+            if (
+                !SymbolEqualityComparer.Default.Equals(na.OriginalDefinition, nb.OriginalDefinition)
+            )
                 return false;
             if (na.TypeArguments.Length != nb.TypeArguments.Length)
                 return false;
@@ -796,5 +876,70 @@ internal static class CancellationTokenHelpers
         return query
             .Body.Clauses.OfType<JoinClauseSyntax>()
             .Any(join => join.InExpression.Contains(node));
+    }
+
+    /// <summary>
+    /// Speculatively binds <paramref name="expression"/> at <paramref name="position"/> and returns
+    /// <c>true</c> when it resolves to <paramref name="expected"/>.
+    /// </summary>
+    /// <remarks>
+    /// A rule that rewrites a call to a differently-named counterpart is only safe if the rewritten
+    /// call binds to the method the rule had in mind. Symbol lookup on the declaring type is not
+    /// enough — the receiver's own type may hide the counterpart with an unusable member, and
+    /// implicit conversions can hand the call to an overload that signature comparison rejects.
+    /// Asking the compiler is the only answer that matches what the user's build will do.
+    /// </remarks>
+    public static bool SpeculativelyBindsTo(
+        SemanticModel semanticModel,
+        int position,
+        ExpressionSyntax expression,
+        IMethodSymbol expected
+    )
+    {
+        var bound =
+            semanticModel
+                .GetSpeculativeSymbolInfo(
+                    position,
+                    expression,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+
+        return bound != null
+            && SymbolEqualityComparer.Default.Equals(
+                bound.OriginalDefinition,
+                expected.OriginalDefinition
+            );
+    }
+
+    /// <summary>
+    /// Builds <c>receiver.<paramref name="newName"/>(token?)</c> from an existing invocation: the
+    /// shape a rule rewrites a blocking call into.
+    /// </summary>
+    /// <remarks>
+    /// The name is replaced on the existing member access rather than the expression being rebuilt,
+    /// which keeps the receiver and any trivia around the dot intact — reconstructing it silently
+    /// deletes a comment such as <c>process /* started above */ .WaitForExit()</c>. Sharing one
+    /// builder also keeps an analyzer's speculative binding and its fixer's output in step: the call
+    /// that was checked is the call that gets written.
+    /// </remarks>
+    public static InvocationExpressionSyntax BuildRenamedInvocation(
+        MemberAccessExpressionSyntax memberAccess,
+        InvocationExpressionSyntax invocation,
+        string newName,
+        string? tokenName
+    )
+    {
+        var argumentList = SyntaxFactory.ArgumentList();
+        if (tokenName != null)
+        {
+            argumentList = argumentList.AddArguments(
+                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName))
+            );
+        }
+
+        return invocation
+            .WithExpression(memberAccess.WithName(SyntaxFactory.IdentifierName(newName)))
+            .WithArgumentList(argumentList);
     }
 }

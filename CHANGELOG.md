@@ -28,11 +28,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot compile. Null-conditional calls and `await`-forbidden contexts (a `lock` body, an
   exception filter, an unsafe context, most query clauses) are reported without a fix.
 
+  The rewrite is validated by binding it: finding `WaitForExitAsync` on `Process` proves the API
+  exists, not that the rewritten call reaches it, since a subclass can hide it with an unusable
+  member. The analyzer speculatively binds the exact call the fix will emit and stays quiet unless
+  it resolves to the framework method.
+
 ### Changed
 
 - The `await`-forbidden-context check introduced for CC028 in 1.29.0 moved to
   `CancellationTokenHelpers` now that a second rule needs it, keeping one definition of where an
-  inserted `await` would fail to compile.
+  inserted `await` would fail to compile. The same file gained shared speculative-binding and
+  invocation-rewrite helpers, and is now `public` so the code-fix assembly can share them — an
+  analyzer that binds the call it is about to suggest must emit *that* call, and duplicating the
+  builder across the two assemblies is how analyzer and fixer drift apart.
+- Rewrites rename the member on the existing access rather than rebuilding the expression, so
+  trivia inside the receiver (`process /* started above */ .WaitForExit()`) survives the fix.
 
 ## [1.29.0] - 2026-07-27
 

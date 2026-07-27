@@ -200,4 +200,76 @@ public class TestClass
 
         await CreateTest(source, source, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task SubclassHidingWaitForExitAsync_ShouldNotReportDiagnostic()
+    {
+        // Finding WaitForExitAsync on Process proves the API exists, not that the rewritten call
+        // reaches it. This subclass hides it with a non-awaitable member, so `await` would fail with
+        // CS1061 — there is no async alternative here and the rule stays quiet.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class FakeProcess : Process
+{
+    public new int WaitForExitAsync(CancellationToken cancellationToken) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(FakeProcess process, CancellationToken cancellationToken)
+    {
+        process.WaitForExit();
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingProcessWaitAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task WaitForExit_WithTriviaInsideMemberAccess_KeepsTheComment()
+    {
+        // Rebuilding the member access from a trivia-stripped receiver would silently delete the
+        // comment. Renaming the existing node preserves it.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        process /* started above */ .{|#0:WaitForExit|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        await process /* started above */ .WaitForExitAsync(cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

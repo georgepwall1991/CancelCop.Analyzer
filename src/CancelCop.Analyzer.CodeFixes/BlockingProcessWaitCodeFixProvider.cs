@@ -85,24 +85,15 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // WaitForExitAsync's token parameter has no default, but passing none is still valid via the
-        // (CancellationToken cancellationToken = default) signature shipped since .NET 5; when a
-        // token is in scope, flow it so the wait is actually cancellable.
-        var argumentList = SyntaxFactory.ArgumentList();
-        if (tokenName != null)
-        {
-            argumentList = argumentList.AddArguments(
-                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName))
-            );
-        }
-
-        var asyncInvocation = SyntaxFactory.InvocationExpression(
-            SyntaxFactory.MemberAccessExpression(
-                SyntaxKind.SimpleMemberAccessExpression,
-                memberAccess.Expression.WithoutTrivia(),
-                SyntaxFactory.IdentifierName("WaitForExitAsync")
-            ),
-            argumentList
+        // Built by the analyzer's helper so the emitted call is exactly the one it bound and
+        // approved. It replaces the name on the existing member access rather than rebuilding the
+        // expression, which keeps the receiver and any trivia around the dot intact — reconstructing
+        // it would silently delete a comment such as `process /* started above */ .WaitForExit()`.
+        var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
+            memberAccess,
+            invocation,
+            "WaitForExitAsync",
+            tokenName
         );
 
         var newRoot = root.ReplaceNode(

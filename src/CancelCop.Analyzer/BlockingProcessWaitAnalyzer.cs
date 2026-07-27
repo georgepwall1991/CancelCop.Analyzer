@@ -127,7 +127,7 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         // Only claim an async alternative exists when the target framework actually has one:
         // WaitForExitAsync arrived in .NET 5, so .NET Framework consumers stay quiet rather than
         // receive a suggestion that cannot compile.
-        if (!HasWaitForExitAsync(containingType))
+        if (!TryGetWaitForExitAsync(containingType, out var asyncCounterpart))
             return;
 
         // The fix inserts an await, so it only applies in async code.
@@ -149,6 +149,26 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         if (tokenParameter != null)
             properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
+        // Finding the framework method on Process proves the API exists, not that the rewritten call
+        // reaches it: a subclass may hide WaitForExitAsync with an unusable member, and the fix would
+        // then await something that is not awaitable. Bind the call the fixer would emit and stay
+        // quiet unless it resolves to the framework method this diagnostic is premised on.
+        if (
+            invocation.Expression is MemberAccessExpressionSyntax receiverAccess
+            && !CancellationTokenHelpers.SpeculativelyBindsTo(
+                context.SemanticModel,
+                invocation.SpanStart,
+                CancellationTokenHelpers.BuildRenamedInvocation(
+                    receiverAccess,
+                    invocation,
+                    "WaitForExitAsync",
+                    tokenParameter?.Name
+                ),
+                asyncCounterpart!
+            )
+        )
+            return;
+
         context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation(), properties));
     }
 
@@ -156,8 +176,13 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
     /// Returns <c>true</c> when <c>Process</c> exposes the public instance
     /// <c>WaitForExitAsync(CancellationToken)</c> returning <c>Task</c>.
     /// </summary>
-    private static bool HasWaitForExitAsync(INamedTypeSymbol processType)
+    private static bool TryGetWaitForExitAsync(
+        INamedTypeSymbol processType,
+        out IMethodSymbol? asyncCounterpart
+    )
     {
+        asyncCounterpart = null;
+
         foreach (var member in processType.GetMembers("WaitForExitAsync"))
         {
             if (
@@ -174,6 +199,7 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
                 && CancellationTokenHelpers.IsCancellationToken(candidate.Parameters[0].Type)
             )
             {
+                asyncCounterpart = candidate;
                 return true;
             }
         }
