@@ -1139,7 +1139,9 @@ public static class CancellationTokenHelpers
                     semanticModel,
                     body,
                     local,
-                    reference => reference.SpanStart > position
+                    reference =>
+                        reference.SpanStart > position
+                        && !IsMutuallyExclusiveWith(reference, position)
                 )
             )
                 return true;
@@ -1149,8 +1151,29 @@ public static class CancellationTokenHelpers
             // inserted await.
             foreach (var jump in body.DescendantNodes().OfType<GotoStatementSyntax>())
             {
+                // `goto case` / `goto default` jump to a switch label, which can sit in an earlier
+                // section than the call. Treat the whole switch as the back-edge region: any
+                // reference in it can run again after the inserted await.
                 if (jump.Expression is not IdentifierNameSyntax labelName)
+                {
+                    var switchStatement = jump.Ancestors()
+                        .OfType<SwitchStatementSyntax>()
+                        .FirstOrDefault();
+
+                    if (
+                        switchStatement != null
+                        && switchStatement.Span.Contains(position)
+                        && ReferencesLocal(
+                            semanticModel,
+                            body,
+                            local,
+                            reference => switchStatement.Span.Contains(reference.Span)
+                        )
+                    )
+                        return true;
+
                     continue;
+                }
 
                 var label = body.DescendantNodes()
                     .OfType<LabeledStatementSyntax>()
@@ -1443,5 +1466,34 @@ public static class CancellationTokenHelpers
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="reference"/> and <paramref name="position"/> sit in
+    /// opposite arms of the same <c>if</c>, so only one of them ever runs.
+    /// </summary>
+    /// <remarks>
+    /// Source order is not execution order across a branch: a reference in the <c>else</c> arm comes
+    /// after a call in the <c>then</c> arm textually, but the two never both execute, so the value
+    /// is not live across an await inserted in the other arm.
+    /// </remarks>
+    private static bool IsMutuallyExclusiveWith(SyntaxNode reference, int position)
+    {
+        foreach (var ifStatement in reference.Ancestors().OfType<IfStatementSyntax>())
+        {
+            if (ifStatement.Else is null)
+                continue;
+
+            var referenceInElse = ifStatement.Else.Span.Contains(reference.Span);
+            var positionInElse = ifStatement.Else.Span.Contains(position);
+            var positionInThen = ifStatement.Statement.Span.Contains(position);
+
+            if (referenceInElse && positionInThen)
+                return true;
+            if (!referenceInElse && positionInElse)
+                return true;
+        }
+
+        return false;
     }
 }

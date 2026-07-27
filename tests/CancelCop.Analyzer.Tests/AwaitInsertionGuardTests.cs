@@ -1024,4 +1024,105 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC013_BackwardGotoCase_ReportsWithoutOfferingAFix()
+    {
+        // `goto case` jumps to an earlier switch section that reads the span, so the value crosses
+        // an await inserted in the later section. The jump target is a switch label rather than a
+        // named one, and nothing follows the call textually.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Use(Span<int> buffer) { }
+
+    public async Task RunAsync(int[] data, int mode, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        switch (mode)
+        {
+            case 0:
+                Use(span);
+                break;
+            case 1:
+                {|#0:Thread.Sleep(100)|};
+                goto case 0;
+        }
+    }
+}";
+
+        await NoFix<BlockingSleepAnalyzer, BlockingSleepCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC013_SpanUsedOnlyInTheOppositeBranch_IsStillFixed()
+    {
+        // The else arm follows the call in source order but never runs when the call does, so the
+        // span is not live across the inserted await. Source position alone would withhold this.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Use(Span<int> buffer) { }
+
+    public async Task RunAsync(int[] data, bool pick, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        if (pick)
+            {|#0:Thread.Sleep(100)|};
+        else
+            Use(span);
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Use(Span<int> buffer) { }
+
+    public async Task RunAsync(int[] data, bool pick, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        if (pick)
+            await Task.Delay(100, cancellationToken);
+        else
+            Use(span);
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingSleepAnalyzer,
+            BlockingSleepCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        );
+        await t.RunAsync();
+    }
 }
