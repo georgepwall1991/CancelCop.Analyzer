@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-07-27
+
+### Added
+
+- **CC034** (`ParallelOptionsTokenAnalyzer`): flags a `ParallelOptions` created without a
+  `CancellationToken` while one is in scope. Code fix adds `CancellationToken = token` to the object
+  initializer, creating the initializer when there is none.
+
+  `ParallelOptions.CancellationToken` is the *only* way to cancel a `Parallel` loop. Without it the
+  loop runs every partition to completion no matter what the caller wants, and a long parallel loop
+  over a large collection is precisely the work most worth stopping.
+
+  **CC002 structurally cannot see this.** It fires on a *call* that has a token-accepting overload;
+  here the token is neither an argument nor an overload but a property set in an object initializer,
+  and `Parallel.ForEach` has no token-taking overload at all. Verified against the shipped analyzer
+  before the rule was written: a tokenless `ParallelOptions` with a token in scope produced no
+  diagnostic from any of the 33 existing rules.
+
+  Conservative by design: fires only when a token is actually in scope, using the same walk as
+  CC002/CC012 — with nothing to suggest the rule stays quiet. It also stays quiet when the token is
+  assigned afterwards (`options.CancellationToken = cancellationToken;`), which is equally correct
+  and common when the options are built up conditionally. Implicit `new()` creation is covered, and
+  the fix appends to an existing initializer rather than replacing it, so `MaxDegreeOfParallelism`
+  and `TaskScheduler` survive.
+
 ## [1.35.0] - 2026-07-27
 
 ### Fixed
