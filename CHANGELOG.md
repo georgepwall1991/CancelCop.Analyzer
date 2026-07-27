@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-07-27
+
+### Added
+
+- **CC030** (`BlockingProcessWaitAnalyzer`): flags a blocking parameterless
+  `Process.WaitForExit()` inside async code and rewrites it to
+  `await process.WaitForExitAsync(cancellationToken)`, flowing the in-scope token.
+
+  `WaitForExit()` is the worst-behaved member of the blocking-in-async family. The wait is
+  unbounded and depends on a program outside your control, so a hung child process pins a
+  thread-pool thread indefinitely and no cancellation, shutdown signal, or request abort can
+  reclaim it. CC002 cannot catch it because the async form is a differently-named method rather
+  than an overload. Joins CC013, CC015, CC026, and CC028.
+
+  Conservative by design: the `WaitForExit(int)` timeout overload returns `bool` and has no
+  counterpart of that shape, so it is not flagged; the rule is symbol-gated to
+  `System.Diagnostics.Process`; and it stays quiet unless the target framework actually exposes
+  `WaitForExitAsync` (added in .NET 5), so .NET Framework consumers never see a suggestion that
+  cannot compile. Null-conditional calls and `await`-forbidden contexts (a `lock` body, an
+  exception filter, an unsafe context, most query clauses) are reported without a fix.
+
+### Changed
+
+- The `await`-forbidden-context check introduced for CC028 in 1.29.0 moved to
+  `CancellationTokenHelpers` now that a second rule needs it, keeping one definition of where an
+  inserted `await` would fail to compile.
+
 ## [1.29.0] - 2026-07-27
 
 ### Changed

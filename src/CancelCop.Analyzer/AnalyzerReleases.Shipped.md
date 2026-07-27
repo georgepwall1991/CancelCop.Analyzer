@@ -1,3 +1,11 @@
+## Release 1.30.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC030 | Usage | Warning | Avoid blocking Process.WaitForExit() in async code; use WaitForExitAsync
+
 ## Release 1.28.0
 
 ### New Rules
