@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them would give up the property that makes its rewrites safe, so CC036 stands apart — and is
   analyzer-only, because there is no mechanical rewrite.
 
+  The named counterpart must actually exist on the target framework before the rule reports. Socket's
+  surface varies by target — `SendFileAsync` is absent on .NET Standard 2.0 — and recommending a
+  method that is not there would suggest a call that does not compile.
+
   Verified against the shipped analyzer before the rule was written: a blocking `Socket.Receive` in
   async code produced no diagnostic from any of the 35 existing rules. `Socket` is resolved from the
   compilation and matched by symbol, through the override chain, so a consumer's own type of the same

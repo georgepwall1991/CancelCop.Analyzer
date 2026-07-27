@@ -143,6 +143,12 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
         )
             return;
 
+        // Only claim an async alternative exists when this framework actually has one. Socket's
+        // surface varies by target: SendFileAsync, for instance, is absent on .NET Standard 2.0, and
+        // recommending it there would suggest a call that does not compile.
+        if (socketType.GetMembers(definition.Name + "Async").IsEmpty)
+            return;
+
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 

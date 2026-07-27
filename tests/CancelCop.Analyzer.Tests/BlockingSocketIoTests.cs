@@ -202,4 +202,34 @@ public class Server
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task MemberWithoutAnAsyncCounterpartOnThisFramework_ShouldNotReportDiagnostic()
+    {
+        // The rule must only claim an alternative the target framework actually has. This stub
+        // Socket exposes Receive but no ReceiveAsync, standing in for a framework surface where the
+        // counterpart is absent — recommending it there would suggest a call that does not compile.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+namespace System.Net.Sockets
+{
+    public class Socket
+    {
+        public int Receive(byte[] buffer) => 0;
+    }
+}
+
+public class Server
+{
+    public async Task RunAsync(System.Net.Sockets.Socket socket, byte[] buffer)
+    {
+        socket.Receive(buffer);
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }
