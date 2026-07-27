@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -101,6 +102,8 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
             MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            // An inherited call written without `this.` inside a Process subclass.
+            IdentifierNameSyntax identifier => identifier,
             _ => null,
         };
         if (invokedName is null || invokedName.Identifier.Text != "WaitForExit")
@@ -152,24 +155,78 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         // Finding the framework method on Process proves the API exists, not that the rewritten call
         // reaches it: a subclass may hide WaitForExitAsync with an unusable member, and the fix would
         // then await something that is not awaitable. Bind the call the fixer would emit and stay
-        // quiet unless it resolves to the framework method this diagnostic is premised on.
+        // quiet unless it resolves to the framework method this diagnostic is premised on. This runs
+        // for null-conditional calls too, which get no fix but still make the claim.
         if (
-            invocation.Expression is MemberAccessExpressionSyntax receiverAccess
-            && !CancellationTokenHelpers.SpeculativelyBindsTo(
-                context.SemanticModel,
-                invocation.SpanStart,
-                CancellationTokenHelpers.BuildRenamedInvocation(
-                    receiverAccess,
-                    invocation,
-                    "WaitForExitAsync",
-                    tokenParameter?.Name
-                ),
+            !ResolvesToTheFrameworkCounterpart(
+                context,
+                invocation,
+                tokenParameter?.Name,
                 asyncCounterpart!
             )
         )
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation(), properties));
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when a call to <c>WaitForExitAsync</c> in this position resolves to
+    /// <paramref name="asyncCounterpart"/>, the framework method the diagnostic is premised on.
+    /// </summary>
+    /// <remarks>
+    /// A null-conditional call has no rewritable member access, so its receiver is lifted out of the
+    /// enclosing conditional access and bound directly. No fix is offered for that shape, but the
+    /// diagnostic still asserts an async alternative exists and that claim has to hold.
+    /// </remarks>
+    private static bool ResolvesToTheFrameworkCounterpart(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        string? tokenName,
+        IMethodSymbol asyncCounterpart
+    )
+    {
+        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+            invocation,
+            "WaitForExitAsync",
+            tokenName
+        );
+
+        if (speculative is null)
+        {
+            var receiver = invocation
+                .Ancestors()
+                .OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault()
+                ?.Expression;
+            if (receiver is null)
+                return false;
+
+            speculative = invocation
+                .WithExpression(
+                    SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        receiver,
+                        SyntaxFactory.IdentifierName("WaitForExitAsync")
+                    )
+                )
+                .WithArgumentList(
+                    tokenName is null
+                        ? invocation.ArgumentList
+                        : invocation.ArgumentList.AddArguments(
+                            SyntaxFactory.Argument(
+                                CancellationTokenHelpers.IdentifierNameFor(tokenName)
+                            )
+                        )
+                );
+        }
+
+        return CancellationTokenHelpers.SpeculativelyBindsTo(
+            context.SemanticModel,
+            invocation.SpanStart,
+            speculative,
+            asyncCounterpart
+        );
     }
 
     /// <summary>

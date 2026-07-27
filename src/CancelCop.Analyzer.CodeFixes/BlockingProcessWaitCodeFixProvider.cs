@@ -49,10 +49,7 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
             .OfType<InvocationExpressionSyntax>()
             .FirstOrDefault();
 
-        // Only a direct `receiver.WaitForExit()` is rewritten. A null-conditional call
-        // (`process?.WaitForExit()`) would need control flow to preserve its null semantics, so it is
-        // reported without a fix — the same choice CC022, CC026, and CC028 make.
-        if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)
+        if (invocation is null)
             return;
 
         var tokenName = diagnostic.Properties.TryGetValue(
@@ -62,11 +59,23 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
             ? name
             : null;
 
+        // Null for a null-conditional call (`process?.WaitForExit()`), where preserving the null
+        // semantics needs control flow rather than an expression rewrite — the same choice CC022,
+        // CC026, and CC028 make. Checked here so no code action is offered at all, rather than one
+        // that silently does nothing.
+        var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
+            invocation,
+            "WaitForExitAsync",
+            tokenName
+        );
+        if (asyncInvocation is null)
+            return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
                 createChangedDocument: c =>
-                    ReplaceAsync(context.Document, invocation, memberAccess, tokenName, c),
+                    ReplaceAsync(context.Document, invocation, asyncInvocation, c),
                 equivalenceKey: Title
             ),
             diagnostic
@@ -76,8 +85,7 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
     private static async Task<Document> ReplaceAsync(
         Document document,
         InvocationExpressionSyntax invocation,
-        MemberAccessExpressionSyntax memberAccess,
-        string? tokenName,
+        InvocationExpressionSyntax asyncInvocation,
         CancellationToken cancellationToken
     )
     {
@@ -89,13 +97,6 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
         // approved. It replaces the name on the existing member access rather than rebuilding the
         // expression, which keeps the receiver and any trivia around the dot intact — reconstructing
         // it would silently delete a comment such as `process /* started above */ .WaitForExit()`.
-        var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
-            memberAccess,
-            invocation,
-            "WaitForExitAsync",
-            tokenName
-        );
-
         var newRoot = root.ReplaceNode(
             invocation,
             SyntaxFactory.AwaitExpression(asyncInvocation).WithTriviaFrom(invocation)

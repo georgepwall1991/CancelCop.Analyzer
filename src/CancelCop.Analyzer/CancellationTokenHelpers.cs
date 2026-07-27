@@ -913,33 +913,72 @@ public static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// Builds <c>receiver.<paramref name="newName"/>(token?)</c> from an existing invocation: the
-    /// shape a rule rewrites a blocking call into.
+    /// Rewrites <paramref name="invocation"/> to call <paramref name="newName"/> instead, appending
+    /// <paramref name="tokenName"/> as an argument when one is supplied: the shape a rule rewrites a
+    /// blocking call into. Returns <c>null</c> for a receiver form it cannot rewrite.
     /// </summary>
     /// <remarks>
     /// The name is replaced on the existing member access rather than the expression being rebuilt,
-    /// which keeps the receiver and any trivia around the dot intact — reconstructing it silently
-    /// deletes a comment such as <c>process /* started above */ .WaitForExit()</c>. Sharing one
-    /// builder also keeps an analyzer's speculative binding and its fixer's output in step: the call
-    /// that was checked is the call that gets written.
+    /// and the original argument list is extended rather than replaced, so trivia survives — both
+    /// <c>process /* started above */ .WaitForExit()</c> and
+    /// <c>process.WaitForExit(/* why this waits */)</c> keep their comments. Sharing one builder also
+    /// keeps an analyzer's speculative binding and its fixer's output in step: the call that was
+    /// checked is the call that gets written.
     /// </remarks>
-    public static InvocationExpressionSyntax BuildRenamedInvocation(
-        MemberAccessExpressionSyntax memberAccess,
+    public static InvocationExpressionSyntax? BuildRenamedInvocation(
         InvocationExpressionSyntax invocation,
         string newName,
         string? tokenName
     )
     {
-        var argumentList = SyntaxFactory.ArgumentList();
+        var target = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => (ExpressionSyntax)
+                memberAccess.WithName(SyntaxFactory.IdentifierName(newName)),
+            // An implicit receiver: an inherited member called without `this.`.
+            IdentifierNameSyntax => SyntaxFactory.IdentifierName(newName),
+            _ => null,
+        };
+        if (target is null)
+            return null;
+
+        var argumentList = invocation.ArgumentList;
         if (tokenName != null)
         {
             argumentList = argumentList.AddArguments(
-                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName))
+                SyntaxFactory.Argument(IdentifierNameFor(tokenName))
             );
         }
 
-        return invocation
-            .WithExpression(memberAccess.WithName(SyntaxFactory.IdentifierName(newName)))
-            .WithArgumentList(argumentList);
+        return invocation.WithExpression(target).WithArgumentList(argumentList);
+    }
+
+    /// <summary>
+    /// Builds an identifier for <paramref name="name"/>, re-escaping it when the name is a C#
+    /// keyword.
+    /// </summary>
+    /// <remarks>
+    /// A symbol's <c>Name</c> drops the escape: <c>CancellationToken @event</c> is stored as
+    /// <c>event</c>. Emitting that bare reparses as a keyword, so the generated source would not
+    /// compile even though the synthesized tree binds.
+    /// </remarks>
+    public static IdentifierNameSyntax IdentifierNameFor(string name)
+    {
+        // Contextual keywords (`value`, `async`, …) are legal identifiers and must not be escaped;
+        // only reserved keywords need the `@`.
+        if (SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None)
+            return SyntaxFactory.IdentifierName(name);
+
+        // The token needs the escape in its *text* but the bare name as its value — the single-string
+        // factory would store "@event" as the value too, which then fails to bind.
+        return SyntaxFactory.IdentifierName(
+            SyntaxFactory.Identifier(
+                SyntaxTriviaList.Empty,
+                SyntaxKind.None,
+                "@" + name,
+                name,
+                SyntaxTriviaList.Empty
+            )
+        );
     }
 }

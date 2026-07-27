@@ -272,4 +272,152 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task ImplicitReceiver_InProcessSubclass_IsReportedAndFixed()
+    {
+        // An inherited call written without `this.` reaches the analyzer as a bare identifier. It is
+        // the same blocking framework method the rule flags as `this.WaitForExit()`, so rejecting
+        // that syntax form was a silent false negative.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker : Process
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        {|#0:WaitForExit|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker : Process
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await WaitForExitAsync(cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task NullConditionalOnHidingSubclass_ShouldNotReportDiagnostic()
+    {
+        // A null-conditional call gets no fix, but it still claims an async alternative exists. Here
+        // the subclass hides WaitForExitAsync with a non-awaitable member, so that claim is false and
+        // the rule must stay quiet — exactly as it does for the equivalent direct call.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class FakeProcess : Process
+{
+    public new int WaitForExitAsync(CancellationToken cancellationToken) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(FakeProcess? process, CancellationToken cancellationToken)
+    {
+        process?.WaitForExit();
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingProcessWaitAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task KeywordEscapedTokenName_IsReEscapedInTheFix()
+    {
+        // A symbol's Name drops the escape, so `@event` is stored as `event`. Emitting it bare would
+        // reparse as a keyword and fail to compile even though the synthesized tree binds.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken @event)
+    {
+        process.{|#0:WaitForExit|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken @event)
+    {
+        await process.WaitForExitAsync(@event);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task CommentInsideEmptyArgumentList_IsPreserved()
+    {
+        // Replacing the argument list wholesale would silently delete the comment.
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        process.{|#0:WaitForExit|}(/* the tool must finish first */);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        await process.WaitForExitAsync(/* the tool must finish first */cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

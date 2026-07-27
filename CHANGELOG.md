@@ -31,7 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The rewrite is validated by binding it: finding `WaitForExitAsync` on `Process` proves the API
   exists, not that the rewritten call reaches it, since a subclass can hide it with an unusable
   member. The analyzer speculatively binds the exact call the fix will emit and stays quiet unless
-  it resolves to the framework method.
+  it resolves to the framework method — including for null-conditional calls, which get no fix but
+  still make the claim. An inherited call written without `this.` inside a `Process` subclass is
+  covered too.
+
+  The rewrite preserves trivia (comments in the receiver and inside the argument list) and
+  re-escapes a keyword parameter name: a symbol's `Name` drops the escape, so `CancellationToken
+  @event` is stored as `event` and emitting it bare would reparse as a keyword.
 
 ### Changed
 
