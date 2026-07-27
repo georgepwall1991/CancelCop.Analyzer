@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "blocking" call never leaves the CPU and the async form only wraps the same synchronous work in a
   completed task — flagging it would be noise. The exclusion tests the receiver's own type rather
   than the declaring type, because `MemoryStream` does not override every member (`Flush` resolves
-  to `Stream.Flush`).
+  to `Stream.Flush`), and it follows generic constraints, so a `T where T : MemoryStream` receiver is
+  excluded too.
 - Overloads with no signature-compatible async form are still quiet, so the rewrite always compiles:
   `Read(Span<byte>)` has no counterpart (`ReadAsync` takes `Memory<byte>`) and is left alone.
 - **Shadowed counterparts.** The counterpart is now resolved the way the *rewritten* call will be:

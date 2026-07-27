@@ -369,6 +369,11 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
     private static bool DerivesFrom(ITypeSymbol? type, string name)
     {
+        // A generic receiver (`T where T : MemoryStream`) carries its base through constraints
+        // rather than BaseType, so a constraint walk is what makes the exclusion hold for it.
+        if (type is ITypeParameterSymbol typeParameter)
+            return typeParameter.ConstraintTypes.Any(constraint => DerivesFrom(constraint, name));
+
         for (var current = type; current != null; current = current.BaseType)
         {
             if (

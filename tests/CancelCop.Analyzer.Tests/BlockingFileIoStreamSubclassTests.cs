@@ -1067,4 +1067,65 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task GenericReceiverConstrainedToMemoryStream_ShouldNotReportDiagnostic()
+    {
+        // `T where T : MemoryStream` carries its base through constraints rather than BaseType, so a
+        // BaseType-only walk misses the exclusion and reports an in-memory read.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync<T>(T stream, byte[] buffer) where T : MemoryStream
+    {
+        var read = stream.Read(buffer, 0, buffer.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task GenericReceiverConstrainedToStream_StillReportsDiagnostic()
+    {
+        // The constraint walk must not swallow the ordinary case: `T where T : Stream` is a real
+        // stream and blocking on it is still worth reporting.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync<T>(T stream, CancellationToken token) where T : Stream
+    {
+        stream.{|#0:Flush|}();
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Flush")
+        );
+        await t.RunAsync();
+    }
 }
