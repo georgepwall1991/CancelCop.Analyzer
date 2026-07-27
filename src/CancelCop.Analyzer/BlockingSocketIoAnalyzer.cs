@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -152,8 +153,57 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
+        // A socket switched out of blocking mode does not park the thread — the synchronous calls
+        // return immediately or report WouldBlock. Detected conservatively: any `Blocking = false`
+        // on a socket anywhere in the enclosing function silences the rule there, since deciding
+        // which socket it applied to would need aliasing the rest of this analysis does not attempt.
+        if (NonBlockingModeIsSetNearby(invocation, context, socketType))
+            return;
+
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, invokedName.GetLocation(), definition.Name)
         );
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the enclosing function assigns <c>false</c> to <c>Socket.Blocking</c>.
+    /// </summary>
+    private static bool NonBlockingModeIsSetNearby(
+        SyntaxNode node,
+        SyntaxNodeAnalysisContext context,
+        INamedTypeSymbol socketType
+    )
+    {
+        var scope = node.Ancestors()
+            .FirstOrDefault(candidate =>
+                candidate
+                    is BaseMethodDeclarationSyntax
+                        or LocalFunctionStatementSyntax
+                        or AnonymousFunctionExpressionSyntax
+                        or AccessorDeclarationSyntax
+            );
+        if (scope is null)
+            return false;
+
+        return scope
+            .DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>()
+            .Any(assignment =>
+                assignment.Left is MemberAccessExpressionSyntax
+                {
+                    Name.Identifier.ValueText: "Blocking"
+                } target
+                && SymbolEqualityComparer.Default.Equals(
+                    context
+                        .SemanticModel.GetTypeInfo(target.Expression, context.CancellationToken)
+                        .Type,
+                    socketType
+                )
+                && context.SemanticModel.GetConstantValue(
+                    assignment.Right,
+                    context.CancellationToken
+                )
+                    is { HasValue: true, Value: false }
+            );
     }
 }

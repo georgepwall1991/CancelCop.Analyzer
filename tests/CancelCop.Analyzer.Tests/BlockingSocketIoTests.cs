@@ -232,4 +232,51 @@ public class Server
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task NonBlockingSocket_ShouldNotReportDiagnostic()
+    {
+        // A socket switched out of blocking mode does not park the thread — the synchronous calls
+        // return immediately or report WouldBlock.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer)
+    {
+        socket.Blocking = false;
+        socket.Receive(buffer);
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingModeExplicitlyEnabled_ShouldReportDiagnostic()
+    {
+        // Only `Blocking = false` exempts; setting it true is the default and still blocks.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer)
+    {
+        socket.Blocking = true;
+        socket.{|#0:Receive|}(buffer);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Receive"));
+        await t.RunAsync();
+    }
 }

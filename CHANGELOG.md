@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them would give up the property that makes its rewrites safe, so CC036 stands apart — and is
   analyzer-only, because there is no mechanical rewrite.
 
+  A socket switched out of blocking mode is exempt: `socket.Blocking = false` makes the synchronous
+  calls return immediately or report `WouldBlock` rather than parking the thread. Detected
+  conservatively — any such assignment in the enclosing function silences the rule there, since
+  deciding which socket it applied to would need aliasing this analysis does not attempt.
+
   The named counterpart must actually exist on the target framework before the rule reports. Socket's
   surface varies by target — `SendFileAsync` is absent on .NET Standard 2.0 — and recommending a
   method that is not there would suggest a call that does not compile.
