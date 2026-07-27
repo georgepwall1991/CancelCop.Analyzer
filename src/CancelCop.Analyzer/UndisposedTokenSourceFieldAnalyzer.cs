@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -82,12 +83,14 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
 
-        // Analysing the whole type at once is what makes "never disposed" answerable: disposal
-        // almost always lives in a different member from the creation.
-        context.RegisterSymbolAction(AnalyzeNamedType, SymbolKind.NamedType);
+        // A symbol-start action is what makes "never disposed" answerable without reaching for
+        // Compilation.GetSemanticModel (RS1030): the nested node actions each arrive with the model
+        // for their own tree, facts accumulate across every member and every partial declaration,
+        // and the symbol-end action reports once the whole type has been seen.
+        context.RegisterSymbolStartAction(OnTypeStart, SymbolKind.NamedType);
     }
 
-    private static void AnalyzeNamedType(SymbolAnalysisContext context)
+    private static void OnTypeStart(SymbolStartAnalysisContext context)
     {
         var type = (INamedTypeSymbol)context.Symbol;
 
@@ -98,73 +101,139 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
                 && !field.IsImplicitlyDeclared
                 && IsCancellationTokenSource(field.Type)
             )
-            .ToList();
+            .ToImmutableArray();
 
-        if (candidates.Count == 0)
+        if (candidates.IsEmpty)
             return;
 
-        var bodies = type
-            .DeclaringSyntaxReferences.Select(reference =>
-                reference.GetSyntax(context.CancellationToken)
+        // Concurrent because node actions for different members may run in parallel.
+        var created = new ConcurrentDictionary<IFieldSymbol, bool>(SymbolEqualityComparer.Default);
+        var exonerated = new ConcurrentDictionary<IFieldSymbol, bool>(
+            SymbolEqualityComparer.Default
+        );
+
+        context.RegisterSyntaxNodeAction(
+            nodeContext => RecordCreation(nodeContext, candidates, created),
+            SyntaxKind.ObjectCreationExpression,
+            SyntaxKind.ImplicitObjectCreationExpression,
+            SyntaxKind.InvocationExpression
+        );
+
+        context.RegisterSyntaxNodeAction(
+            nodeContext => RecordDisposalOrEscape(nodeContext, candidates, exonerated),
+            SyntaxKind.IdentifierName
+        );
+
+        context.RegisterSymbolEndAction(endContext =>
+        {
+            foreach (var field in candidates)
+            {
+                if (created.ContainsKey(field) && !exonerated.ContainsKey(field))
+                    endContext.ReportDiagnostic(
+                        Diagnostic.Create(Rule, field.Locations[0], field.Name)
+                    );
+            }
+        });
+    }
+
+    /// <summary>
+    /// Records that the declaring type constructs the source itself — the only case in which it owns
+    /// the source and is responsible for disposing it.
+    /// </summary>
+    private static void RecordCreation(
+        SyntaxNodeAnalysisContext context,
+        ImmutableArray<IFieldSymbol> candidates,
+        ConcurrentDictionary<IFieldSymbol, bool> created
+    )
+    {
+        var expression = (ExpressionSyntax)context.Node;
+
+        if (expression is InvocationExpressionSyntax invocation)
+        {
+            // CreateLinkedTokenSource is a factory rather than a constructor, and its result is
+            // owned by the caller in exactly the same way.
+            if (
+                context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+                    is not IMethodSymbol { Name: "CreateLinkedTokenSource" } factory
+                || !IsCancellationTokenSource(factory.ContainingType)
             )
-            .ToList();
-        if (bodies.Count == 0)
+                return;
+        }
+        else if (
+            context.SemanticModel.GetTypeInfo(expression, context.CancellationToken).Type
+                is not { } createdType
+            || !IsCancellationTokenSource(createdType)
+        )
             return;
 
         foreach (var field in candidates)
         {
-            var declaration = field.DeclaringSyntaxReferences.FirstOrDefault();
-            if (declaration is null)
-                continue;
-
-            if (!bodies.Any(body => CreatesSource(body, field, context)))
-                continue;
-
-            if (bodies.Any(body => DisposesOrEscapes(body, field, context)))
-                continue;
-
-            context.ReportDiagnostic(Diagnostic.Create(Rule, field.Locations[0], field.Name));
+            if (AssignsTo(expression, field, context))
+                created[field] = true;
         }
     }
 
     /// <summary>
-    /// Returns <c>true</c> when the declaring type constructs the source itself — the only case in
-    /// which it owns the source and is responsible for disposing it.
+    /// Records that the type disposes the field, or lets it escape so that something else may own it.
     /// </summary>
-    private static bool CreatesSource(
-        SyntaxNode body,
-        IFieldSymbol field,
-        SymbolAnalysisContext context
+    /// <remarks>
+    /// Escape is treated as exoneration rather than as a finding: once the source is handed out, who
+    /// disposes it is no longer decidable from this type alone, and guessing would produce noise.
+    /// This mirrors CC014's conservative escape analysis.
+    /// </remarks>
+    private static void RecordDisposalOrEscape(
+        SyntaxNodeAnalysisContext context,
+        ImmutableArray<IFieldSymbol> candidates,
+        ConcurrentDictionary<IFieldSymbol, bool> exonerated
     )
     {
-        var model = context.Compilation.GetSemanticModel(body.SyntaxTree);
+        var identifier = (IdentifierNameSyntax)context.Node;
 
-        foreach (
-            var creation in body.DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>()
+        var field = candidates.FirstOrDefault(candidate =>
+            candidate.Name == identifier.Identifier.Text
+        );
+        if (field is null)
+            return;
+
+        if (
+            !SymbolEqualityComparer.Default.Equals(
+                context.SemanticModel.GetSymbolInfo(identifier, context.CancellationToken).Symbol,
+                field
+            )
         )
+            return;
+
+        // The expression that denotes the field, which is not always the identifier: `this._cts`
+        // and `Owner._cts` put the identifier in the *name* position of a member access, so
+        // reading its immediate parent would look at the access instead of past it.
+        var reference = UnwrapCompileTimeWrappers(
+            identifier.Parent is MemberAccessExpressionSyntax qualified
+            && qualified.Name == identifier
+                ? (ExpressionSyntax)qualified
+                : identifier
+        );
+
+        if (IsDisposeInvocation(reference, context))
         {
-            if (
-                model.GetTypeInfo(creation, context.CancellationToken).Type is { } created
-                && IsCancellationTokenSource(created)
-                && AssignsTo(creation, field, model, context)
-            )
-                return true;
+            exonerated[field] = true;
+            return;
         }
 
-        // CreateLinkedTokenSource is a factory rather than a constructor, and its result is owned by
-        // the caller in exactly the same way.
-        foreach (var invocation in body.DescendantNodes().OfType<InvocationExpressionSyntax>())
-        {
-            if (
-                model.GetSymbolInfo(invocation, context.CancellationToken).Symbol
-                    is IMethodSymbol { Name: "CreateLinkedTokenSource" } factory
-                && IsCancellationTokenSource(factory.ContainingType)
-                && AssignsTo(invocation, field, model, context)
+        // Returned, passed to something that may take ownership, or copied into another location —
+        // including a local alias, which disposal routinely goes through
+        // (`var source = _cts; source.Dispose();`).
+        if (
+            reference.Parent
+                is ArgumentSyntax
+                    or ReturnStatementSyntax
+                    or ArrowExpressionClauseSyntax
+                    or EqualsValueClauseSyntax
+            || (
+                reference.Parent is AssignmentExpressionSyntax assignment
+                && assignment.Right == reference
             )
-                return true;
-        }
-
-        return false;
+        )
+            exonerated[field] = true;
     }
 
     /// <summary>
@@ -174,8 +243,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
     private static bool AssignsTo(
         ExpressionSyntax expression,
         IFieldSymbol field,
-        SemanticModel model,
-        SymbolAnalysisContext context
+        SyntaxNodeAnalysisContext context
     )
     {
         var parent = UnwrapCompileTimeWrappers(expression).Parent;
@@ -183,7 +251,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         if (parent is EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator })
         {
             return SymbolEqualityComparer.Default.Equals(
-                model.GetDeclaredSymbol(declarator, context.CancellationToken),
+                context.SemanticModel.GetDeclaredSymbol(declarator, context.CancellationToken),
                 field
             );
         }
@@ -191,65 +259,10 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         return parent is AssignmentExpressionSyntax assignment
             && assignment.Right == UnwrapCompileTimeWrappers(expression)
             && SymbolEqualityComparer.Default.Equals(
-                model.GetSymbolInfo(assignment.Left, context.CancellationToken).Symbol,
+                context.SemanticModel.GetSymbolInfo(assignment.Left, context.CancellationToken)
+                    .Symbol,
                 field
             );
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> when the type disposes the field, or lets it escape so that something
-    /// else may own it.
-    /// </summary>
-    /// <remarks>
-    /// Escape is treated as exoneration rather than as a finding: once the source is handed out, who
-    /// disposes it is no longer decidable from this type alone, and guessing would produce noise.
-    /// This mirrors CC014's conservative escape analysis.
-    /// </remarks>
-    private static bool DisposesOrEscapes(
-        SyntaxNode body,
-        IFieldSymbol field,
-        SymbolAnalysisContext context
-    )
-    {
-        var model = context.Compilation.GetSemanticModel(body.SyntaxTree);
-
-        foreach (var identifier in body.DescendantNodes().OfType<IdentifierNameSyntax>())
-        {
-            if (identifier.Identifier.Text != field.Name)
-                continue;
-
-            if (
-                !SymbolEqualityComparer.Default.Equals(
-                    model.GetSymbolInfo(identifier, context.CancellationToken).Symbol,
-                    field
-                )
-            )
-                continue;
-
-            // The expression that denotes the field, which is not always the identifier: `this._cts`
-            // and `Owner._cts` put the identifier in the *name* position of a member access, so
-            // reading its immediate parent would look at the access instead of past it.
-            var reference = UnwrapCompileTimeWrappers(
-                identifier.Parent is MemberAccessExpressionSyntax qualified
-                && qualified.Name == identifier
-                    ? (ExpressionSyntax)qualified
-                    : identifier
-            );
-
-            if (IsDisposeInvocation(reference, model, context))
-                return true;
-
-            // Returned, or passed to something that may take ownership.
-            if (
-                reference.Parent
-                is ArgumentSyntax
-                    or ReturnStatementSyntax
-                    or ArrowExpressionClauseSyntax
-            )
-                return true;
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -262,8 +275,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
     /// </remarks>
     private static bool IsDisposeInvocation(
         ExpressionSyntax reference,
-        SemanticModel model,
-        SymbolAnalysisContext context
+        SyntaxNodeAnalysisContext context
     )
     {
         if (
@@ -273,7 +285,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         )
             return access.Parent is InvocationExpressionSyntax invocation
                 && invocation.Expression == access
-                && ResolvesToDispose(invocation, model, context);
+                && ResolvesToDispose(invocation, context);
 
         // `_cts?.Dispose()` — the call hangs off the conditional access, not off the field.
         return reference.Parent is ConditionalAccessExpressionSyntax conditional
@@ -284,7 +296,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
                     Expression: MemberBindingExpressionSyntax binding
                 } conditionalCall
             && IsDisposeName(binding.Name)
-            && ResolvesToDispose(conditionalCall, model, context);
+            && ResolvesToDispose(conditionalCall, context);
     }
 
     private static bool IsDisposeName(SimpleNameSyntax name) =>
@@ -302,10 +314,9 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
     /// </remarks>
     private static bool ResolvesToDispose(
         InvocationExpressionSyntax invocation,
-        SemanticModel model,
-        SymbolAnalysisContext context
+        SyntaxNodeAnalysisContext context
     ) =>
-        model.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+        context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
             is IMethodSymbol { Name: "Dispose", Parameters.Length: 0, IsExtensionMethod: false } target
         && (
             IsCancellationTokenSource(target.ContainingType)

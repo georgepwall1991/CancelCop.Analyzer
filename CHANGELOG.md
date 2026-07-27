@@ -27,9 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Conservative by design: the rule fires only when the declaring type **creates** the source, since
   an injected one is owned by whoever created it and disposing it would be a bug. It stays quiet if
   any member disposes the field, if the field escapes (returned or passed as an argument, so
-  something else may own it), and for `static` fields, whose lifetime is the process. The whole type
-  symbol is analyzed rather than one declaration, because creation and disposal routinely live in
-  different members — and, for a partial type, different files.
+  something else may own it, including a local alias, which disposal routinely goes through), and for
+  `static` fields, whose lifetime is the process. Disposal is resolved to a symbol rather than
+  accepted by spelling: `CancellationTokenSource` has no instance `DisposeAsync`, so every
+  `_cts.DisposeAsync()` is an extension method free to do nothing at all.
+
+  The whole type symbol is analyzed rather than one declaration, because creation and disposal
+  routinely live in different members — and, for a partial type, different files. This is built on a
+  symbol-start action so the nested node actions each arrive with the semantic model for their own
+  tree, rather than reaching for `Compilation.GetSemanticModel` (RS1030).
 
 ### Changed
 

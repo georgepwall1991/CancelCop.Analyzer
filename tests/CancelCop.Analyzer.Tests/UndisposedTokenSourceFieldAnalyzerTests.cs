@@ -457,4 +457,50 @@ public class Worker
         t.ExpectedDiagnostics.Add(Expected("_cts"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task DisposedThroughALocalAlias_ShouldNotReportDiagnostic()
+    {
+        // Disposal routinely goes through a snapshot. Copying the field into another location makes
+        // ownership undecidable from this type alone, which is the same reason escape by return or
+        // argument exonerates.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker : IDisposable
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        var source = _cts;
+        source.Dispose();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task CopiedToAnotherField_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+
+public class Worker
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+    private CancellationTokenSource? _alias;
+
+    public void Alias()
+    {
+        _alias = _cts;
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }
