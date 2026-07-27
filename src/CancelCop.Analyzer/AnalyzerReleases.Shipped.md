@@ -1,3 +1,11 @@
+## Release 1.34.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC033 | Usage | Warning | CancellationTokenSource field is never disposed
+
 ## Release 1.33.0
 
 ### New Rules

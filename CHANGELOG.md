@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-07-27
+
+### Added
+
+- **CC033** (`UndisposedTokenSourceFieldAnalyzer`): flags a `CancellationTokenSource` field that the
+  declaring type creates and never disposes.
+
+  A source owns a timer (once a delay is set) and a registration list that every linked token and
+  every `Register` callback adds to. A field keeps that alive for the whole lifetime of the owning
+  object. Linked sources are worse: an undisposed child stays attached to its parent's callback
+  list, so a long-lived parent accumulates every child ever created.
+
+  **Complements CC014 rather than overlapping it.** CC014 covers a *local* source, where the fix is
+  mechanical — make it a `using` declaration. A field's lifetime is the object's, so the resolution
+  is to implement `IDisposable` and let the owner's disposal cascade. That is a design change, so
+  CC033 is analyzer-only.
+
+  Conservative by design: the rule fires only when the declaring type **creates** the source, since
+  an injected one is owned by whoever created it and disposing it would be a bug. It stays quiet if
+  any member disposes the field, if the field escapes (returned or passed as an argument, so
+  something else may own it), and for `static` fields, whose lifetime is the process. The whole type
+  symbol is analyzed rather than one declaration, because creation and disposal routinely live in
+  different members — and, for a partial type, different files.
+
+### Changed
+
+- Two `AllAnalyzersCleanCodeTests` samples now dispose the `CancellationTokenSource` field they
+  create. They were written before CC033 existed and genuinely leaked one; the fix is to the samples,
+  not to the rule.
+
 ## [1.33.0] - 2026-07-27
 
 ### Added
