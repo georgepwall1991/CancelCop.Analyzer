@@ -189,11 +189,16 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
             .DescendantNodes()
             .OfType<AssignmentExpressionSyntax>()
             .Any(assignment =>
-                assignment.Left is MemberAccessExpressionSyntax
+                // A plain `=` only. `Blocking |= false` and `^= false` leave the property unchanged
+                // despite the constant operand.
+                assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                && assignment.Left is MemberAccessExpressionSyntax
                 {
                     Name.Identifier.ValueText: "Blocking"
                 } target
-                && SymbolEqualityComparer.Default.Equals(
+                // Derived socket types set the same property, matching the override-chain handling
+                // used for the blocking members themselves.
+                && DerivesFromSocket(
                     context
                         .SemanticModel.GetTypeInfo(target.Expression, context.CancellationToken)
                         .Type,
@@ -205,5 +210,16 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
                 )
                     is { HasValue: true, Value: false }
             );
+    }
+
+    private static bool DerivesFromSocket(ITypeSymbol? type, INamedTypeSymbol socketType)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, socketType))
+                return true;
+        }
+
+        return false;
     }
 }

@@ -279,4 +279,29 @@ public class Server
         t.ExpectedDiagnostics.Add(Expected("Receive"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CompoundAssignmentToBlocking_ShouldReportDiagnostic()
+    {
+        // `|= false` has a constant operand but leaves the property unchanged, so the socket is
+        // still blocking.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer)
+    {
+        socket.Blocking |= false;
+        socket.{|#0:Receive|}(buffer);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Receive"));
+        await t.RunAsync();
+    }
 }
