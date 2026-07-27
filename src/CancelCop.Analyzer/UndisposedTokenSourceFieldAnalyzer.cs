@@ -178,7 +178,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         SymbolAnalysisContext context
     )
     {
-        var parent = expression.Parent;
+        var parent = UnwrapCompileTimeWrappers(expression).Parent;
 
         if (parent is EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator })
         {
@@ -189,7 +189,7 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
         }
 
         return parent is AssignmentExpressionSyntax assignment
-            && assignment.Right == expression
+            && assignment.Right == UnwrapCompileTimeWrappers(expression)
             && SymbolEqualityComparer.Default.Equals(
                 model.GetSymbolInfo(assignment.Left, context.CancellationToken).Symbol,
                 field
@@ -229,12 +229,14 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
             // The expression that denotes the field, which is not always the identifier: `this._cts`
             // and `Owner._cts` put the identifier in the *name* position of a member access, so
             // reading its immediate parent would look at the access instead of past it.
-            var reference = identifier.Parent is MemberAccessExpressionSyntax qualified
+            var reference = UnwrapCompileTimeWrappers(
+                identifier.Parent is MemberAccessExpressionSyntax qualified
                 && qualified.Name == identifier
-                ? (ExpressionSyntax)qualified
-                : identifier;
+                    ? (ExpressionSyntax)qualified
+                    : identifier
+            );
 
-            if (IsDisposeInvocation(reference))
+            if (IsDisposeInvocation(reference, model, context))
                 return true;
 
             // Returned, or passed to something that may take ownership.
@@ -258,7 +260,11 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
     /// The invocation matters: <c>Action cleanup = _cts.Dispose;</c> names the method without ever
     /// calling it, so accepting a bare member access would exonerate a real leak.
     /// </remarks>
-    private static bool IsDisposeInvocation(ExpressionSyntax reference)
+    private static bool IsDisposeInvocation(
+        ExpressionSyntax reference,
+        SemanticModel model,
+        SymbolAnalysisContext context
+    )
     {
         if (
             reference.Parent is MemberAccessExpressionSyntax access
@@ -266,7 +272,8 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
             && IsDisposeName(access.Name)
         )
             return access.Parent is InvocationExpressionSyntax invocation
-                && invocation.Expression == access;
+                && invocation.Expression == access
+                && ResolvesToDispose(invocation, model, context);
 
         // `_cts?.Dispose()` — the call hangs off the conditional access, not off the field.
         return reference.Parent is ConditionalAccessExpressionSyntax conditional
@@ -275,12 +282,61 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
                 is InvocationExpressionSyntax
                 {
                     Expression: MemberBindingExpressionSyntax binding
-                }
-            && IsDisposeName(binding.Name);
+                } conditionalCall
+            && IsDisposeName(binding.Name)
+            && ResolvesToDispose(conditionalCall, model, context);
     }
 
     private static bool IsDisposeName(SimpleNameSyntax name) =>
         name.Identifier.Text is "Dispose" or "DisposeAsync";
+
+    /// <summary>
+    /// Returns <c>true</c> when the call really is the framework disposal, rather than something
+    /// merely spelled that way.
+    /// </summary>
+    /// <remarks>
+    /// The name alone is not enough. <c>CancellationTokenSource</c> has no instance
+    /// <c>DisposeAsync</c>, so every <c>_cts.DisposeAsync()</c> is an extension method that may do
+    /// anything at all — and an extension called <c>Dispose</c> is equally free not to dispose.
+    /// CC014 makes the same distinction for locals.
+    /// </remarks>
+    private static bool ResolvesToDispose(
+        InvocationExpressionSyntax invocation,
+        SemanticModel model,
+        SymbolAnalysisContext context
+    ) =>
+        model.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is IMethodSymbol { Name: "Dispose", Parameters.Length: 0, IsExtensionMethod: false } target
+        && (
+            IsCancellationTokenSource(target.ContainingType)
+            || target.ContainingType?.SpecialType == SpecialType.System_IDisposable
+        );
+
+    /// <summary>
+    /// Walks outward past parentheses and null-forgiving operators, which are compile-time only and
+    /// do not change what the expression denotes. Mirrors CC014.
+    /// </summary>
+    private static ExpressionSyntax UnwrapCompileTimeWrappers(ExpressionSyntax expression)
+    {
+        var value = expression;
+        while (true)
+        {
+            switch (value.Parent)
+            {
+                case PostfixUnaryExpressionSyntax postfix
+                    when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression)
+                        && postfix.Operand == value:
+                    value = postfix;
+                    continue;
+                case ParenthesizedExpressionSyntax parenthesized
+                    when parenthesized.Expression == value:
+                    value = parenthesized;
+                    continue;
+                default:
+                    return value;
+            }
+        }
+    }
 
     private static bool IsCancellationTokenSource(ITypeSymbol? type) =>
         type is { ContainingType: null, Name: "CancellationTokenSource" }

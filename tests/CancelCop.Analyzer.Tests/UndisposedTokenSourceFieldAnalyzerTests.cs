@@ -381,4 +381,80 @@ public class Worker
         t.ExpectedDiagnostics.Add(Expected("_cts"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task ParenthesizedCreation_ShouldReportDiagnostic()
+    {
+        // Parentheses are compile-time only; the source is still created and still leaked.
+        var test =
+            @"
+using System.Threading;
+
+public class Worker
+{
+    private CancellationTokenSource {|#0:_cts|};
+
+    public Worker()
+    {
+        _cts = (new CancellationTokenSource());
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DisposedThroughCompileTimeWrappers_ShouldNotReportDiagnostic()
+    {
+        // `(_cts!).Dispose()` disposes exactly as much as `_cts.Dispose()`.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker : IDisposable
+{
+    private CancellationTokenSource? _cts = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        (_cts!).Dispose();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ExtensionMethodNamedDispose_ShouldReportDiagnostic()
+    {
+        // An extension called Dispose is free to do nothing at all, so accepting the spelling would
+        // exonerate a real leak. CancellationTokenSource has no instance DisposeAsync, which means
+        // every _cts.DisposeAsync() is such an extension.
+        var test =
+            @"
+using System.Threading;
+
+public static class Extensions
+{
+    public static void Dispose(this CancellationTokenSource source, int unused) { }
+    public static void DisposeAsync(this CancellationTokenSource source) { }
+}
+
+public class Worker
+{
+    private readonly CancellationTokenSource {|#0:_cts|} = new CancellationTokenSource();
+
+    public void Cleanup()
+    {
+        _cts.DisposeAsync();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
 }
