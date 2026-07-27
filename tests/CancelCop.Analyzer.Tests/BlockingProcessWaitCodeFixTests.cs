@@ -835,4 +835,90 @@ public class TestClass
 
         await CreateTest(source, source, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task LambdaInsideAnUnrelatedConditionalAccess_IsFixedNormally()
+    {
+        // The `?.` belongs to the surrounding call, not to the blocking invocation. The lambda is its
+        // own expression context, so the rewrite is safe and must still be offered.
+        var test =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public void Register(Func<Task> callback) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, Process process, CancellationToken cancellationToken)
+    {
+        host?.Register(async () => process.{|#0:WaitForExit|}());
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public void Register(Func<Task> callback) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, Process process, CancellationToken cancellationToken)
+    {
+        host?.Register(async () => await process.WaitForExitAsync(cancellationToken));
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task CommentAttachedToTheMemberName_IsPreserved()
+    {
+        var test =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        process.{|#0:WaitForExit|}/* why */();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process process, CancellationToken cancellationToken)
+    {
+        await process.WaitForExitAsync/* why */(cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

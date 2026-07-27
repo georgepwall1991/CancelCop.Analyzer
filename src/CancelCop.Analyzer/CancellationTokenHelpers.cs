@@ -939,14 +939,26 @@ public static class CancellationTokenHelpers
         {
             if (current is ConditionalAccessExpressionSyntax)
                 return null;
-            if (current is StatementSyntax or MemberDeclarationSyntax)
+            // A nested function is its own expression context: a lambda that merely happens to be an
+            // argument inside someone else's `?.` chain is rewritten normally.
+            if (
+                current
+                is StatementSyntax
+                    or MemberDeclarationSyntax
+                    or AnonymousFunctionExpressionSyntax
+                    or LocalFunctionStatementSyntax
+            )
                 break;
         }
 
         var target = invocation.Expression switch
         {
+            // Trivia is carried over from the old name: a comment attached to it
+            // (`process.WaitForExit/* why */()`) belongs to the call, not to the name being replaced.
             MemberAccessExpressionSyntax memberAccess => (ExpressionSyntax)
-                memberAccess.WithName(SyntaxFactory.IdentifierName(newName)),
+                memberAccess.WithName(
+                    SyntaxFactory.IdentifierName(newName).WithTriviaFrom(memberAccess.Name)
+                ),
             // An implicit receiver: an inherited member called without `this.`.
             IdentifierNameSyntax => SyntaxFactory.IdentifierName(newName),
             _ => null,
