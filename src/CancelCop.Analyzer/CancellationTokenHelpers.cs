@@ -1516,4 +1516,82 @@ public static class CancellationTokenHelpers
 
         return false;
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when a call passes a timeout the compiler can prove is zero, making it an
+    /// immediate probe rather than a wait.
+    /// </summary>
+    /// <remarks>
+    /// Both spellings count. An <c>int</c> timeout must be the constant <c>0</c>. A framework
+    /// <c>TimeSpan</c> timeout is zero in three forms the compiler can see through —
+    /// <c>TimeSpan.Zero</c>, <c>default</c>, and <c>new TimeSpan()</c> — none of which is a constant,
+    /// so a constant-value check alone misses them and flags a non-blocking probe.
+    /// </remarks>
+    public static bool HasProvablyZeroTimeout(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken
+    )
+    {
+        if (
+            semanticModel.GetOperation(invocation, cancellationToken)
+            is not IInvocationOperation operation
+        )
+            return false;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (
+                argument.Parameter?.Name.IndexOf("Timeout", System.StringComparison.Ordinal) >= 0
+                && argument.Value.ConstantValue is { HasValue: true, Value: int value }
+                && value == 0
+            )
+                return true;
+
+            if (!IsFrameworkTimeSpan(argument.Parameter?.Type))
+                continue;
+
+            var argumentValue = UnwrapImplicitOperations(argument.Value);
+
+            if (argumentValue is IDefaultValueOperation)
+                return true;
+
+            if (
+                argumentValue
+                    is IFieldReferenceOperation { Field: { IsStatic: true, Name: "Zero" } field }
+                && IsFrameworkTimeSpan(field.ContainingType)
+            )
+                return true;
+
+            if (
+                argumentValue is IObjectCreationOperation creation
+                && creation.Arguments.Length == 0
+                && SymbolEqualityComparer.Default.Equals(creation.Type, argument.Parameter?.Type)
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IOperation UnwrapImplicitOperations(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation { IsImplicit: true } conversion:
+                    operation = conversion.Operand;
+                    continue;
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+                default:
+                    return operation;
+            }
+        }
+    }
+
+    private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
+        type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
 }

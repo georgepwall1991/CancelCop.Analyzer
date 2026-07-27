@@ -273,4 +273,53 @@ public class TestClass
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task TimeSpanZeroWait_ShouldNotReportDiagnostic()
+    {
+        // TimeSpan.Zero is not a compiler constant, so a constant-value check alone would flag this
+        // non-blocking probe. All three framework zero spellings are recognised.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ManualResetEventSlim gate, ManualResetEvent handle, Thread worker)
+    {
+        var a = gate.Wait(TimeSpan.Zero);
+        var b = handle.WaitOne(default(TimeSpan));
+        var c = worker.Join(new TimeSpan());
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task NonZeroTimeSpanWait_ShouldReportDiagnostic()
+    {
+        // The exclusion is for *provably* zero waits only — a real timeout still blocks.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ManualResetEventSlim gate)
+    {
+        var entered = gate.{|#0:Wait|}(TimeSpan.FromSeconds(5));
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ManualResetEventSlim.Wait"));
+        await t.RunAsync();
+    }
 }

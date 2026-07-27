@@ -30,8 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Members are matched through their override chain to the framework type that declares them, so
   `ManualResetEvent.WaitOne` resolves to `WaitHandle.WaitOne`. A provably zero timeout is an
-  immediate probe rather than a wait and is excluded, matching CC013/CC015/CC026.
+  immediate probe rather than a wait and is excluded, matching CC013/CC015/CC026 — including the
+  framework `TimeSpan` spellings (`TimeSpan.Zero`, `default`, `new TimeSpan()`), none of which is a
+  compiler constant, so a constant-value check alone would flag a non-blocking probe.
   `SemaphoreSlim.Wait` is left to CC026, which owns it and can offer a real fix.
+
+### Changed
+
+- The provably-zero-timeout check moved to `CancellationTokenHelpers.HasProvablyZeroTimeout`, shared
+  by CC026 and CC031 instead of being copied per rule — a copy is how one of them ends up
+  recognising a zero form the others do not.
 
 ## [1.31.0] - 2026-07-27
 

@@ -159,7 +159,13 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
 
         // A provably zero timeout is an immediate probe, not a wait — the same exclusion CC013,
         // CC015, and CC026 make.
-        if (HasProvablyZeroTimeout(invocation, context))
+        if (
+            CancellationTokenHelpers.HasProvablyZeroTimeout(
+                invocation,
+                context.SemanticModel,
+                context.CancellationToken
+            )
+        )
             return;
 
         context.ReportDiagnostic(
@@ -169,25 +175,5 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
                 $"{declaringType.Name}.{definition.Name}"
             )
         );
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> when the call passes a timeout the compiler can prove is zero, making it
-    /// a try-enter probe rather than a wait.
-    /// </summary>
-    private static bool HasProvablyZeroTimeout(
-        InvocationExpressionSyntax invocation,
-        SyntaxNodeAnalysisContext context
-    )
-    {
-        return invocation.ArgumentList.Arguments.Any(argument =>
-        {
-            var constant = context.SemanticModel.GetConstantValue(
-                argument.Expression,
-                context.CancellationToken
-            );
-
-            return constant is { HasValue: true, Value: 0 };
-        });
     }
 }

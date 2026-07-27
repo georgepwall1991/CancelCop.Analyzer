@@ -104,7 +104,13 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
             method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading")
             return;
 
-        if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
+        if (
+            CancellationTokenHelpers.HasProvablyZeroTimeout(
+                invocation,
+                context.SemanticModel,
+                context.CancellationToken
+            )
+        )
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
@@ -128,68 +134,4 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, memberName.GetLocation(), properties));
     }
-
-    private static bool HasZeroTimeout(
-        InvocationExpressionSyntax invocation,
-        SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
-    {
-        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
-            return false;
-
-        foreach (var argument in operation.Arguments)
-        {
-            if (argument.Parameter?.Name == "millisecondsTimeout" &&
-                argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
-                value == 0)
-            {
-                return true;
-            }
-
-            if (!IsFrameworkTimeSpan(argument.Parameter?.Type))
-                continue;
-
-            var argumentValue = UnwrapImplicitOperations(argument.Value);
-            if (argumentValue is IDefaultValueOperation)
-                return true;
-
-            if (argumentValue is IFieldReferenceOperation
-                {
-                    Field: { IsStatic: true, Name: "Zero" } field,
-                } && IsFrameworkTimeSpan(field.ContainingType))
-            {
-                return true;
-            }
-
-            if (argumentValue is IObjectCreationOperation creation &&
-                creation.Arguments.Length == 0 &&
-                SymbolEqualityComparer.Default.Equals(creation.Type, argument.Parameter?.Type))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static IOperation UnwrapImplicitOperations(IOperation operation)
-    {
-        while (true)
-        {
-            switch (operation)
-            {
-                case IConversionOperation { IsImplicit: true } conversion:
-                    operation = conversion.Operand;
-                    continue;
-                case IParenthesizedOperation parenthesized:
-                    operation = parenthesized.Operand;
-                    continue;
-                default:
-                    return operation;
-            }
-        }
-    }
-
-    private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
-        type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
 }
