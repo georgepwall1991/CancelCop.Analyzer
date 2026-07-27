@@ -551,4 +551,81 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task GenericAsyncCounterpart_FallsBackToTheInferableOverload()
+    {
+        // ReadAsync<T> matches by parameter types but introduces a type parameter nothing in the
+        // argument list can infer, so flowing the token through it would emit CS0411. Rejecting it
+        // as a token-taking counterpart falls back to the inherited tokenless overload, which the
+        // named arguments still bind to — the fix compiles, it just does not carry the token.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public Task<int> ReadAsync<T>(byte[] buffer, int offset, int count, CancellationToken stop) => Task.FromResult(0);
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] bytes, CancellationToken token)
+    {
+        var read = stream.{|#0:Read|}(buffer: bytes, offset: 0, count: bytes.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public Task<int> ReadAsync<T>(byte[] buffer, int offset, int count, CancellationToken stop) => Task.FromResult(0);
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] bytes, CancellationToken token)
+    {
+        var read = await stream.ReadAsync(buffer: bytes, offset: 0, count: bytes.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Read")
+        );
+        await t.RunAsync();
+    }
 }

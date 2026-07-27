@@ -426,9 +426,14 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 // A static member cannot be invoked through an instance receiver (CS0176) — and a
                 // hiding static member still captures the name, so it must end the search rather
                 // than be skipped over in favour of the inherited instance one.
+                //
+                // A counterpart that introduces type parameters the blocking call does not supply
+                // cannot have them inferred from the arguments (CS0411), so requiring equal generic
+                // arity keeps the rewrite inferable.
                 match = candidate;
                 return candidate.DeclaredAccessibility == Accessibility.Public
                     && candidate.IsStatic == sync.IsStatic
+                    && candidate.TypeParameters.Length == sync.TypeParameters.Length
                     && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType);
             }
         }

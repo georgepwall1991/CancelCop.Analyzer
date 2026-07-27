@@ -52,6 +52,20 @@ public sealed class DiscoverabilityMetadataTests
         // always documented.
         Assert.Matches(@"^\d+\.\d+\.\d+$", version);
         Assert.Equal(LatestReleasedChangelogVersion(), version);
+
+        // The README ships inside the package, so its install snippets are the primary instructions
+        // users follow. A stale version there sends everyone to the previous release.
+        var readme = File.ReadAllText(Path.Combine(RepositoryRoot, "README.md"));
+        Assert.Contains(
+            $"<PackageReference Include=\"CancelCop.Analyzer\" Version=\"{version}\">",
+            readme,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            $"Install-Package CancelCop.Analyzer -Version {version}",
+            readme,
+            StringComparison.Ordinal
+        );
         Assert.Contains("CancellationToken", title, StringComparison.Ordinal);
         Assert.Contains("async", title, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Roslyn", title, StringComparison.OrdinalIgnoreCase);
@@ -124,7 +138,11 @@ public sealed class DiscoverabilityMetadataTests
         }
 
         Assert.Contains("PrivateAssets=\"all\"", readme, StringComparison.Ordinal);
-        Assert.Contains("Version=\"1.28.1\"", readme, StringComparison.Ordinal);
+
+        // Version-agnostic: the exact install version is asserted against the package version in
+        // Analyzer_package_description_and_tags_include_high_intent_cancellation_terms. Repeating a
+        // literal here only creates a second place to forget on every release.
+        Assert.Matches(@"Version=""\d+\.\d+\.\d+""", readme);
         Assert.Contains("CC001", readme, StringComparison.Ordinal);
         Assert.Contains("CC029", readme, StringComparison.Ordinal);
         Assert.Contains("stays quiet", readme, StringComparison.OrdinalIgnoreCase);

@@ -48,7 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The fix now carries the **counterpart's own token parameter name**. An override may rename it
   (`ReadAsync(…, CancellationToken stop)`), and a named-argument call would otherwise be rewritten
   with a hardcoded `cancellationToken:` and fail with CS1739.
-- `PackageReleaseNotes` describes this release rather than 1.28.1's discoverability work.
+- A counterpart that introduces type parameters the call cannot infer (`ReadAsync<T>(…)`) is no
+  longer treated as a token-taking match; the rule falls back to the inferable overload rather than
+  emitting CS0411.
+- `PackageReleaseNotes` and the README install snippets describe this release rather than 1.28.1.
+  Both README install versions are now asserted against the package version by
+  `DiscoverabilityMetadataTests`, so they cannot silently drift again.
 - **Named arguments that cannot be carried over.** When a subclass renames its override's parameters,
   `stream.Read(data: b, start: 0, …)` is valid but the inherited `Stream.ReadAsync` names them
   `buffer`/`offset`, so copying the argument list emits CS1739. The call is still genuinely blocking,
