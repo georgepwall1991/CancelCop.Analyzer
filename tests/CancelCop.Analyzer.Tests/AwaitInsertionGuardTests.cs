@@ -755,4 +755,97 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC015_RefReturningArgumentBeforeTheCall_ReportsWithoutOfferingAFix()
+    {
+        // A managed reference from a ref-returning member cannot cross an await either (CS8178),
+        // and Roslyn reports the referent's value type, so a type-only check never sees it.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private int _field;
+
+    private ref int GetRef() => ref _field;
+
+    private static void Consume(ref int slot, int value) { }
+
+    public async Task RunAsync(Task<int> work)
+    {
+        await Task.Yield();
+        Consume(ref GetRef(), work.{|#0:Result|});
+    }
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC015_ValueReadThroughARefLikeReceiver_IsStillFixed()
+    {
+        // `span[0]` as an ordinary by-value argument copies the element and is done with the span,
+        // so the fix is valid. Only storage-preserving positions keep the receiver pending.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Consume(int a, int b) { }
+
+    public async Task RunAsync(Task<int> work, int[] data)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        Consume(span[0], work.{|#0:Result|});
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Consume(int a, int b) { }
+
+    public async Task RunAsync(Task<int> work, int[] data)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        Consume(span[0], (await work));
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingOnAsyncAnalyzer,
+            BlockingOnAsyncCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        );
+        await t.RunAsync();
+    }
 }

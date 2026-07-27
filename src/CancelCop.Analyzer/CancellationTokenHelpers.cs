@@ -1286,7 +1286,7 @@ public static class CancellationTokenHelpers
 
             foreach (var sibling in PrecedingOperands(current))
             {
-                if (IsOrIndexesRefLike(semanticModel, sibling))
+                if (IsPendingRefLike(semanticModel, sibling))
                     return true;
             }
         }
@@ -1295,14 +1295,27 @@ public static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="expression"/> is ref-like, or is an access whose
-    /// receiver is — an assignment target such as <c>span[0]</c> yields an <c>int</c> while the
-    /// storage location it refers to keeps the span pending.
+    /// Returns <c>true</c> when an already-evaluated operand still holds something that cannot
+    /// survive an <c>await</c>.
     /// </summary>
-    private static bool IsOrIndexesRefLike(SemanticModel semanticModel, ExpressionSyntax expression)
+    /// <remarks>
+    /// Three shapes qualify. The operand's own type is ref-like; or it occupies a
+    /// <i>storage-preserving</i> position — an assignment target, or a <c>ref</c>/<c>out</c>/
+    /// <c>in</c> argument — and refers into a ref-like receiver (<c>span[0] = …</c> yields an
+    /// <c>int</c> while keeping the span pending); or it is a managed reference from a
+    /// ref-returning member, which cannot cross an await either (CS8178). An ordinary value read
+    /// through a ref-like receiver is <i>not</i> pending: <c>Consume(span[0], task.Result)</c>
+    /// consumes the element before the await and rewrites safely.
+    /// </remarks>
+    private static bool IsPendingRefLike(SemanticModel semanticModel, PendingOperand operand)
     {
+        var expression = operand.Expression;
+
         if (semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true)
             return true;
+
+        if (!operand.PreservesStorage)
+            return false;
 
         var receiver = expression switch
         {
@@ -1311,15 +1324,44 @@ public static class CancellationTokenHelpers
             _ => null,
         };
 
-        return receiver != null
-            && semanticModel.GetTypeInfo(receiver).Type?.IsRefLikeType == true;
+        if (
+            receiver != null
+            && semanticModel.GetTypeInfo(receiver).Type?.IsRefLikeType == true
+        )
+            return true;
+
+        return semanticModel.GetSymbolInfo(expression).Symbol switch
+        {
+            IMethodSymbol method => method.RefKind != RefKind.None,
+            IPropertySymbol property => property.RefKind != RefKind.None,
+            ILocalSymbol local => local.RefKind != RefKind.None,
+            _ => false,
+        };
+    }
+
+    /// <summary>An operand evaluated before the insertion point, and how it is being used.</summary>
+    private readonly struct PendingOperand
+    {
+        public PendingOperand(ExpressionSyntax expression, bool preservesStorage)
+        {
+            Expression = expression;
+            PreservesStorage = preservesStorage;
+        }
+
+        public ExpressionSyntax Expression { get; }
+
+        /// <summary>
+        /// <c>true</c> when the operand denotes a location rather than a copied value — an
+        /// assignment target or a <c>ref</c>/<c>out</c>/<c>in</c> argument.
+        /// </summary>
+        public bool PreservesStorage { get; }
     }
 
     /// <summary>
-    /// The operand expressions of <paramref name="node"/>'s parent that are fully evaluated before
-    /// <paramref name="node"/> is.
+    /// The operands of <paramref name="node"/>'s parent that are fully evaluated before
+    /// <paramref name="node"/> is, paired with whether each denotes a storage location.
     /// </summary>
-    private static IEnumerable<ExpressionSyntax> PrecedingOperands(SyntaxNode node)
+    private static IEnumerable<PendingOperand> PrecedingOperands(SyntaxNode node)
     {
         if (node.Parent is null)
             yield break;
@@ -1329,15 +1371,23 @@ public static class CancellationTokenHelpers
             if (child == node || child.Span.End > node.SpanStart)
                 continue;
 
-            var expression = child switch
+            switch (child)
             {
-                ArgumentSyntax argument => argument.Expression,
-                ExpressionSyntax value => value,
-                _ => null,
-            };
+                case ArgumentSyntax argument:
+                    yield return new PendingOperand(
+                        argument.Expression,
+                        !argument.RefKindKeyword.IsKind(SyntaxKind.None)
+                    );
+                    break;
 
-            if (expression != null)
-                yield return expression;
+                case ExpressionSyntax value:
+                    yield return new PendingOperand(
+                        value,
+                        node.Parent is AssignmentExpressionSyntax assignment
+                            && assignment.Left == value
+                    );
+                    break;
+            }
         }
     }
 }
