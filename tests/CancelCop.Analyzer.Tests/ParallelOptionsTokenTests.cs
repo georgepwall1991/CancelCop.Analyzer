@@ -424,4 +424,72 @@ public class Runner
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task OptionsHeldInAField_ShouldNotReportDiagnostic()
+    {
+        // A field holds the options just as well as a local does.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    private ParallelOptions _options = null!;
+
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        _options = new ParallelOptions();
+        _options.CancellationToken = cancellationToken;
+        Parallel.ForEach(items, _options, i => { });
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConstructedTokenFromANonConstant_ShouldNotReportDiagnostic()
+    {
+        // Only the parameterless and provably-false forms cannot cancel; a non-constant argument may
+        // well be true at run time, so reporting it would be a false positive.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, bool cancelled, CancellationToken cancellationToken)
+    {
+        var options = new ParallelOptions { CancellationToken = new CancellationToken(cancelled) };
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConstructedFalseToken_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions { CancellationToken = new CancellationToken(false) }|};
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
 }

@@ -171,12 +171,14 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
             )
         )
         {
+            // Only the parameterless and provably-false forms cannot cancel. A non-constant
+            // argument may well be true at run time, so it stays exempt rather than reported.
             return construction.ArgumentList?.Arguments.Any(argument =>
                     context.SemanticModel.GetConstantValue(
                         argument.Expression,
                         context.CancellationToken
                     )
-                        is { HasValue: true, Value: true }
+                        is not { HasValue: true, Value: false }
                 ) == true;
         }
 
@@ -209,8 +211,11 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
             _ => null,
         };
 
-        if (target is not ILocalSymbol local)
+        // A field or property holds the options just as well as a local does.
+        if (target is not (ILocalSymbol or IFieldSymbol or IPropertySymbol))
             return false;
+
+        var owner = target;
 
         var scope = creation
             .Ancestors()
@@ -243,7 +248,7 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                     context
                         .SemanticModel.GetSymbolInfo(argument.Expression, context.CancellationToken)
                         .Symbol,
-                    local
+                    owner
                 )
             )
             .Select(argument => (int?)argument.SpanStart)
@@ -283,7 +288,7 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                     context
                         .SemanticModel.GetSymbolInfo(target.Expression, context.CancellationToken)
                         .Symbol,
-                    local
+                    owner
                 )
             );
     }
