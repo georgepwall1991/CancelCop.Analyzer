@@ -986,4 +986,57 @@ public static class CancellationTokenHelpers
             )
         );
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when inserting an <c>await</c> at <paramref name="node"/> would make a
+    /// ref-like or <c>ref</c> local span that await, which does not compile (CS4007/CS8177).
+    /// </summary>
+    /// <remarks>
+    /// Since C# 13 an async method may declare a <c>Span&lt;T&gt;</c> or other <c>ref struct</c>
+    /// local, provided its lifetime does not cross an <c>await</c>. Code that satisfies that today
+    /// can be broken by a rewrite that introduces a new await between the local's declaration and a
+    /// later use — the call binds perfectly well, so only a lifetime check catches it. Approximated
+    /// conservatively: any such local declared before the node and read after it withholds the fix.
+    /// </remarks>
+    public static bool AwaitWouldSpanRefLikeLocal(SemanticModel semanticModel, SyntaxNode node)
+    {
+        var body = node.Ancestors()
+            .FirstOrDefault(a =>
+                a
+                    is BaseMethodDeclarationSyntax
+                        or LocalFunctionStatementSyntax
+                        or AnonymousFunctionExpressionSyntax
+                        or AccessorDeclarationSyntax
+            );
+        if (body is null)
+            return false;
+
+        foreach (var declarator in body.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+        {
+            if (declarator.SpanStart >= node.SpanStart)
+                continue;
+
+            if (
+                semanticModel.GetDeclaredSymbol(declarator) is not ILocalSymbol local
+                || (!local.Type.IsRefLikeType && local.RefKind == RefKind.None)
+            )
+                continue;
+
+            var usedAfter = body.DescendantNodes()
+                .OfType<IdentifierNameSyntax>()
+                .Any(identifier =>
+                    identifier.SpanStart > node.Span.End
+                    && identifier.Identifier.Text == local.Name
+                    && SymbolEqualityComparer.Default.Equals(
+                        semanticModel.GetSymbolInfo(identifier).Symbol,
+                        local
+                    )
+                );
+
+            if (usedAfter)
+                return true;
+        }
+
+        return false;
+    }
 }

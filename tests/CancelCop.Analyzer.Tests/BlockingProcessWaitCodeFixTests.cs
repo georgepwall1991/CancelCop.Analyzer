@@ -459,4 +459,76 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task AwaitWouldSpanARefStructLocal_ReportsWithoutOfferingAFix()
+    {
+        // Since C# 13 an async method may hold a Span<T> as long as it does not cross an await. This
+        // compiles today because the existing await comes first — inserting one at WaitForExit would
+        // put the span's lifetime across it (CS4007). The call binds fine, so only a lifetime check
+        // catches this.
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        process.{|#0:WaitForExit|}();
+        return span[0];
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task RefStructLocalUsedOnlyBeforeTheCall_IsFixedNormally()
+    {
+        // The span is dead by the time the await would be inserted, so its lifetime never crosses it.
+        // The guard must not withhold every fix that merely shares a method with a Span.
+        var test =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        Span<int> span = data.AsSpan();
+        var first = span[0];
+        process.{|#0:WaitForExit|}();
+        return first;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        Span<int> span = data.AsSpan();
+        var first = span[0];
+        await process.WaitForExitAsync(cancellationToken);
+        return first;
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

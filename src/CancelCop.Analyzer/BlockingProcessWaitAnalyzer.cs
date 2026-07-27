@@ -147,6 +147,10 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         // the diagnostic is reported without a fix.
         if (CancellationTokenHelpers.AwaitIsForbiddenHere(invocation))
             properties = properties.Add(NoFixProperty, "await-not-allowed-here");
+        else if (
+            CancellationTokenHelpers.AwaitWouldSpanRefLikeLocal(context.SemanticModel, invocation)
+        )
+            properties = properties.Add(NoFixProperty, "await-would-span-ref-like-local");
 
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
             invocation,
