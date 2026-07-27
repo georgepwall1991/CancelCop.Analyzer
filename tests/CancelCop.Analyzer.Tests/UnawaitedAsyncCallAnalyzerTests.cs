@@ -538,4 +538,33 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("GetAwaiter"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task NestedLookalikeAwaiterType_ShouldNotReportDiagnostic()
+    {
+        // A nested type reports its *outer* type's namespace, so `Outer.TaskAwaiter` declared in
+        // System.Runtime.CompilerServices satisfies a namespace-and-name check while being entirely
+        // unrelated to async execution. The framework types are top level.
+        var test =
+            @"
+namespace System.Runtime.CompilerServices
+{
+    public class Outer
+    {
+        public struct TaskAwaiter { }
+    }
+}
+
+public class TestClass
+{
+    private System.Runtime.CompilerServices.Outer.TaskAwaiter Make() => default;
+
+    public void Run()
+    {
+        Make();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }

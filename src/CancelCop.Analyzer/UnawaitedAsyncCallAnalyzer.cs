@@ -261,7 +261,8 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
             return true;
 
         if (
-            type.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"
+            type.ContainingType is null
+            && type.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"
             && type.Name
                 is "ConfiguredTaskAwaitable"
                     or "ConfiguredValueTaskAwaitable"

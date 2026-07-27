@@ -41,6 +41,11 @@ public static class CancellationTokenHelpers
         if (type == null)
             return false;
 
+        // A nested type reports its *outer* type's namespace, so `Tasks.Outer.Task` would otherwise
+        // pass a namespace-and-name check. The framework types are top level.
+        if (type.ContainingType != null)
+            return false;
+
         var typeName = type.Name;
         var ns = type.ContainingNamespace?.ToString();
 
