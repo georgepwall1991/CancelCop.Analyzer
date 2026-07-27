@@ -21,21 +21,21 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (32 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (33 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
 - loops and async streams that ignore cancellation (`ThrowIfCancellationRequested`, `.WithCancellation`, `[EnumeratorCancellation]`)
 - timeout `CancellationTokenSource` that silently drops a parent token (`CreateLinkedTokenSource` + `CancelAfter`)
 - sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream APIs, `Process.WaitForExit()`, blocking sync primitives)
-- `async void`, unawaited fire-and-forget calls, swallowed `OperationCanceledException`, and resource-lifetime bugs (undisposed CTS, premature `using` disposal)
+- `async void`, unawaited fire-and-forget calls, swallowed `OperationCanceledException`, and resource-lifetime bugs (undisposed CTS locals and fields, premature `using` disposal)
 
 When the analyzer cannot prove a problem statically, it **stays quiet**. High-signal feedback, not noisy guesses.
 
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.33.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.34.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.33.0
+Install-Package CancelCop.Analyzer -Version 1.34.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -146,6 +146,7 @@ dotnet build samples/CancelCop.Sample
 | **CC030** | Avoid blocking `Process.WaitForExit()` in async code; use `await WaitForExitAsync(token)` | Warning | ✅ |
 | **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`) in async code | Warning | ❌ |
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
+| **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 
 ## Quick Examples
 
@@ -641,6 +642,30 @@ public async Task StartAsync(CancellationToken cancellationToken)
 > returned, passed as an argument, or explicitly discarded with `_ =` is not dropped and is not
 > flagged — `_ =` is the documented way to opt in deliberately. Analyzer-only: the right resolution
 > depends on intent.
+
+### CC033: `CancellationTokenSource` Field Never Disposed
+
+```csharp
+// ❌ Warning CC033 - created by this type, never disposed
+public class Worker
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+}
+
+// ✅ Fixed - the owner disposes what it created
+public sealed class Worker : IDisposable
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public void Dispose() => _cts.Dispose();
+}
+```
+
+> Complements CC014, which covers *local* sources and can offer a `using` fix. A field's lifetime is
+> the object's, so the resolution is a design change and CC033 is analyzer-only. It fires only when
+> the declaring type **creates** the source — an injected one is owned by whoever created it, and
+> disposing it would be a bug. Fields that escape (returned or passed as an argument) and `static`
+> fields stay quiet.
 
 ## Configuration
 

@@ -1448,14 +1448,15 @@ internal sealed class GuardedService
     [Fact]
     public async Task IdiomaticBackgroundTaskLifecycle_ProducesNoDiagnostics()
     {
-        // A start/stop background-task lifecycle: a field CTS (not flagged by CC014), CancelAsync on
-        // stop (CC022 satisfied), the stored task joined via WaitAsync(token), and a token-checked loop.
-        // No analyzer fires.
+        // A start/stop background-task lifecycle: a field CTS the type owns and disposes (CC033),
+        // CancelAsync on stop (CC022 satisfied), the stored task joined via WaitAsync(token), and a
+        // token-checked loop. No analyzer fires.
         var code = @"
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-internal sealed class BackgroundRunner
+internal sealed class BackgroundRunner : IDisposable
 {
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private Task? _running;
@@ -1468,6 +1469,8 @@ internal sealed class BackgroundRunner
         if (_running is not null)
             await _running.WaitAsync(cancellationToken);
     }
+
+    public void Dispose() => _cts.Dispose();
 
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
@@ -2512,12 +2515,14 @@ internal sealed class DeviceWaiter
     public async Task IdiomaticTwoTokenLinkedSource_ProducesNoDiagnostics()
     {
         // Linking two external tokens with a using-declared CreateLinkedTokenSource and flowing the
-        // combined token. CC014 (using var disposal) and the rest stay quiet.
+        // combined token, with the owned shutdown source disposed (CC033). CC014 (using var
+        // disposal) and the rest stay quiet.
         var code = @"
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-internal sealed class CombinedService
+internal sealed class CombinedService : IDisposable
 {
     private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
 
@@ -2526,6 +2531,8 @@ internal sealed class CombinedService
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
         return await ComputeAsync(linked.Token);
     }
+
+    public void Dispose() => _shutdown.Dispose();
 
     private Task<int> ComputeAsync(CancellationToken cancellationToken) => Task.FromResult(0);
 }";
