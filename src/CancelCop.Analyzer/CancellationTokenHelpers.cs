@@ -1022,8 +1022,16 @@ public static class CancellationTokenHelpers
     /// later use — the call binds perfectly well, so only a lifetime check catches it. Approximated
     /// conservatively: any such local declared before the node and read after it withholds the fix.
     /// </remarks>
-    public static bool AwaitWouldSpanRefLikeLocal(SemanticModel semanticModel, SyntaxNode node)
+    public static bool AwaitWouldSpanRefLikeLocal(
+        SemanticModel semanticModel,
+        SyntaxNode node,
+        int? awaitPosition = null
+    )
     {
+        // Usually the await lands where the construct is, but not always: `using` -> `await using`
+        // awaits at scope exit, so the caller can say where the await really goes.
+        var position = awaitPosition ?? node.SpanStart;
+
         var body = node.Ancestors()
             .FirstOrDefault(a =>
                 a
@@ -1031,7 +1039,10 @@ public static class CancellationTokenHelpers
                         or LocalFunctionStatementSyntax
                         or AnonymousFunctionExpressionSyntax
                         or AccessorDeclarationSyntax
-            );
+            )
+            // A top-level program has no declared body; its global statements are the synthesized
+            // entry point, and locals declared there have the same lifetimes.
+            ?? node.Ancestors().OfType<CompilationUnitSyntax>().FirstOrDefault();
         if (body is null)
             return false;
 
@@ -1087,7 +1098,7 @@ public static class CancellationTokenHelpers
 
         foreach (var declaration in declarations)
         {
-            if (declaration.SpanStart >= node.SpanStart)
+            if (declaration.SpanStart >= position)
                 continue;
 
             if (
@@ -1099,7 +1110,7 @@ public static class CancellationTokenHelpers
             // A local declared in a sibling or already-closed block is out of scope by the time the
             // call runs, so nothing it does can span the inserted await.
             var scope = DeclarationScopeOf(declaration);
-            if (scope is null || !scope.Span.Contains(node.Span))
+            if (scope is null || !scope.Span.Contains(position))
                 continue;
 
             // A `using var` local is disposed at scope exit, so it is live past the call whether or
@@ -1110,7 +1121,14 @@ public static class CancellationTokenHelpers
             )
                 return true;
 
-            if (ReferencesLocal(semanticModel, body, local, reference => reference.SpanStart > node.Span.End))
+            if (
+                ReferencesLocal(
+                    semanticModel,
+                    body,
+                    local,
+                    reference => reference.SpanStart > position
+                )
+            )
                 return true;
 
             // Inside a loop, position is not execution order: a `for` condition or incrementor is
@@ -1168,7 +1186,13 @@ public static class CancellationTokenHelpers
         declaration
             .Ancestors()
             .FirstOrDefault(a =>
-                a is BlockSyntax or ForStatementSyntax or SwitchSectionSyntax or GlobalStatementSyntax
+                // CompilationUnit, not GlobalStatement: in a top-level program every global
+                // statement shares one scope, so stopping at the individual statement would make
+                // each local look confined to its own declaration.
+                a is BlockSyntax
+                    or ForStatementSyntax
+                    or SwitchSectionSyntax
+                    or CompilationUnitSyntax
             );
 
     /// <summary>
@@ -1208,6 +1232,11 @@ public static class CancellationTokenHelpers
     /// a mechanical rewrite, so callers should report the diagnostic and withhold the fix rather than
     /// stay silent.
     /// </remarks>
-    public static bool AwaitInsertionIsUnsafe(SemanticModel semanticModel, SyntaxNode node) =>
-        AwaitIsForbiddenHere(node) || AwaitWouldSpanRefLikeLocal(semanticModel, node);
+    public static bool AwaitInsertionIsUnsafe(
+        SemanticModel semanticModel,
+        SyntaxNode node,
+        int? awaitPosition = null
+    ) =>
+        AwaitIsForbiddenHere(node)
+        || AwaitWouldSpanRefLikeLocal(semanticModel, node, awaitPosition);
 }

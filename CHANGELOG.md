@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Span<T>` local, a `using var` ref struct, a ref-struct `foreach` enumerator, a `ref` iteration
     variable, an `out Span<T>` declaration expression, or a loop header that runs after the body.
 
-  CC025 is included because `using` → `await using` is an await insertion like any other.
+  CC025 is included because `using` → `await using` is an await insertion like any other — and it is
+  evaluated at the position that await actually runs, namely disposal at scope exit rather than the
+  `using` keyword, so a `Span<T>` read before then does not withhold a valid fix.
+
+  Top-level programs are covered: their global statements are the synthesized entry point, and a
+  body-only search previously found nothing and let every fix through.
 
   The finding itself is unchanged — blocking I/O inside a `lock` is exactly the stall these rules
   exist to surface. What is withheld is the automated rewrite, because resolving it means

@@ -306,4 +306,108 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC013_TopLevelStatementsAcrossALiveSpan_ReportsWithoutOfferingAFix()
+    {
+        // A top-level program has no declared method body, so a body-only search finds nothing and
+        // the guard silently passed. Its global statements are the synthesized entry point and
+        // locals declared there have the same lifetimes.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+await Task.Yield();
+int[] data = new int[1];
+Span<int> span = data.AsSpan();
+{|#0:Thread.Sleep(100)|};
+Console.WriteLine(span[0]);
+";
+
+        var test = new CSharpCodeFixTest<
+            BlockingSleepAnalyzer,
+            BlockingSleepCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+            TestState = { OutputKind = Microsoft.CodeAnalysis.OutputKind.ConsoleApplication },
+        };
+        test.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        );
+        await test.RunAsync();
+    }
+
+    [Fact]
+    public async Task CC025_SpanReadBeforeScopeExit_IsStillFixed()
+    {
+        // `await using` awaits at disposal — scope exit — not at the `using` keyword. The span is
+        // read before then, so its lifetime never crosses the await and the fix is valid. Checking
+        // at the keyword would withhold it.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Resource : IDisposable, IAsyncDisposable
+{
+    public void Dispose() { }
+    public ValueTask DisposeAsync() => default;
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(int[] data)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        {|#0:using|} var resource = new Resource();
+        return span[0];
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Resource : IDisposable, IAsyncDisposable
+{
+    public void Dispose() { }
+    public ValueTask DisposeAsync() => default;
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(int[] data)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        await using var resource = new Resource();
+        return span[0];
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            AwaitUsingAnalyzer,
+            AwaitUsingCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0)
+        );
+        await t.RunAsync();
+    }
 }

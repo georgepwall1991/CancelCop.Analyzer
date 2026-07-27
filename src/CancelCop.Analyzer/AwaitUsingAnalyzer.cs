@@ -128,9 +128,11 @@ public class AwaitUsingAnalyzer : DiagnosticAnalyzer
         // The construct is just as problematic either way, but where an inserted await would not
         // compile — a lock body, an exception filter, an unsafe context, most query clauses, or
         // across a ref-like lifetime — the diagnostic is reported without a fix.
+        var construct = usingKeyword.Parent ?? context.Node;
         var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
             context.SemanticModel,
-            usingKeyword.Parent ?? context.Node
+            construct,
+            DisposalPositionOf(construct)
         )
             ? ImmutableDictionary<string, string?>.Empty.Add(
                 NoFixProperty,
@@ -156,4 +158,26 @@ public class AwaitUsingAnalyzer : DiagnosticAnalyzer
 
     private static bool IsAsyncDisposable(ITypeSymbol type) =>
         type.Name == "IAsyncDisposable" && type.ContainingNamespace?.ToDisplayString() == "System";
+
+    /// <summary>
+    /// Where the <c>await</c> introduced by <c>await using</c> actually runs: at disposal, which is
+    /// the end of the <c>using</c> statement's body or the end of the declaration's enclosing scope
+    /// — not at the <c>using</c> keyword.
+    /// </summary>
+    /// <remarks>
+    /// Checking ref-like lifetimes at the keyword is too strict: a <c>Span&lt;T&gt;</c> read between
+    /// the <c>using</c> and scope exit finishes before disposal awaits, so the rewrite compiles and
+    /// the fix should still be offered.
+    /// </remarks>
+    private static int DisposalPositionOf(SyntaxNode construct)
+    {
+        if (construct is UsingStatementSyntax usingStatement)
+            return usingStatement.Statement.Span.End;
+
+        // A using declaration disposes at the end of its enclosing scope.
+        var scope = construct
+            .Ancestors()
+            .FirstOrDefault(a => a is BlockSyntax or SwitchSectionSyntax or CompilationUnitSyntax);
+        return scope?.Span.End ?? construct.Span.End;
+    }
 }
