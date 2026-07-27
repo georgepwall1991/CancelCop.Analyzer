@@ -16,6 +16,7 @@ namespace CancelCop.Analyzer;
 public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
 {
     private const string Title = "Add CancellationToken parameter";
+    private const string CompilerServicesNamespace = "System.Runtime.CompilerServices";
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(MissingCancellationTokenAnalyzer.DiagnosticId);
@@ -71,6 +72,21 @@ public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
                 SyntaxFactory.LiteralExpression(SyntaxKind.DefaultLiteralExpression,
                     SyntaxFactory.Token(SyntaxKind.DefaultKeyword))));
 
+        // On an async iterator a bare token is worse than useless: the compiler-generated
+        // GetAsyncEnumerator ignores it, so a consumer's .WithCancellation(token) silently fails to
+        // reach it — which is precisely what CC011 exists to report. Adding the attribute here means
+        // the fix produces working cancellation instead of trading CC001 for CC011.
+        var isAsyncIterator = IsAsyncIterator(methodDeclaration);
+        if (isAsyncIterator)
+        {
+            cancellationTokenParameter = cancellationTokenParameter.WithAttributeLists(
+                SyntaxFactory.SingletonList(
+                    SyntaxFactory.AttributeList(
+                        SyntaxFactory.SingletonSeparatedList(
+                            SyntaxFactory.Attribute(
+                                SyntaxFactory.IdentifierName("EnumeratorCancellation"))))));
+        }
+
         // Insert before any trailing 'params' parameter (CS0231 guard); otherwise append last.
         var newParameterList = CancellationTokenFixHelpers.InsertTokenParameter(
             methodDeclaration.ParameterList, cancellationTokenParameter);
@@ -82,8 +98,30 @@ public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
         if (newRoot is CompilationUnitSyntax compilationUnit)
         {
             newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
+
+            if (isAsyncIterator && newRoot is CompilationUnitSyntax withThreading)
+            {
+                newRoot = CancellationTokenFixHelpers.AddUsing(
+                    withThreading, CompilerServicesNamespace);
+            }
         }
 
         return document.WithSyntaxRoot(newRoot);
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when the declaration is an async iterator — it yields, rather than merely
+    /// returning an async-enumerable type.
+    /// </summary>
+    /// <remarks>
+    /// A <c>yield</c> inside a nested local function or lambda belongs to that function's iterator,
+    /// so the walk stops at those boundaries.
+    /// </remarks>
+    private static bool IsAsyncIterator(MethodDeclarationSyntax declaration) =>
+        declaration.Modifiers.Any(SyntaxKind.AsyncKeyword) &&
+        declaration
+            .DescendantNodes(descendIntoChildren: node =>
+                node == declaration ||
+                node is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax))
+            .Any(node => node is YieldStatementSyntax);
 }

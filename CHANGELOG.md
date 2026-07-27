@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.35.0] - 2026-07-27
 
+### Fixed
+
+- **CC001's code fix now adds `[EnumeratorCancellation]` when the method is an async iterator**, along
+  with the `System.Runtime.CompilerServices` import.
+
+  CC001 has always covered async iterators, but its fix added a bare `CancellationToken`. On an
+  iterator that token is ignored by the compiler-generated `GetAsyncEnumerator`, so a consumer's
+  `.WithCancellation(token)` silently fails to reach it — which is precisely what CC011 reports. The
+  fix therefore traded CC001 for CC011 and left the stream just as uncancellable as before.
+
+  Applying the fix now produces working cancellation, and the two rules agree. A regression test
+  runs CC011 over the fixed output to pin exactly that.
+
+  Only actual iterators are affected: an ordinary async method still gets a plain token, since
+  `[EnumeratorCancellation]` on a non-iterator is a compiler error (CS8205). A `yield` inside a
+  nested local function belongs to that function's iterator, not the enclosing method.
+
+## [1.35.0] - 2026-07-27
+
 ### Added
 
 - **CC034** (`AsyncStreamMissingTokenAnalyzer`): flags a public or protected
