@@ -1074,27 +1074,34 @@ public static class CancellationTokenHelpers
                 return true;
         }
 
-        foreach (var declarator in body.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+        // Both declaration forms: `Span<int> s = …` and a designation such as `out Span<int> s`,
+        // a pattern, or a deconstruction — all introduce a local whose lifetime matters here.
+        var declarations = body.DescendantNodes()
+            .Where(candidate =>
+                candidate is VariableDeclaratorSyntax or SingleVariableDesignationSyntax
+            );
+
+        foreach (var declaration in declarations)
         {
-            if (declarator.SpanStart >= node.SpanStart)
+            if (declaration.SpanStart >= node.SpanStart)
                 continue;
 
             if (
-                semanticModel.GetDeclaredSymbol(declarator) is not ILocalSymbol local
+                semanticModel.GetDeclaredSymbol(declaration) is not ILocalSymbol local
                 || (!local.Type.IsRefLikeType && local.RefKind == RefKind.None)
             )
                 continue;
 
             // A local declared in a sibling or already-closed block is out of scope by the time the
             // call runs, so nothing it does can span the inserted await.
-            var scope = DeclarationScopeOf(declarator);
+            var scope = DeclarationScopeOf(declaration);
             if (scope is null || !scope.Span.Contains(node.Span))
                 continue;
 
             // A `using var` local is disposed at scope exit, so it is live past the call whether or
             // not the identifier appears again — the implicit Dispose is the later use.
             if (
-                declarator.Parent?.Parent is LocalDeclarationStatementSyntax localDeclaration
+                declaration.Parent?.Parent is LocalDeclarationStatementSyntax localDeclaration
                 && localDeclaration.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)
             )
                 return true;
@@ -1153,8 +1160,8 @@ public static class CancellationTokenHelpers
     /// The syntax node bounding a local's scope: the enclosing block, <c>for</c> statement, or
     /// switch section.
     /// </summary>
-    private static SyntaxNode? DeclarationScopeOf(VariableDeclaratorSyntax declarator) =>
-        declarator
+    private static SyntaxNode? DeclarationScopeOf(SyntaxNode declaration) =>
+        declaration
             .Ancestors()
             .FirstOrDefault(a =>
                 a is BlockSyntax or ForStatementSyntax or SwitchSectionSyntax or GlobalStatementSyntax

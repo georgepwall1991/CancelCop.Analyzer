@@ -921,4 +921,33 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task RefLikeOutDeclaration_ReportsWithoutOfferingAFix()
+    {
+        // An `out Span<int> span` introduces a local through a declaration expression rather than a
+        // variable declarator, so a declarator-only scan misses it — but its lifetime still crosses
+        // an inserted await (CS4007).
+        var source =
+            @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Get(int[] data, out Span<int> span) => span = data.AsSpan();
+
+    public async Task<int> RunAsync(Process process, int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Get(data, out Span<int> span);
+        process.{|#0:WaitForExit|}();
+        return span[0];
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }
