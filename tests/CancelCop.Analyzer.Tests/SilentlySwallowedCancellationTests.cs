@@ -307,4 +307,38 @@ public class IdleHost
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task SourceDefinedSystemOperationCanceledException_ShouldNotReportDiagnostic()
+    {
+        // Source can declare its own System.OperationCanceledException, and the catch binds to that
+        // one — matching on namespace and name alone would report an unrelated type.
+        var test =
+            @"
+namespace System
+{
+    public class MyBase : Exception { }
+}
+
+namespace Probe
+{
+    public class OperationCanceledException : System.MyBase { }
+
+    public class Worker
+    {
+        public void Run()
+        {
+            try
+            {
+                System.Console.WriteLine(""work"");
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }

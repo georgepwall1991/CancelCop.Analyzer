@@ -89,10 +89,28 @@ public class SilentlySwallowedCancellationAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
 
-        context.RegisterSyntaxNodeAction(AnalyzeCatchClause, SyntaxKind.CatchClause);
+        // Resolve the framework exception once per compilation and compare symbols, rather than
+        // matching on name and namespace: source or a referenced assembly may declare its own
+        // System.OperationCanceledException, which the catch would bind to instead.
+        context.RegisterCompilationStartAction(start =>
+        {
+            var cancellationException = start.Compilation.GetTypeByMetadataName(
+                "System.OperationCanceledException"
+            );
+            if (cancellationException is null)
+                return;
+
+            start.RegisterSyntaxNodeAction(
+                nodeContext => AnalyzeCatchClause(nodeContext, cancellationException),
+                SyntaxKind.CatchClause
+            );
+        });
     }
 
-    private static void AnalyzeCatchClause(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeCatchClause(
+        SyntaxNodeAnalysisContext context,
+        INamedTypeSymbol cancellationException
+    )
     {
         var catchClause = (CatchClauseSyntax)context.Node;
 
@@ -107,7 +125,7 @@ public class SilentlySwallowedCancellationAnalyzer : DiagnosticAnalyzer
         if (
             context.SemanticModel.GetTypeInfo(typeSyntax, context.CancellationToken).Type
                 is not { } caughtType
-            || !IsCancellationException(caughtType)
+            || !IsCancellationException(caughtType, cancellationException)
         )
             return;
 
@@ -143,14 +161,14 @@ public class SilentlySwallowedCancellationAnalyzer : DiagnosticAnalyzer
     /// Returns <c>true</c> for <c>OperationCanceledException</c> and its cancellation-specific
     /// subclasses, such as <c>TaskCanceledException</c>.
     /// </summary>
-    private static bool IsCancellationException(ITypeSymbol type)
+    private static bool IsCancellationException(
+        ITypeSymbol type,
+        INamedTypeSymbol cancellationException
+    )
     {
         for (var current = type; current != null; current = current.BaseType)
         {
-            if (
-                current is { ContainingType: null, Name: "OperationCanceledException" }
-                && current.ContainingNamespace?.ToDisplayString() == "System"
-            )
+            if (SymbolEqualityComparer.Default.Equals(current, cancellationException))
                 return true;
         }
 
