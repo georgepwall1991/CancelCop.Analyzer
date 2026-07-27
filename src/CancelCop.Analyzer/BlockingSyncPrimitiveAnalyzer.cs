@@ -58,8 +58,9 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
     public const string DiagnosticId = "CC031";
 
     /// <summary>
-    /// The blocking members, keyed by the <c>System.Threading</c> type that declares them. Matched
-    /// against the invoked method's original definition, so an override or a derived receiver
+    /// The blocking members, keyed by the simple name of the <c>System.Threading</c> type that
+    /// declares them. Each name is resolved to a real symbol per compilation and matched against the
+    /// invoked method's original definition, so an override or a derived receiver
     /// (<c>ManualResetEvent.WaitOne</c>, declared on <c>WaitHandle</c>) still resolves here.
     /// </summary>
     private static readonly ImmutableDictionary<
@@ -125,10 +126,36 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
 
-        context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
+        // Resolve the framework types once per compilation and compare symbols, rather than matching
+        // on name and namespace: a consumer may legally declare its own `System.Threading.Thread<T>`,
+        // which shares both and is unrelated to the primitive this rule is about.
+        context.RegisterCompilationStartAction(start =>
+        {
+            var blockingMembers = new Dictionary<INamedTypeSymbol, ImmutableHashSet<string>>(
+                SymbolEqualityComparer.Default
+            );
+
+            foreach (var entry in BlockingMembersByType)
+            {
+                var type = start.Compilation.GetTypeByMetadataName("System.Threading." + entry.Key);
+                if (type != null)
+                    blockingMembers[type] = entry.Value;
+            }
+
+            if (blockingMembers.Count == 0)
+                return;
+
+            start.RegisterSyntaxNodeAction(
+                nodeContext => AnalyzeInvocation(nodeContext, blockingMembers),
+                SyntaxKind.InvocationExpression
+            );
+        });
     }
 
-    private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeInvocation(
+        SyntaxNodeAnalysisContext context,
+        Dictionary<INamedTypeSymbol, ImmutableHashSet<string>> blockingMembersByType
+    )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
         var invokedName = invocation.Expression switch
@@ -155,8 +182,8 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
 
         var declaringType = definition.ContainingType;
         if (
-            declaringType?.ContainingNamespace?.ToDisplayString() != "System.Threading"
-            || !BlockingMembersByType.TryGetValue(declaringType.Name, out var blockingMembers)
+            declaringType is null
+            || !blockingMembersByType.TryGetValue(declaringType, out var blockingMembers)
             || !blockingMembers.Contains(definition.Name)
         )
             return;

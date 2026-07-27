@@ -353,4 +353,34 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("Monitor.Wait"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task GenericLookalikeInTheSameNamespace_ShouldNotReportDiagnostic()
+    {
+        // A consumer may legally declare its own System.Threading.Thread<T>. It shares the name and
+        // namespace of the framework primitive but is unrelated, so matching on those alone is a
+        // false positive — the rule compares resolved symbols.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+namespace System.Threading
+{
+    public class Thread<T>
+    {
+        public void Join() { }
+    }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(System.Threading.Thread<int> worker)
+    {
+        worker.Join();
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }
