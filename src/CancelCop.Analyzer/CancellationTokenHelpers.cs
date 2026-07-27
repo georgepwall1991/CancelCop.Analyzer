@@ -1030,9 +1030,11 @@ public static class CancellationTokenHelpers
         int? declarationCutoff = null
     )
     {
-        // Usually the await lands where the construct is, but not always: `using` -> `await using`
-        // awaits at scope exit, so the caller can say where the await really goes.
-        var position = awaitPosition ?? node.SpanStart;
+        // The node's *end*, not its start: a rewrite like `Thread.Sleep(span[0])` ->
+        // `await Task.Delay(span[0])` evaluates its arguments before suspending, so a ref-like value
+        // used only inside the call is already consumed. Callers whose await lands elsewhere —
+        // `using` -> `await using`, which awaits at scope exit — say so explicitly.
+        var position = awaitPosition ?? node.Span.End;
 
         // Which declarations can still be live at that await. For an ordinary rewrite it is
         // everything declared before it; for `await using` it is everything declared before the
@@ -1284,12 +1286,33 @@ public static class CancellationTokenHelpers
 
             foreach (var sibling in PrecedingOperands(current))
             {
-                if (semanticModel.GetTypeInfo(sibling).Type?.IsRefLikeType == true)
+                if (IsOrIndexesRefLike(semanticModel, sibling))
                     return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="expression"/> is ref-like, or is an access whose
+    /// receiver is — an assignment target such as <c>span[0]</c> yields an <c>int</c> while the
+    /// storage location it refers to keeps the span pending.
+    /// </summary>
+    private static bool IsOrIndexesRefLike(SemanticModel semanticModel, ExpressionSyntax expression)
+    {
+        if (semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true)
+            return true;
+
+        var receiver = expression switch
+        {
+            ElementAccessExpressionSyntax elementAccess => elementAccess.Expression,
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            _ => null,
+        };
+
+        return receiver != null
+            && semanticModel.GetTypeInfo(receiver).Type?.IsRefLikeType == true;
     }
 
     /// <summary>

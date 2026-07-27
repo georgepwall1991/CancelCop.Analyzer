@@ -673,4 +673,86 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC015_AssignmentThroughARefLikeTarget_ReportsWithoutOfferingAFix()
+    {
+        // `span[0]` yields an int, but the storage location it refers to keeps the span pending when
+        // the await runs (CS4007). Reading only the operand's own type misses that.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Task<int> work, int[] data)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        span[0] = work.{|#0:Result|};
+    }
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC013_RefLikeLocalConsumedByTheArgument_IsStillFixed()
+    {
+        // `await Task.Delay(span[0])` evaluates its argument before suspending, so the span is
+        // already consumed. Treating the call's start as the await position would withhold this.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        {|#0:Thread.Sleep(span[0])|};
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        await Task.Delay(span[0], cancellationToken);
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingSleepAnalyzer,
+            BlockingSleepCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        );
+        await t.RunAsync();
+    }
 }
