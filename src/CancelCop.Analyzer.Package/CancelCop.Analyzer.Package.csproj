@@ -12,12 +12,12 @@
     <PackageId>CancelCop.Analyzer</PackageId>
     <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-    <Version>1.34.0</Version>
+    <Version>1.35.0</Version>
     <Authors>George Wall</Authors>
     <Title>CancelCop.Analyzer — CancellationToken and async/await Roslyn analyzer for C#/.NET</Title>
     <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 33 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
     <PackageTags>roslyn;roslyn-analyzer;analyzers;analyzer;codefix;code-fix;static-analysis;codeanalysis;csharp;dotnet;cancellation;cancellationtoken;async;async-await;sync-over-async;deadlock;async-void;aspnetcore;RequestAborted;BackgroundService;efcore;httpclient;grpc;signalr;mediatr;WithCancellation;OperationCanceledException;blocking</PackageTags>
-    <PackageReleaseNotes>Adds CC033: flags a CancellationTokenSource field the declaring type creates and never disposes. A source owns a timer and a registration list for the lifetime of its owner, and an undisposed linked source stays attached to its parent callback list, so a long-lived parent accumulates every child ever created. Complements CC014, which covers locals and can offer a using fix; a field is a design change, so CC033 is analyzer-only. Fires only when the type creates the source — injected, escaping, disposed, and static fields stay quiet. 33 diagnostics.</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixes CC001 code fix for async iterators: it now adds [EnumeratorCancellation] and the System.Runtime.CompilerServices import alongside the CancellationToken parameter. On an iterator a bare token is ignored by the compiler-generated GetAsyncEnumerator, so a consumer .WithCancellation(token) silently fails to reach it — which is what CC011 reports — meaning the fix previously traded CC001 for CC011 and left the stream just as uncancellable. Ordinary async methods still get a plain token, since the attribute on a non-iterator is a compiler error. Diagnostic IDs and severities are unchanged from 1.34.0.</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>
