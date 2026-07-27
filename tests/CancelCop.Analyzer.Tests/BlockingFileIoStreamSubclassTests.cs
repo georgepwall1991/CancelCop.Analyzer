@@ -718,4 +718,120 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task BlockingCallInsideLock_ReportsWithoutOfferingAFix()
+    {
+        // await is illegal in a lock body (CS1996). The blocking write is still worth reporting —
+        // holding a lock across synchronous I/O is exactly the stall this rule exists to surface —
+        // but fixing it means restructuring the lock, which is not a mechanical rewrite.
+        var source =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object _gate = new object();
+
+    public async Task RunAsync(Stream stream, CancellationToken token)
+    {
+        lock (_gate)
+        {
+            stream.{|#0:Flush|}();
+        }
+
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Flush")
+        );
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingCallInLambdaInsideLock_IsFixedNormally()
+    {
+        // The lambda has its own await-capable context, so the lock around it does not block the
+        // rewrite. The boundary walk must stop at the lambda rather than seeing the enclosing lock.
+        var test =
+            @"
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object _gate = new object();
+
+    public void Run(Stream stream)
+    {
+        lock (_gate)
+        {
+            Func<Task> f = async () =>
+            {
+                stream.{|#0:Flush|}();
+                await Task.Yield();
+            };
+        }
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object _gate = new object();
+
+    public void Run(Stream stream)
+    {
+        lock (_gate)
+        {
+            Func<Task> f = async () =>
+            {
+                await stream.FlushAsync();
+                await Task.Yield();
+            };
+        }
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Flush")
+        );
+        await t.RunAsync();
+    }
 }

@@ -38,11 +38,19 @@ namespace CancelCop.Analyzer;
 /// </para>
 /// <para>
 /// The <c>Stream</c> primitives (<c>Read</c>, <c>Write</c>, <c>CopyTo</c>, <c>Flush</c>) are matched
-/// by inheritance rather than by exact type name, so concrete framework streams
-/// (<c>FileStream</c>, <c>NetworkStream</c>, <c>GZipStream</c>) and user-defined subclasses declared
-/// outside <c>System.IO</c> are all covered. <c>MemoryStream</c> is excluded: it is backed by an
+/// by resolving the invoked member back to its original definition on <c>System.IO.Stream</c>, so
+/// concrete framework streams (<c>FileStream</c>, <c>NetworkStream</c>, <c>GZipStream</c>) and
+/// user-defined subclasses are covered through any depth of overriding, while a subclass's own
+/// same-named convenience overload is not. <c>MemoryStream</c> is excluded: it is backed by an
 /// in-memory buffer, so the call never leaves the CPU and the async counterpart only wraps the same
 /// synchronous work in a completed task.
+/// </para>
+/// <para>
+/// <b>Fix safety:</b> the analyzer speculatively binds the exact call the fix would emit and reports
+/// only when it resolves to the intended counterpart, so the rewrite compiles. Where the call is
+/// genuinely blocking but no safe mechanical rewrite exists — named arguments that would be remapped,
+/// or an <c>await</c>-forbidden context such as a <c>lock</c> body — the diagnostic is reported
+/// without a code fix.
 /// </para>
 /// </remarks>
 /// <example>
@@ -223,6 +231,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // withheld.
         if (!NamedArgumentsMatch(invocation, method, asyncCounterpart!))
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
+        else if (AwaitIsForbiddenHere(invocation))
+            properties = properties.Add(NoFixProperty, "await-not-allowed-here");
 
         // Final authority: ask Roslyn to bind the exact call the fix would emit. The search above
         // approximates overload resolution well enough to *choose* a counterpart and decide whether
@@ -565,6 +575,42 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 bound.OriginalDefinition,
                 counterpart.OriginalDefinition
             );
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the enclosing syntax forbids <c>await</c>, so inserting one would
+    /// turn compiling source into a compiler error.
+    /// </summary>
+    /// <remarks>
+    /// The blocking call is still worth reporting in these contexts — a synchronous write inside a
+    /// <c>lock</c> is exactly the kind of code that stalls a request thread — but resolving it means
+    /// restructuring the lock, which is the author's decision, not a mechanical rewrite. The walk
+    /// stops at function boundaries because a lambda declared inside a <c>lock</c> body has its own
+    /// context where <c>await</c> is legal again.
+    /// </remarks>
+    private static bool AwaitIsForbiddenHere(SyntaxNode node)
+    {
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            switch (current)
+            {
+                // CS1996 / CS7013 / CS1995: await is not permitted in these positions.
+                case LockStatementSyntax:
+                case CatchFilterClauseSyntax:
+                case UnsafeStatementSyntax:
+                case QueryExpressionSyntax:
+                    return true;
+
+                // A nested function re-establishes an await-capable context.
+                case AnonymousFunctionExpressionSyntax:
+                case LocalFunctionStatementSyntax:
+                case BaseMethodDeclarationSyntax:
+                case AccessorDeclarationSyntax:
+                    return false;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Ordinal of the parameter named <paramref name="name"/>, or -1 when absent.</summary>

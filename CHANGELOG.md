@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   premised on. Signature comparison is good enough to choose a candidate and decide whether a token
   can flow, but it is not overload resolution: a subclass overload taking `object` wins a `byte[]`
   argument by implicit conversion even though the parameter types are not equal.
+- No fix is offered where `await` is illegal — a `lock` body (CS1996), an exception filter, an
+  `unsafe` block, or a query expression. The blocking call is still reported: holding a lock across
+  synchronous I/O is exactly the stall this rule exists to surface, but resolving it means
+  restructuring the lock, which is the author's decision rather than a mechanical rewrite. The walk
+  stops at function boundaries, so a lambda inside a `lock` body is fixed normally.
 - Named arguments are compared by **ordinal on both methods**, not just by name. An override may
   legally reuse the base names in a different order, and copying them across would compile while
   silently swapping two argument values — a worse outcome than a compile error, so the fix is
