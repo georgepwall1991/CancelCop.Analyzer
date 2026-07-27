@@ -1258,6 +1258,10 @@ public static class CancellationTokenHelpers
             .Any(identifier =>
                 identifier.Identifier.Text == local.Name
                 && predicate(identifier)
+                // `nameof(span)` never reads the value at runtime, so it does not keep the local
+                // live across an await — the same compile-time-only distinction CC009/CC014/CC016
+                // draw.
+                && !IsInsideNameof(identifier, semanticModel, default)
                 && SymbolEqualityComparer.Default.Equals(
                     semanticModel.GetSymbolInfo(identifier).Symbol,
                     local
@@ -1409,6 +1413,11 @@ public static class CancellationTokenHelpers
     private static IEnumerable<PendingOperand> PrecedingOperands(SyntaxNode node)
     {
         if (node.Parent is null)
+            yield break;
+
+        // The arms of a conditional are mutually exclusive: whichever one contains the node, the
+        // other never ran, so it holds nothing pending.
+        if (node.Parent is ConditionalExpressionSyntax)
             yield break;
 
         foreach (var child in node.Parent.ChildNodes())

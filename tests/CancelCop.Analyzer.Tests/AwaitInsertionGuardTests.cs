@@ -912,4 +912,116 @@ public class TestClass
             new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
         ).RunAsync();
     }
+
+    [Fact]
+    public async Task CC013_SpanMentionedOnlyInNameof_IsStillFixed()
+    {
+        // `nameof(span)` is compile-time only and never reads the value, so it does not keep the
+        // local live across the await — the same distinction CC009, CC014, and CC016 already draw.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        {|#0:Thread.Sleep(100)|};
+        Console.WriteLine(nameof(span));
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(int[] data, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        await Task.Delay(100, cancellationToken);
+        Console.WriteLine(nameof(span));
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingSleepAnalyzer,
+            BlockingSleepCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        );
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task CC015_RefLikeValueInTheOtherConditionalArm_IsStillFixed()
+    {
+        // The arms are mutually exclusive: whichever one contains the call, the other never ran and
+        // holds nothing pending.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static int Consume(Span<int> buffer) => 0;
+
+    public async Task<int> RunAsync(Task<int> work, int[] data, bool pick)
+    {
+        await Task.Yield();
+        return pick ? Consume(data.AsSpan()) : work.{|#0:Result|};
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static int Consume(Span<int> buffer) => 0;
+
+    public async Task<int> RunAsync(Task<int> work, int[] data, bool pick)
+    {
+        await Task.Yield();
+        return pick ? Consume(data.AsSpan()) : (await work);
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingOnAsyncAnalyzer,
+            BlockingOnAsyncCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        );
+        await t.RunAsync();
+    }
 }
