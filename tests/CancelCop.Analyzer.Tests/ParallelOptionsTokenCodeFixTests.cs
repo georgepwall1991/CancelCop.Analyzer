@@ -168,4 +168,53 @@ public class Runner
 
         await CreateTest(test, fixedCode, "event").RunAsync();
     }
+
+    [Fact]
+    public async Task DoesNotAddAnImportThatWouldBeAmbiguous()
+    {
+        // The fix only references an identifier already in scope. Adding `using System.Threading;`
+        // to a file that imports its own CancellationToken would make existing unqualified
+        // references ambiguous (CS0104), so no import is added at all.
+        var test =
+            @"
+using System.Threading.Tasks;
+using Custom;
+
+namespace Custom
+{
+    public class CancellationToken { }
+}
+
+public class Runner
+{
+    public void Run(int[] items, System.Threading.CancellationToken cancellationToken)
+    {
+        CancellationToken marker = new CancellationToken();
+        var options = {|#0:new ParallelOptions()|};
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Threading.Tasks;
+using Custom;
+
+namespace Custom
+{
+    public class CancellationToken { }
+}
+
+public class Runner
+{
+    public void Run(int[] items, System.Threading.CancellationToken cancellationToken)
+    {
+        CancellationToken marker = new CancellationToken();
+        var options = new ParallelOptions { CancellationToken = cancellationToken };
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        await CreateTest(test, fixedCode).RunAsync();
+    }
 }

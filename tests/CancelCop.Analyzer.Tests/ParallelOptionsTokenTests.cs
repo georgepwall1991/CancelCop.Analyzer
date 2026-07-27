@@ -231,4 +231,99 @@ namespace Custom
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task TokenAssignedAfterTheLoop_ShouldReportDiagnostic()
+    {
+        // Too late: the loop it was passed to already ran uncancellable.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions()|};
+        Parallel.ForEach(items, options, i => { });
+        options.CancellationToken = cancellationToken;
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task TokenAssignedInsideALambda_ShouldReportDiagnostic()
+    {
+        // An assignment inside a nested function may never run at all.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions()|};
+        Action configure = () => options.CancellationToken = cancellationToken;
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DefaultTokenInInitializer_ShouldReportDiagnostic()
+    {
+        // Satisfying the property with a token that cancels nothing leaves the loop exactly as
+        // uncancellable. CC012 only covers these spellings as invocation arguments.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions { CancellationToken = default }|};
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task CancellationTokenNoneInInitializer_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions { CancellationToken = CancellationToken.None }|};
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
 }

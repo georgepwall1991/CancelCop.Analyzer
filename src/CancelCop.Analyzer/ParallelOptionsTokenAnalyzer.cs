@@ -133,9 +133,38 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
         SyntaxNodeAnalysisContext context
     ) =>
         creation.Initializer?.Expressions.Any(expression =>
-            expression is AssignmentExpressionSyntax { Left: IdentifierNameSyntax name }
-            && name.Identifier.Text == "CancellationToken"
+            expression
+                is AssignmentExpressionSyntax
+                {
+                    Left: IdentifierNameSyntax { Identifier.Text: "CancellationToken" }
+                } assignment
+            && CancelsSomething(assignment.Right, context)
         ) == true;
+
+    /// <summary>
+    /// Returns <c>true</c> when the assigned value can actually cancel.
+    /// </summary>
+    /// <remarks>
+    /// <c>CancellationToken = default</c> and <c>= CancellationToken.None</c> satisfy the property
+    /// while leaving the loop exactly as uncancellable as before. CC012 covers those spellings only
+    /// as invocation arguments, so nothing else would report them here.
+    /// </remarks>
+    private static bool CancelsSomething(ExpressionSyntax value, SyntaxNodeAnalysisContext context)
+    {
+        var expression = value;
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+            expression = parenthesized.Expression;
+
+        if (
+            expression.IsKind(SyntaxKind.DefaultLiteralExpression)
+            || expression is DefaultExpressionSyntax
+        )
+            return false;
+
+        return context.SemanticModel.GetSymbolInfo(expression, context.CancellationToken).Symbol
+                is not IPropertySymbol { Name: "None" } none
+            || !CancellationTokenHelpers.IsCancellationToken(none.ContainingType);
+    }
 
     /// <summary>
     /// Returns <c>true</c> when the token is assigned to the created options later —
@@ -169,6 +198,22 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
         if (scope is null)
             return false;
 
+        // Where the options are first handed to something. An assignment after that point is too
+        // late — the loop it was passed to already ran uncancellable.
+        var firstUse = scope
+            .DescendantNodes()
+            .OfType<ArgumentSyntax>()
+            .Where(argument =>
+                SymbolEqualityComparer.Default.Equals(
+                    context
+                        .SemanticModel.GetSymbolInfo(argument.Expression, context.CancellationToken)
+                        .Symbol,
+                    local
+                )
+            )
+            .Select(argument => (int?)argument.SpanStart)
+            .FirstOrDefault();
+
         return scope
             .DescendantNodes()
             .OfType<AssignmentExpressionSyntax>()
@@ -178,6 +223,15 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                     {
                         Name.Identifier.ValueText: "CancellationToken"
                     } target
+                && (firstUse is null || assignment.SpanStart < firstUse)
+                // An assignment inside a nested function may never run at all.
+                && !assignment
+                    .Ancestors()
+                    .TakeWhile(node => node != scope)
+                    .Any(node =>
+                        node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
+                    )
+                && CancelsSomething(assignment.Right, context)
                 && SymbolEqualityComparer.Default.Equals(
                     context
                         .SemanticModel.GetSymbolInfo(target.Expression, context.CancellationToken)

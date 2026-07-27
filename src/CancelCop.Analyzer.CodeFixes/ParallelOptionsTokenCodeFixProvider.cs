@@ -106,12 +106,10 @@ public class ParallelOptionsTokenCodeFixProvider : CodeFixProvider
             updated = explicitCreation.WithArgumentList(null);
         }
 
+        // No import is added: the fix only references an identifier that is already in scope, and
+        // adding `using System.Threading;` to a file that imports its own CancellationToken would
+        // make existing unqualified references ambiguous (CS0104).
         var newRoot = root.ReplaceNode(creation, updated);
-
-        if (newRoot is CompilationUnitSyntax compilationUnit)
-        {
-            newRoot = CancellationTokenFixHelpers.AddSystemThreadingUsing(compilationUnit);
-        }
 
         return document.WithSyntaxRoot(newRoot);
     }

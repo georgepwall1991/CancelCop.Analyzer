@@ -28,7 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Conservative by design: fires only when a token is actually in scope, using the same walk as
   CC002/CC012 — with nothing to suggest the rule stays quiet. It also stays quiet when the token is
   assigned afterwards (`options.CancellationToken = cancellationToken;`), which is equally correct
-  and common when the options are built up conditionally. Implicit `new()` creation is covered, and
+  and common when the options are built up conditionally — but only when that assignment actually
+  runs first: one placed *after* the loop, or inside a lambda that may never execute, leaves the
+  loop uncancellable and is still reported.
+
+  A token that cannot cancel does not count as set: `CancellationToken = default` and
+  `= CancellationToken.None` satisfy the property while leaving the loop exactly as it was, and CC012
+  covers those spellings only as invocation arguments. Implicit `new()` creation is covered, and
   the fix appends to an existing initializer rather than replacing it, so `MaxDegreeOfParallelism`
   and `TaskScheduler` survive.
 
