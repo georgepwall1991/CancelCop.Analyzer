@@ -22,13 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Applying the fix now produces working cancellation, and the two rules agree. A regression test
   runs CC011 over the fixed output to pin exactly that.
 
-  Only actual iterators are affected: an ordinary async method still gets a plain token, since
-  `[EnumeratorCancellation]` on a non-iterator is a compiler error (CS8205). A `yield` inside a
+  Only iterators returning `IAsyncEnumerable<T>` are affected, checked semantically: CC001 also
+  covers iterators returning `IAsyncEnumerator<T>`, where the attribute has no effect and produces
+  CS8424 — which breaks any project treating warnings as errors. An ordinary async method still gets
+  a plain token, since `[EnumeratorCancellation]` on a non-iterator is CS8205. A `yield` inside a
   nested local function belongs to that function's iterator, not the enclosing method.
 
-  The attribute is emitted fully qualified with a simplifier annotation, so it reads as
+  The attribute is emitted root-qualified (`global::`) with a simplifier annotation, so it reads as
   `[EnumeratorCancellation]` in ordinary code but cannot be captured by a consumer's own
-  `EnumeratorCancellationAttribute` — which would compile to CS8425 and leave the token unconsumed,
+  `EnumeratorCancellationAttribute` or a nested `System` namespace — which would compile to CS8425 and leave the token unconsumed,
   the very failure the change exists to prevent.
 
 ## [1.34.0] - 2026-07-27

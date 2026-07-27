@@ -289,4 +289,104 @@ namespace Shadowing
             .WithArguments("ReadAsync");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task AsyncEnumeratorIterator_GetsAPlainToken()
+    {
+        // CC001 also covers iterators returning IAsyncEnumerator<T>, but [EnumeratorCancellation] is
+        // only effective on IAsyncEnumerable<T> — putting it here is CS8424, which breaks any
+        // project treating warnings as errors.
+        var test =
+            @"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+public class Reader
+{
+    public async IAsyncEnumerator<int> {|#0:ReadAsync|}()
+    {
+        await Task.Yield();
+        yield return 1;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Reader
+{
+    public async IAsyncEnumerator<int> ReadAsync(CancellationToken cancellationToken = default)
+    {
+        await Task.Yield();
+        yield return 1;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadAsync");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NestedSystemNamespace_DoesNotCaptureTheQualifiedName()
+    {
+        // The emitted name is root-qualified, so a consumer's own nested System namespace cannot
+        // redirect it. The simplifier then shortens it only where that is genuinely unambiguous —
+        // here the nested namespace declares no EnumeratorCancellation, so the short form still
+        // binds to the BCL attribute and the harness compiles the result to prove it.
+        var test =
+            @"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace Outer
+{
+    namespace System.Runtime.CompilerServices
+    {
+        public sealed class Placeholder { }
+    }
+
+    public class Reader
+    {
+        public async IAsyncEnumerable<int> {|#0:ReadAsync|}()
+        {
+            await Task.Yield();
+            yield return 1;
+        }
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Outer
+{
+    namespace System.Runtime.CompilerServices
+    {
+        public sealed class Placeholder { }
+    }
+
+    public class Reader
+    {
+        public async IAsyncEnumerable<int> ReadAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            yield return 1;
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadAsync");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }
