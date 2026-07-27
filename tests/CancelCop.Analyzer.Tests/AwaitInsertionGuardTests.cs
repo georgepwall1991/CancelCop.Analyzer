@@ -1125,4 +1125,119 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC015_CustomInterpolatedStringHandler_ReportsWithoutOfferingAFix()
+    {
+        // The handler is a ref struct created before the holes are evaluated, so it is pending while
+        // one of them is awaited (CS4007). It has no operand syntax of its own — the conversion is
+        // implicit — so only the interpolated string's converted type reveals it.
+        var source =
+            @"
+using System;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+[InterpolatedStringHandler]
+public ref struct LogHandler
+{
+    public LogHandler(int literalLength, int formattedCount) { }
+    public void AppendLiteral(string value) { }
+    public void AppendFormatted<T>(T value) { }
+}
+
+public static class Log
+{
+    public static void Write(LogHandler handler) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Task<int> work)
+    {
+        await Task.Yield();
+        Log.Write($""prefix {work.{|#0:Result|}}"");
+    }
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC013_SpanUsedOnlyInAnotherSwitchSection_IsStillFixed()
+    {
+        // Sections are alternative paths, so the later one never runs after the inserted await.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Use(Span<int> buffer) { }
+
+    public async Task RunAsync(int[] data, int mode, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        switch (mode)
+        {
+            case 0:
+                {|#0:Thread.Sleep(100)|};
+                break;
+            case 1:
+                Use(span);
+                break;
+        }
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Use(Span<int> buffer) { }
+
+    public async Task RunAsync(int[] data, int mode, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        Span<int> span = data.AsSpan();
+        switch (mode)
+        {
+            case 0:
+                await Task.Delay(100, cancellationToken);
+                break;
+            case 1:
+                Use(span);
+                break;
+        }
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingSleepAnalyzer,
+            BlockingSleepCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC013", DiagnosticSeverity.Warning).WithLocation(0)
+        );
+        await t.RunAsync();
+    }
 }

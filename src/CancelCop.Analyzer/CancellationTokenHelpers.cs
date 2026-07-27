@@ -1346,6 +1346,15 @@ public static class CancellationTokenHelpers
             )
                 break;
 
+            // A custom interpolated-string handler is a ref struct created before the holes are
+            // evaluated, so it is pending while one of them is awaited.
+            if (
+                current is InterpolationSyntax
+                && current.Parent is InterpolatedStringExpressionSyntax interpolated
+                && semanticModel.GetTypeInfo(interpolated).ConvertedType?.IsRefLikeType == true
+            )
+                return true;
+
             // The receiver of a call whose arguments contain the node: `span.Slice(task.Result)`
             // keeps the span pending while the argument is evaluated. It reaches PrecedingOperands
             // only as a method-group expression, whose type is null.
@@ -1479,6 +1488,17 @@ public static class CancellationTokenHelpers
     /// </remarks>
     private static bool IsMutuallyExclusiveWith(SyntaxNode reference, int position)
     {
+        // Two switch sections of the same switch are alternative paths. A `goto case` edge between
+        // them is handled separately, before this check runs.
+        foreach (var section in reference.Ancestors().OfType<SwitchSectionSyntax>())
+        {
+            if (
+                !section.Span.Contains(position)
+                && section.Parent?.Span.Contains(position) == true
+            )
+                return true;
+        }
+
         foreach (var ifStatement in reference.Ancestors().OfType<IfStatementSyntax>())
         {
             if (ifStatement.Else is null)
