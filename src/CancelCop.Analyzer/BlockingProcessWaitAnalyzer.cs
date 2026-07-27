@@ -67,8 +67,11 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
 
     private static readonly LocalizableString Title =
         "Avoid blocking Process.WaitForExit() in async code";
+    // Token-neutral: the fix passes an in-scope token when there is one and calls the parameterless
+    // form when there is not, so naming 'cancellationToken' here would hand anyone reading the
+    // warning without applying the fix an identifier that may not exist.
     private static readonly LocalizableString MessageFormat =
-        "Blocking 'WaitForExit()' in async code; use 'await WaitForExitAsync(cancellationToken)'";
+        "Blocking 'WaitForExit()' in async code; await 'WaitForExitAsync' instead";
     private static readonly LocalizableString Description =
         "Process.WaitForExit() blocks the thread for an unbounded wait on an external process; in async code use WaitForExitAsync, which accepts a CancellationToken.";
     private const string Category = "Usage";
