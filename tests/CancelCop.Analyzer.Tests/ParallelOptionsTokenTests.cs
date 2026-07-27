@@ -326,4 +326,52 @@ public class Runner
         t.ExpectedDiagnostics.Add(Expected());
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task ConstructedEmptyTokenInInitializer_ShouldReportDiagnostic()
+    {
+        // `new CancellationToken()` is the constructed spelling of a token that cancels nothing.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions { CancellationToken = new CancellationToken() }|};
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DeferredUseInsideALambda_ShouldNotReportDiagnostic()
+    {
+        // The lambda runs whenever it is invoked, so the argument inside it does not bound when the
+        // token must be assigned — the assignment here always happens before the loop executes.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        var options = new ParallelOptions();
+        Action run = () => Parallel.ForEach(items, options, i => { });
+        options.CancellationToken = cancellationToken;
+        run();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }

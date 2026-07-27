@@ -161,6 +161,25 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
         )
             return false;
 
+        // `new CancellationToken()` and `new CancellationToken(false)` are the constructed
+        // spellings of the same non-cancelling token; only `new CancellationToken(true)` — already
+        // cancelled — carries any signal.
+        if (
+            expression is BaseObjectCreationExpressionSyntax construction
+            && CancellationTokenHelpers.IsCancellationToken(
+                context.SemanticModel.GetTypeInfo(construction, context.CancellationToken).Type
+            )
+        )
+        {
+            return construction.ArgumentList?.Arguments.Any(argument =>
+                    context.SemanticModel.GetConstantValue(
+                        argument.Expression,
+                        context.CancellationToken
+                    )
+                        is { HasValue: true, Value: true }
+                ) == true;
+        }
+
         return context.SemanticModel.GetSymbolInfo(expression, context.CancellationToken).Symbol
                 is not IPropertySymbol { Name: "None" } none
             || !CancellationTokenHelpers.IsCancellationToken(none.ContainingType);
@@ -204,7 +223,15 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
             .DescendantNodes()
             .OfType<ArgumentSyntax>()
             .Where(argument =>
-                SymbolEqualityComparer.Default.Equals(
+                // A use inside a nested function is deferred: the lambda may be invoked long after
+                // the token is assigned, so it does not bound when the assignment must happen.
+                !argument
+                    .Ancestors()
+                    .TakeWhile(node => node != scope)
+                    .Any(node =>
+                        node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
+                    )
+                && SymbolEqualityComparer.Default.Equals(
                     context
                         .SemanticModel.GetSymbolInfo(argument.Expression, context.CancellationToken)
                         .Symbol,
