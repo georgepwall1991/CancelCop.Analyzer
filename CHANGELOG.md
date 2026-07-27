@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A counterpart that introduces type parameters the call cannot infer (`ReadAsync<T>(…)`) is no
   longer treated as a token-taking match; the rule falls back to the inferable overload rather than
   emitting CS0411.
+- **Roslyn binds the proposed rewrite.** As a final gate the analyzer speculatively binds the exact
+  call the fix would emit and reports only when it resolves to the counterpart the diagnostic is
+  premised on. Signature comparison is good enough to choose a candidate and decide whether a token
+  can flow, but it is not overload resolution: a subclass overload taking `object` wins a `byte[]`
+  argument by implicit conversion even though the parameter types are not equal.
+- Named arguments are compared by **ordinal on both methods**, not just by name. An override may
+  legally reuse the base names in a different order, and copying them across would compile while
+  silently swapping two argument values — a worse outcome than a compile error, so the fix is
+  withheld.
 - `PackageReleaseNotes` and the README install snippets describe this release rather than 1.28.1.
   Both README install versions are now asserted against the package version by
   `DiscoverabilityMetadataTests`, so they cannot silently drift again.

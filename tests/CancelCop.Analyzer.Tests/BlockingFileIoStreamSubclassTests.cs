@@ -628,4 +628,94 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task BroaderOverloadWinsByImplicitConversion_ShouldNotReportDiagnostic()
+    {
+        // ReadAsync(object, int, int) does not have parameter types equal to Read(byte[], int, int),
+        // but a byte[] argument converts to object implicitly, so the subclass overload wins
+        // resolution and `await` on its int result fails with CS1061. Only real binding catches this
+        // — signature equality says the inherited awaitable overload would be used.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public int ReadAsync(object buffer, int offset, int count) => 0;
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] buffer)
+    {
+        var read = stream.Read(buffer, 0, buffer.Length);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task NamesReusedAtDifferentOrdinals_ReportsWithoutOfferingAFix()
+    {
+        // The override reuses the base names in the opposite order, so `count: n, offset: 0` is a
+        // legal call meaning "read n bytes at 0". Copying those names onto the inherited ReadAsync,
+        // where the ordinals are reversed, would compile and silently swap the two values. A fix
+        // that quietly changes behaviour is worse than no fix.
+        var source =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int count, int offset) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(CustomStream stream, byte[] bytes, CancellationToken token)
+    {
+        var read = stream.{|#0:Read|}(buffer: bytes, count: bytes.Length, offset: 0);
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Read")
+        );
+        await t.RunAsync();
+    }
 }

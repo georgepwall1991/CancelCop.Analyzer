@@ -221,8 +221,27 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // inherited Stream.ReadAsync names them `buffer`/`offset`, so the rewrite would fail with
         // CS1739. The call is still genuinely blocking, so the diagnostic stands — only the fix is
         // withheld.
-        if (!NamedArgumentsMatch(invocation, asyncCounterpart!))
+        if (!NamedArgumentsMatch(invocation, method, asyncCounterpart!))
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
+
+        // Final authority: ask Roslyn to bind the exact call the fix would emit. The search above
+        // approximates overload resolution well enough to *choose* a counterpart and decide whether
+        // a token can flow, but approximations keep losing to the real rules — implicit conversions
+        // alone mean a subclass overload taking `object` wins a `byte[]` argument that
+        // parameter-type equality rejects. If the rewritten call does not bind to the counterpart
+        // this diagnostic is premised on, there is no safe rewrite and no reliable claim to make.
+        if (
+            !properties.ContainsKey(NoFixProperty)
+            && !RewriteBindsToCounterpart(
+                context,
+                invocation,
+                asyncName,
+                asyncCounterpart!,
+                flowToken ? tokenParameter!.Name : null
+            )
+        )
+            return;
+
         if (flowToken)
         {
             properties = properties.Add(TokenNameProperty, tokenParameter!.Name);
@@ -455,6 +474,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// </remarks>
     private static bool NamedArgumentsMatch(
         InvocationExpressionSyntax invocation,
+        IMethodSymbol sync,
         IMethodSymbol asyncCounterpart
     )
     {
@@ -464,11 +484,99 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             if (name is null)
                 continue;
 
-            if (!asyncCounterpart.Parameters.Any(p => p.Name == name))
+            // The value binds to whichever parameter carries that name. Copying the name over is
+            // only faithful when it sits at the same ordinal on both methods — an override may
+            // legally reuse the base names in a different order, and then the rewrite would compile
+            // while silently swapping two arguments.
+            if (IndexOfParameter(sync, name) != IndexOfParameter(asyncCounterpart, name))
                 return false;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Speculatively binds the invocation the code fix would produce and returns <c>true</c> when it
+    /// resolves to <paramref name="counterpart"/> — the method this diagnostic claims exists.
+    /// </summary>
+    /// <remarks>
+    /// This is the one check that uses real C# overload resolution, including implicit conversions,
+    /// hiding, accessibility, and named arguments, so it catches what signature comparison cannot: a
+    /// subclass overload declaring <c>ReadAsync(object, int, int)</c> wins a <c>byte[]</c> argument
+    /// by implicit reference conversion even though its parameter types are not equal.
+    /// </remarks>
+    private static bool RewriteBindsToCounterpart(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        string asyncName,
+        IMethodSymbol counterpart,
+        string? tokenName
+    )
+    {
+        ExpressionSyntax target;
+        switch (invocation.Expression)
+        {
+            case MemberAccessExpressionSyntax memberAccess:
+                target = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    memberAccess.Expression.WithoutTrivia(),
+                    SyntaxFactory.IdentifierName(asyncName)
+                );
+                break;
+            case IdentifierNameSyntax:
+                target = SyntaxFactory.IdentifierName(asyncName);
+                break;
+            default:
+                // Null-conditional access; the fixer does not rewrite these, so there is nothing to
+                // verify.
+                return true;
+        }
+
+        var argumentList = invocation.ArgumentList.WithoutTrivia();
+        if (tokenName != null)
+        {
+            var tokenArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName));
+            if (argumentList.Arguments.Any(a => a.NameColon != null))
+            {
+                tokenArgument = tokenArgument.WithNameColon(
+                    SyntaxFactory.NameColon(
+                        SyntaxFactory.IdentifierName(
+                            counterpart.Parameters[counterpart.Parameters.Length - 1].Name
+                        )
+                    )
+                );
+            }
+
+            argumentList = argumentList.AddArguments(tokenArgument);
+        }
+
+        var speculative = SyntaxFactory.InvocationExpression(target, argumentList);
+        var bound =
+            context
+                .SemanticModel.GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    speculative,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+
+        return bound != null
+            && SymbolEqualityComparer.Default.Equals(
+                bound.OriginalDefinition,
+                counterpart.OriginalDefinition
+            );
+    }
+
+    /// <summary>Ordinal of the parameter named <paramref name="name"/>, or -1 when absent.</summary>
+    private static int IndexOfParameter(IMethodSymbol method, string name)
+    {
+        for (var i = 0; i < method.Parameters.Length; i++)
+        {
+            if (method.Parameters[i].Name == name)
+                return i;
+        }
+
+        return -1;
     }
 
     /// <summary>
