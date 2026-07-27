@@ -232,7 +232,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         var namesWouldBeRemapped = !NamedArgumentsMatch(invocation, method, asyncCounterpart!);
         if (namesWouldBeRemapped)
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
-        else if (AwaitIsForbiddenHere(invocation))
+        else if (CancellationTokenHelpers.AwaitIsForbiddenHere(invocation))
             properties = properties.Add(NoFixProperty, "await-not-allowed-here");
 
         // Final authority: ask Roslyn to bind the call. The search above approximates overload
@@ -516,21 +516,6 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="node"/> sits in one of the two query positions where
-    /// <c>await</c> is legal: the source expression of the initial <c>from</c> clause, or the source
-    /// of a <c>join</c> clause (CS1995).
-    /// </summary>
-    private static bool IsAwaitablePositionInQuery(QueryExpressionSyntax query, SyntaxNode node)
-    {
-        if (query.FromClause.Expression.Contains(node))
-            return true;
-
-        return query
-            .Body.Clauses.OfType<JoinClauseSyntax>()
-            .Any(join => join.InExpression.Contains(node));
-    }
-
-    /// <summary>
     /// Speculatively binds the invocation the code fix would produce and returns <c>true</c> when it
     /// resolves to <paramref name="counterpart"/> — the method this diagnostic claims exists.
     /// </summary>
@@ -656,64 +641,6 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         return !sync.ReturnsVoid
             && results.Length == 1
             && SymbolEqualityComparer.Default.Equals(results[0], sync.ReturnType);
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> when the enclosing syntax forbids <c>await</c>, so inserting one would
-    /// turn compiling source into a compiler error.
-    /// </summary>
-    /// <remarks>
-    /// The blocking call is still worth reporting in these contexts — a synchronous write inside a
-    /// <c>lock</c> is exactly the kind of code that stalls a request thread — but resolving it means
-    /// restructuring the lock, which is the author's decision, not a mechanical rewrite. The walk
-    /// stops at function boundaries because a lambda declared inside a <c>lock</c> body has its own
-    /// context where <c>await</c> is legal again.
-    /// </remarks>
-    private static bool AwaitIsForbiddenHere(SyntaxNode node)
-    {
-        // An unsafe context is lexical and propagates into nested functions, and it can come from an
-        // `unsafe` modifier on the method or type rather than an `unsafe { }` block — so this walk
-        // runs to the top rather than stopping at a function boundary (CS4004).
-        for (var current = node.Parent; current != null; current = current.Parent)
-        {
-            var isUnsafe = current switch
-            {
-                UnsafeStatementSyntax => true,
-                LocalFunctionStatementSyntax local => local.Modifiers.Any(SyntaxKind.UnsafeKeyword),
-                MemberDeclarationSyntax member => member.Modifiers.Any(SyntaxKind.UnsafeKeyword),
-                _ => false,
-            };
-
-            if (isUnsafe)
-                return true;
-        }
-
-        for (var current = node.Parent; current != null; current = current.Parent)
-        {
-            switch (current)
-            {
-                // CS1996 / CS7013: await is not permitted anywhere inside these.
-                case LockStatementSyntax:
-                case CatchFilterClauseSyntax:
-                    return true;
-
-                // CS1995: inside a query, await is permitted only in the first `from` clause's
-                // source expression and in a `join` clause's source. Elsewhere in the query it is
-                // an error, so the position within the query decides. An allowed position still has
-                // to keep walking: an enclosing lock or outer query can forbid it anyway.
-                case QueryExpressionSyntax query when !IsAwaitablePositionInQuery(query, node):
-                    return true;
-
-                // A nested function re-establishes an await-capable context.
-                case AnonymousFunctionExpressionSyntax:
-                case LocalFunctionStatementSyntax:
-                case BaseMethodDeclarationSyntax:
-                case AccessorDeclarationSyntax:
-                    return false;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>Ordinal of the parameter named <paramref name="name"/>, or -1 when absent.</summary>

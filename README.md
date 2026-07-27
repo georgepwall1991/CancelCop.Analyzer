@@ -21,13 +21,13 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (29 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (30 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
 - loops and async streams that ignore cancellation (`ThrowIfCancellationRequested`, `.WithCancellation`, `[EnumeratorCancellation]`)
 - timeout `CancellationTokenSource` that silently drops a parent token (`CreateLinkedTokenSource` + `CancelAfter`)
-- sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream APIs)
+- sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream APIs, `Process.WaitForExit()`)
 - `async void`, swallowed `OperationCanceledException`, and resource-lifetime bugs (undisposed CTS, premature `using` disposal)
 
 When the analyzer cannot prove a problem statically, it **stays quiet**. High-signal feedback, not noisy guesses.
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.29.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.30.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.29.0
+Install-Package CancelCop.Analyzer -Version 1.30.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -143,6 +143,7 @@ dotnet build samples/CancelCop.Sample
 | **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
 | **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`, `Stream`) in async code; use the async counterpart | Warning | ✅ |
 | **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
+| **CC030** | Avoid blocking `Process.WaitForExit()` in async code; use `await WaitForExitAsync(token)` | Warning | ✅ |
 
 ## Quick Examples
 
@@ -574,6 +575,26 @@ public async Task RunAsync(CancellationToken cancellationToken)
     await DoAsync(cts.Token);
 }
 ```
+
+### CC030: Blocking `Process.WaitForExit()` in Async Code
+
+```csharp
+// ❌ Warning CC030 - blocks a thread for an unbounded wait on an external process
+public async Task RunToolAsync(Process process)
+{
+    process.WaitForExit();
+    await Task.Yield();
+}
+
+// ✅ Fixed - yields the thread and honours cancellation
+public async Task RunToolAsync(Process process, CancellationToken cancellationToken)
+{
+    await process.WaitForExitAsync(cancellationToken);
+}
+```
+
+> The `WaitForExit(int)` timeout overload is not flagged: it returns `bool` and `WaitForExitAsync`
+> takes only a token, so there is no rewrite that preserves the call's meaning.
 
 ## Configuration
 

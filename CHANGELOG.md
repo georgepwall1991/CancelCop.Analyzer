@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-07-27
+
+### Added
+
+- **CC030** (`BlockingProcessWaitAnalyzer`): flags a blocking parameterless
+  `Process.WaitForExit()` inside async code and rewrites it to
+  `await process.WaitForExitAsync(cancellationToken)`, flowing the in-scope token.
+
+  `WaitForExit()` is the worst-behaved member of the blocking-in-async family. The wait is
+  unbounded and depends on a program outside your control, so a hung child process pins a
+  thread-pool thread indefinitely and no cancellation, shutdown signal, or request abort can
+  reclaim it. CC002 cannot catch it because the async form is a differently-named method rather
+  than an overload. Joins CC013, CC015, CC026, and CC028.
+
+  Conservative by design: the `WaitForExit(int)` timeout overload returns `bool` and has no
+  counterpart of that shape, so it is not flagged; the rule is symbol-gated to
+  `System.Diagnostics.Process`; and it stays quiet unless the target framework actually exposes
+  `WaitForExitAsync` (added in .NET 5), so .NET Framework consumers never see a suggestion that
+  cannot compile. Null-conditional calls and `await`-forbidden contexts (a `lock` body, an
+  exception filter, an unsafe context, most query clauses) are reported without a fix.
+
+  The rewrite is validated by binding it: finding `WaitForExitAsync` on `Process` proves the API
+  exists, not that the rewritten call reaches it, since a subclass can hide it with an unusable
+  member. The analyzer speculatively binds the exact call the fix will emit and stays quiet unless
+  it resolves to the framework method — including for null-conditional calls, which get no fix but
+  still make the claim. An inherited call written without `this.` inside a `Process` subclass is
+  covered too.
+
+  The rewrite preserves trivia (comments in the receiver and inside the argument list) and
+  re-escapes a keyword parameter name: a symbol's `Name` drops the escape, so `CancellationToken
+  @event` is stored as `event` and emitting it bare would reparse as a keyword. Contextual keywords
+  are escaped too, because `await` is reserved inside exactly the async bodies these rewrites land
+  in.
+
+  No fix is offered when the inserted `await` would make a ref-like or `ref` local span it (CS4007).
+  Since C# 13 an async method may hold a `Span<T>` provided its lifetime does not cross an `await`,
+  so code that compiles today can be broken by a rewrite that introduces one — the call binds
+  perfectly well, and only a lifetime check catches it. A `foreach` over a ref-like collection counts
+  too: its enumerator stays live for the whole body even though the collection identifier appears
+  only in the header.
+
+  When the in-scope token's *name* is shadowed at the call site, the rule falls back to the
+  parameterless `WaitForExitAsync()` rather than dropping the diagnostic. A name that cannot be
+  written in generated source makes the token unusable, not the blocking call acceptable. The same
+  fallback covers a subclass that hides the token-taking overload — C# hides methods by signature,
+  so the inherited parameterless form is still reachable.
+
+### Changed
+
+- The `await`-forbidden-context check introduced for CC028 in 1.29.0 moved to
+  `CancellationTokenHelpers` now that a second rule needs it, keeping one definition of where an
+  inserted `await` would fail to compile. The same file gained shared speculative-binding and
+  invocation-rewrite helpers, and is now `public` so the code-fix assembly can share them — an
+  analyzer that binds the call it is about to suggest must emit *that* call, and duplicating the
+  builder across the two assemblies is how analyzer and fixer drift apart.
+- Rewrites rename the member on the existing access rather than rebuilding the expression, so
+  trivia inside the receiver (`process /* started above */ .WaitForExit()`) survives the fix.
+
 ## [1.29.0] - 2026-07-27
 
 ### Changed
