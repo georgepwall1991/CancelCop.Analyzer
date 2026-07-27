@@ -410,4 +410,44 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC025_EarlierRefStructUsing_ReportsWithoutOfferingAFix()
+    {
+        // Resources dispose in reverse order, so the ref-struct lease declared first is still live
+        // when the async disposal awaits — CS4007. The await lands at scope exit, exactly on the
+        // scope's end offset, which an exclusive containment check would treat as outside the scope
+        // and skip.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct Lease
+{
+    public void Dispose() { }
+}
+
+public class Resource : IDisposable, IAsyncDisposable
+{
+    public void Dispose() { }
+    public ValueTask DisposeAsync() => default;
+}
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        await Task.Yield();
+        using var lease = new Lease();
+        {|#0:using|} var resource = new Resource();
+    }
+}";
+
+        await NoFix<AwaitUsingAnalyzer, AwaitUsingCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0)
+        ).RunAsync();
+    }
 }

@@ -1109,8 +1109,11 @@ public static class CancellationTokenHelpers
 
             // A local declared in a sibling or already-closed block is out of scope by the time the
             // call runs, so nothing it does can span the inserted await.
+            // End-inclusive: an await that runs at scope exit (disposal) sits exactly at
+            // scope.Span.End, which TextSpan.Contains treats as outside — and that would skip every
+            // local in the scope, quietly disabling the guard for the case it was written for.
             var scope = DeclarationScopeOf(declaration);
-            if (scope is null || !scope.Span.Contains(position))
+            if (scope is null || position < scope.Span.Start || position > scope.Span.End)
                 continue;
 
             // A `using var` local is disposed at scope exit, so it is live past the call whether or
