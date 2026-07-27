@@ -374,4 +374,54 @@ public class Runner
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task ConditionalTokenAssignment_ShouldReportDiagnostic()
+    {
+        // On the path where the condition is false the loop is still uncancellable, which is the
+        // finding rather than an exemption.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, bool configure, CancellationToken cancellationToken)
+    {
+        var options = {|#0:new ParallelOptions()|};
+        if (configure)
+            options.CancellationToken = cancellationToken;
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected());
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task CreatedByAssignmentToAnExistingLocal_ShouldNotReportDiagnostic()
+    {
+        // The options are created by an assignment rather than a declaration, so resolving the
+        // target only from declarators missed that the token is set before the loop.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Runner
+{
+    public void Run(int[] items, CancellationToken cancellationToken)
+    {
+        ParallelOptions options;
+        options = new ParallelOptions();
+        options.CancellationToken = cancellationToken;
+        Parallel.ForEach(items, options, i => { });
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }

@@ -29,12 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CC002/CC012 — with nothing to suggest the rule stays quiet. It also stays quiet when the token is
   assigned afterwards (`options.CancellationToken = cancellationToken;`), which is equally correct
   and common when the options are built up conditionally — but only when that assignment actually
-  runs first: one placed *after* the loop, or inside a lambda that may never execute, leaves the
-  loop uncancellable and is still reported.
+  runs first and on every path. One placed *after* the loop, inside a lambda that may never execute,
+  or inside an `if`/`switch`/loop leaves a path on which the loop is still uncancellable, which is
+  the finding rather than an exemption. A use inside a lambda does not count as the first use, since
+  the lambda may be invoked long after the token is assigned.
 
-  A token that cannot cancel does not count as set: `CancellationToken = default` and
-  `= CancellationToken.None` satisfy the property while leaving the loop exactly as it was, and CC012
-  covers those spellings only as invocation arguments. Implicit `new()` creation is covered, and
+  A token that cannot cancel does not count as set: `CancellationToken = default`,
+  `= CancellationToken.None`, `= new CancellationToken()`, and `= new CancellationToken(false)` all
+  satisfy the property while leaving the loop exactly as it was, and CC012 covers those spellings
+  only as invocation arguments. Implicit `new()` creation is covered, and
   the fix appends to an existing initializer rather than replacing it, so `MaxDegreeOfParallelism`
   and `TaskScheduler` survive.
 

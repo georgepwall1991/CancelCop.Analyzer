@@ -195,13 +195,21 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
         SyntaxNodeAnalysisContext context
     )
     {
-        // Only a named target can be assigned to afterwards.
-        if (
-            creation.Parent
-                is not EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }
-            || context.SemanticModel.GetDeclaredSymbol(declarator, context.CancellationToken)
-                is not ILocalSymbol local
-        )
+        // Only a named target can be assigned to afterwards — from a declaration
+        // (`var options = new …`) or an assignment to an existing local (`options = new …`).
+        var target = creation.Parent switch
+        {
+            EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } =>
+                context.SemanticModel.GetDeclaredSymbol(declarator, context.CancellationToken)
+                as ISymbol,
+            AssignmentExpressionSyntax assignmentToLocal when assignmentToLocal.Right == creation =>
+                context
+                    .SemanticModel.GetSymbolInfo(assignmentToLocal.Left, context.CancellationToken)
+                    .Symbol,
+            _ => null,
+        };
+
+        if (target is not ILocalSymbol local)
             return false;
 
         var scope = creation
@@ -251,12 +259,24 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
                         Name.Identifier.ValueText: "CancellationToken"
                     } target
                 && (firstUse is null || assignment.SpanStart < firstUse)
-                // An assignment inside a nested function may never run at all.
+                // The assignment has to happen on every path. One nested in a nested function may
+                // never run at all, and one inside an `if`, `switch`, or loop leaves a path on which
+                // the loop is still uncancellable — which is exactly the finding, not an exemption.
                 && !assignment
                     .Ancestors()
                     .TakeWhile(node => node != scope)
                     .Any(node =>
-                        node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax
+                        node
+                            is AnonymousFunctionExpressionSyntax
+                                or LocalFunctionStatementSyntax
+                                or IfStatementSyntax
+                                or SwitchStatementSyntax
+                                or SwitchExpressionSyntax
+                                or ForStatementSyntax
+                                or WhileStatementSyntax
+                                or DoStatementSyntax
+                                or CommonForEachStatementSyntax
+                                or TryStatementSyntax
                     )
                 && CancelsSomething(assignment.Right, context)
                 && SymbolEqualityComparer.Default.Equals(
