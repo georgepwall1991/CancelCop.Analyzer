@@ -1563,10 +1563,15 @@ public static class CancellationTokenHelpers
             )
                 return true;
 
+            // `new TimeSpan()`, and also every constructor whose arguments are all constant zero —
+            // `new TimeSpan(0)` (ticks) and `new TimeSpan(0, 0, 0)` are exactly as zero as the
+            // parameterless form.
             if (
                 argumentValue is IObjectCreationOperation creation
-                && creation.Arguments.Length == 0
                 && SymbolEqualityComparer.Default.Equals(creation.Type, argument.Parameter?.Type)
+                && creation.Arguments.All(constructorArgument =>
+                    IsConstantZero(constructorArgument.Value)
+                )
             )
                 return true;
         }
@@ -1594,4 +1599,35 @@ public static class CancellationTokenHelpers
 
     private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
         type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="operation"/> is a compile-time numeric zero.
+    /// </summary>
+    /// <remarks>
+    /// Matching the literal <c>0</c> alone is not enough: <c>new TimeSpan(0)</c> binds to the
+    /// <c>long ticks</c> constructor, so the constant is <c>0L</c> and an <c>int</c>-typed pattern
+    /// misses it.
+    /// </remarks>
+    private static bool IsConstantZero(IOperation operation)
+    {
+        var constant = operation.ConstantValue;
+        if (!constant.HasValue)
+            return false;
+
+        return constant.Value switch
+        {
+            int value => value == 0,
+            long value => value == 0,
+            uint value => value == 0,
+            ulong value => value == 0,
+            short value => value == 0,
+            ushort value => value == 0,
+            byte value => value == 0,
+            sbyte value => value == 0,
+            double value => value == 0,
+            float value => value == 0,
+            decimal value => value == 0,
+            _ => false,
+        };
+    }
 }

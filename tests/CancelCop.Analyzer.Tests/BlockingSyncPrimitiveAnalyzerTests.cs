@@ -383,4 +383,51 @@ public class TestClass
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task ZeroValuedTimeSpanConstructors_ShouldNotReportDiagnostic()
+    {
+        // `new TimeSpan(0)` (ticks) and `new TimeSpan(0, 0, 0)` are exactly as zero as the
+        // parameterless form, so they are probes too.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ManualResetEventSlim gate, Thread worker)
+    {
+        var a = gate.Wait(new TimeSpan(0));
+        var b = worker.Join(new TimeSpan(0, 0, 0));
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task NonZeroTimeSpanConstructor_StillReportsDiagnostic()
+    {
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ManualResetEventSlim gate)
+    {
+        var entered = gate.{|#0:Wait|}(new TimeSpan(0, 0, 5));
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ManualResetEventSlim.Wait"));
+        await t.RunAsync();
+    }
 }
