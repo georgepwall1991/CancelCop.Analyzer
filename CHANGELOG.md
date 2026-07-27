@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because there is no `await` available to reach for — the compiler says nothing at all. CC032
   covers only that gap and stays quiet wherever CS4014 already reports, so the two never double up.
 
+  Covered forms: a bare expression statement, an expression-bodied member whose return type is void
+  (a constructor cannot be async at all, so CS4014 is guaranteed silent there), a void-returning
+  expression-bodied lambda, and null-conditional calls (`worker?.StartAsync();`) — the diagnostic
+  underlines the whole expression rather than the fragment after the `?.`.
+
   Conservative by design: a task that is assigned, returned, passed as an argument, or explicitly
   discarded with `_ =` is not dropped and is not flagged. `_ =` in particular is the documented way
   to say "I know, and I mean it" — a rule that flagged the opt-in would be impossible to satisfy.

@@ -98,7 +98,48 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
             SyntaxKind.ParenthesizedLambdaExpression,
             SyntaxKind.AnonymousMethodExpression
         );
+
+        // The same applies to an expression-bodied member: `public Service() => InitializeAsync();`
+        // has no statement either, and a constructor cannot be async, so CS4014 is silent.
+        context.RegisterSyntaxNodeAction(
+            AnalyzeExpressionBodiedMember,
+            SyntaxKind.ArrowExpressionClause
+        );
     }
+
+    private static void AnalyzeExpressionBodiedMember(SyntaxNodeAnalysisContext context)
+    {
+        var arrowClause = (ArrowExpressionClauseSyntax)context.Node;
+
+        if (UnwrapInvocation(arrowClause.Expression) is not { } invocation)
+            return;
+
+        // Only a void-returning member drops the task; `Task Run() => SaveAsync();` returns it.
+        if (
+            arrowClause.Parent is not { } member
+            || context.SemanticModel.GetDeclaredSymbol(member, context.CancellationToken)
+                is not IMethodSymbol memberSymbol
+            || !memberSymbol.ReturnsVoid
+        )
+            return;
+
+        Report(context, invocation, arrowClause.Expression);
+    }
+
+    /// <summary>
+    /// Returns the invocation an expression ultimately performs, seeing through a null-conditional
+    /// access — <c>worker?.StartAsync()</c> is an invocation wrapped in a conditional access, and
+    /// its task is discarded just the same.
+    /// </summary>
+    private static InvocationExpressionSyntax? UnwrapInvocation(ExpressionSyntax expression) =>
+        expression switch
+        {
+            InvocationExpressionSyntax invocation => invocation,
+            ConditionalAccessExpressionSyntax conditional => UnwrapInvocation(
+                conditional.WhenNotNull
+            ),
+            _ => null,
+        };
 
     private static void AnalyzeExpressionStatement(SyntaxNodeAnalysisContext context)
     {
@@ -106,15 +147,15 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
 
         // Only a bare call. An assignment (including the explicit `_ =` discard) hands the task
         // somewhere, so it is not dropped by this statement.
-        if (statement.Expression is InvocationExpressionSyntax invocation)
-            Report(context, invocation);
+        if (UnwrapInvocation(statement.Expression) is { } invocation)
+            Report(context, invocation, statement.Expression);
     }
 
     private static void AnalyzeExpressionBodiedLambda(SyntaxNodeAnalysisContext context)
     {
         var lambda = (AnonymousFunctionExpressionSyntax)context.Node;
 
-        if (lambda.Body is not InvocationExpressionSyntax invocation)
+        if (lambda.Body is not ExpressionSyntax body || UnwrapInvocation(body) is not { } invocation)
             return;
 
         // A lambda converted to a Task-returning delegate hands the task to its caller, so nothing
@@ -128,16 +169,23 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        Report(context, invocation);
+        Report(context, invocation, body);
     }
 
     /// <summary>
     /// Applies the shared gates — the call must return an awaitable, and must not already be covered
     /// by CS4014 — and reports.
     /// </summary>
+    /// <param name="invocation">The call whose task is discarded; used to resolve the symbol.</param>
+    /// <param name="reportOn">
+    /// The whole expression the reader sees. For a null-conditional call these differ — the
+    /// invocation is only the part after the <c>?.</c>, and underlining that alone would point at a
+    /// fragment rather than the statement.
+    /// </param>
     private static void Report(
         SyntaxNodeAnalysisContext context,
-        InvocationExpressionSyntax invocation
+        InvocationExpressionSyntax invocation,
+        ExpressionSyntax reportOn
     )
     {
         if (
@@ -165,7 +213,7 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(
             Diagnostic.Create(
                 Rule,
-                invocation.GetLocation(),
+                reportOn.GetLocation(),
                 invokedName?.Identifier.Text ?? method.Name
             )
         );

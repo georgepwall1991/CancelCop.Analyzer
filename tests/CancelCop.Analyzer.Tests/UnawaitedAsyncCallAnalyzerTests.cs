@@ -279,4 +279,92 @@ public class TestClass
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task ExpressionBodiedConstructor_ShouldReportDiagnostic()
+    {
+        // An expression-bodied member has no statement to anchor on, and a constructor cannot be
+        // async, so CS4014 is silent here too.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public TestClass() => {|#0:InitializeAsync()|};
+
+    private Task InitializeAsync() => Task.CompletedTask;
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("InitializeAsync"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ExpressionBodiedVoidMethod_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public void Run() => {|#0:SaveAsync()|};
+
+    private Task SaveAsync() => Task.CompletedTask;
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("SaveAsync"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ExpressionBodiedTaskReturningMethod_ShouldNotReportDiagnostic()
+    {
+        // Already covered by ReturnedTask, but pinned separately because the arrow-clause path has
+        // its own void check that could regress independently.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public Task Run() => SaveAsync();
+
+    private Task SaveAsync() => Task.CompletedTask;
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task NullConditionalCall_ShouldReportDiagnostic()
+    {
+        // `worker?.StartAsync();` is an invocation wrapped in a conditional access, so a check for a
+        // bare InvocationExpression misses it — yet the task is discarded exactly the same.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class Worker
+{
+    public Task StartAsync() => Task.CompletedTask;
+}
+
+public class TestClass
+{
+    private Worker? _worker;
+
+    public void Run()
+    {
+        {|#0:_worker?.StartAsync()|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("StartAsync"));
+        await t.RunAsync();
+    }
 }
