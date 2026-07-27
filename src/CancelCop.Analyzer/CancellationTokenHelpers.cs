@@ -1516,4 +1516,118 @@ public static class CancellationTokenHelpers
 
         return false;
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when a call passes a timeout the compiler can prove is zero, making it an
+    /// immediate probe rather than a wait.
+    /// </summary>
+    /// <remarks>
+    /// Both spellings count. An <c>int</c> timeout must be the constant <c>0</c>. A framework
+    /// <c>TimeSpan</c> timeout is zero in three forms the compiler can see through —
+    /// <c>TimeSpan.Zero</c>, <c>default</c>, and <c>new TimeSpan()</c> — none of which is a constant,
+    /// so a constant-value check alone misses them and flags a non-blocking probe.
+    /// </remarks>
+    public static bool HasProvablyZeroTimeout(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken
+    )
+    {
+        if (
+            semanticModel.GetOperation(invocation, cancellationToken)
+            is not IInvocationOperation operation
+        )
+            return false;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (
+                argument.Parameter?.Name.IndexOf("Timeout", System.StringComparison.Ordinal) >= 0
+                && argument.Value.ConstantValue is { HasValue: true, Value: int value }
+                && value == 0
+            )
+                return true;
+
+            if (!IsFrameworkTimeSpan(argument.Parameter?.Type))
+                continue;
+
+            var argumentValue = UnwrapImplicitOperations(argument.Value);
+
+            if (argumentValue is IDefaultValueOperation)
+                return true;
+
+            if (
+                argumentValue
+                    is IFieldReferenceOperation { Field: { IsStatic: true, Name: "Zero" } field }
+                && IsFrameworkTimeSpan(field.ContainingType)
+            )
+                return true;
+
+            // `new TimeSpan()`, and also every constructor whose arguments are all constant zero —
+            // `new TimeSpan(0)` (ticks) and `new TimeSpan(0, 0, 0)` are exactly as zero as the
+            // parameterless form.
+            if (
+                argumentValue is IObjectCreationOperation creation
+                && SymbolEqualityComparer.Default.Equals(creation.Type, argument.Parameter?.Type)
+                && creation.Arguments.All(constructorArgument =>
+                    IsConstantZero(constructorArgument.Value)
+                )
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IOperation UnwrapImplicitOperations(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IConversionOperation { IsImplicit: true } conversion:
+                    operation = conversion.Operand;
+                    continue;
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+                default:
+                    return operation;
+            }
+        }
+    }
+
+    private static bool IsFrameworkTimeSpan(ITypeSymbol? type) =>
+        type?.Name == "TimeSpan" && type.ContainingNamespace?.ToDisplayString() == "System";
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="operation"/> is a compile-time numeric zero.
+    /// </summary>
+    /// <remarks>
+    /// Matching the literal <c>0</c> alone is not enough: <c>new TimeSpan(0)</c> binds to the
+    /// <c>long ticks</c> constructor, so the constant is <c>0L</c> and an <c>int</c>-typed pattern
+    /// misses it.
+    /// </remarks>
+    private static bool IsConstantZero(IOperation operation)
+    {
+        var constant = operation.ConstantValue;
+        if (!constant.HasValue)
+            return false;
+
+        return constant.Value switch
+        {
+            int value => value == 0,
+            long value => value == 0,
+            uint value => value == 0,
+            ulong value => value == 0,
+            short value => value == 0,
+            ushort value => value == 0,
+            byte value => value == 0,
+            sbyte value => value == 0,
+            double value => value == 0,
+            float value => value == 0,
+            decimal value => value == 0,
+            _ => false,
+        };
+    }
 }

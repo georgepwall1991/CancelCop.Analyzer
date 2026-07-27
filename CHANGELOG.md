@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-07-27
+
+### Added
+
+- **CC031** (`BlockingSyncPrimitiveAnalyzer`): flags a blocking synchronization primitive —
+  `ManualResetEventSlim.Wait`, `CountdownEvent.Wait`, `WaitHandle.WaitOne`/`WaitAll`/`WaitAny`,
+  `Monitor.Wait`, or `Thread.Join` — inside async code.
+
+  These park a thread-pool thread until another thread signals. In async code that is the worst kind
+  of blocking: the wait is unbounded, it consumes a pooled thread that the continuations it is
+  waiting for may themselves need, and under load it can deadlock the pool outright. None of them
+  observes a `CancellationToken` by default either, so shutdown and request abort cannot reclaim the
+  thread. `cancellationToken.WaitHandle.WaitOne()` — blocking a pooled thread to wait for
+  cancellation — is a common instance.
+
+  **Analyzer-only by design.** Unlike the rest of the blocking-in-async family (CC013, CC015, CC026,
+  CC028, CC030), these primitives have *no* `…Async` counterpart in .NET. Resolving the finding
+  means changing the design: a `SemaphoreSlim` awaited with `WaitAsync`, a `TaskCompletionSource`
+  signalled instead of an event, or awaiting the task rather than joining the thread. That is a
+  judgement call, so no fix is offered — as with CC017, CC020, CC024, and CC027.
+
+  Members are matched through their override chain to the framework type that declares them, so
+  `ManualResetEvent.WaitOne` resolves to `WaitHandle.WaitOne`. A provably zero timeout is an
+  immediate probe rather than a wait and is excluded, matching CC013/CC015/CC026 — including the
+  framework `TimeSpan` spellings (`TimeSpan.Zero`, `default`, `new TimeSpan()`), none of which is a
+  compiler constant, so a constant-value check alone would flag a non-blocking probe.
+  `Monitor.Wait` is exempt from that exclusion: a zero timeout only ends the condition wait, and the
+  call still cannot return until it reacquires the monitor, which can block behind another thread.
+  `SemaphoreSlim.Wait` is left to CC026, which owns it and can offer a real fix.
+
+### Changed
+
+- The provably-zero-timeout check moved to `CancellationTokenHelpers.HasProvablyZeroTimeout`, shared
+  by CC026 and CC031 instead of being copied per rule — a copy is how one of them ends up
+  recognising a zero form the others do not.
+
 ## [1.31.0] - 2026-07-27
 
 ### Fixed
