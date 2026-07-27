@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Simplification;
 
 namespace CancelCop.Analyzer;
 
@@ -79,12 +80,19 @@ public class MissingCancellationTokenCodeFixProvider : CodeFixProvider
         var isAsyncIterator = IsAsyncIterator(methodDeclaration);
         if (isAsyncIterator)
         {
+            // Fully qualified, with a simplifier annotation so the IDE shortens it back to
+            // `[EnumeratorCancellation]`. An unqualified name would bind to a local
+            // EnumeratorCancellationAttribute if the consumer's namespace declares one, producing
+            // CS8425 and leaving the token unconsumed — the exact failure this fix exists to prevent.
+            var attributeName = SyntaxFactory
+                .ParseName(CompilerServicesNamespace + ".EnumeratorCancellation")
+                .WithAdditionalAnnotations(Simplifier.Annotation);
+
             cancellationTokenParameter = cancellationTokenParameter.WithAttributeLists(
                 SyntaxFactory.SingletonList(
                     SyntaxFactory.AttributeList(
                         SyntaxFactory.SingletonSeparatedList(
-                            SyntaxFactory.Attribute(
-                                SyntaxFactory.IdentifierName("EnumeratorCancellation"))))));
+                            SyntaxFactory.Attribute(attributeName)))));
         }
 
         // Insert before any trailing 'params' parameter (CS0231 guard); otherwise append last.

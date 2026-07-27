@@ -26,35 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[EnumeratorCancellation]` on a non-iterator is a compiler error (CS8205). A `yield` inside a
   nested local function belongs to that function's iterator, not the enclosing method.
 
-## [1.35.0] - 2026-07-27
-
-### Added
-
-- **CC034** (`AsyncStreamMissingTokenAnalyzer`): flags a public or protected
-  `IAsyncEnumerable<T>` iterator declared with no `CancellationToken` parameter. Code fix adds
-  `[EnumeratorCancellation] CancellationToken cancellationToken = default` and the imports it needs.
-
-  An async stream is long-lived by nature — the consumer pulls items one at a time and the producer
-  stays suspended in between. Without a token there is no way to stop it: a consumer that abandons
-  the enumeration leaves the producer's pending work with nothing to cancel, and
-  `.WithCancellation(token)` at the call site has nothing to flow into.
-
-  **This closes a gap between three existing rules.** CC001 only covers methods returning
-  `Task`/`ValueTask`, so it never sees an iterator. CC011 requires `[EnumeratorCancellation]`, but
-  only once a token parameter exists. CC010 flags the consumer for not calling `.WithCancellation`.
-  A stream declared with no token at all slipped past all three; CC034 is the producer-side entry
-  point that makes the others reachable.
-
-  The fix deliberately adds the attribute at the same time. A bare token parameter on an iterator is
-  silently ignored by `.WithCancellation(token)` — which is CC011's whole point — so adding only the
-  parameter would trade one diagnostic for another and leave the stream just as uncancellable.
-
-  Conservative by design: only **iterators** are flagged, since a method that merely returns an
-  `IAsyncEnumerable<T>` is a pass-through rather than the producer whose signature matters, and a
-  `yield` inside a nested local function belongs to that function's iterator. Only public/protected
-  members, matching CC001. Overrides, interface implementations (implicit and explicit), and
-  `extern` declarations are excluded, because adding a parameter to a signature someone else fixed
-  would break the contract rather than fix it.
+  The attribute is emitted fully qualified with a simplifier annotation, so it reads as
+  `[EnumeratorCancellation]` in ordinary code but cannot be captured by a consumer's own
+  `EnumeratorCancellationAttribute` — which would compile to CS8425 and leave the token unconsumed,
+  the very failure the change exists to prevent.
 
 ## [1.34.0] - 2026-07-27
 

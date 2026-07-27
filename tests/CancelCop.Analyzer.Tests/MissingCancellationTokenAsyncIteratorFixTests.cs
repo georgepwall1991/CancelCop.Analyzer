@@ -232,4 +232,61 @@ public class Reader
             .WithArguments("LoadAsync");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task LocalEnumeratorCancellationAttribute_DoesNotCaptureTheFix()
+    {
+        // An unqualified attribute name would bind to the namespace's own
+        // EnumeratorCancellationAttribute, producing CS8425 and leaving the token unconsumed — the
+        // exact failure this fix exists to prevent. The emitted name is fully qualified (and
+        // simplifier-annotated, so it shortens again wherever that is unambiguous).
+        var test =
+            @"
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace Shadowing
+{
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class EnumeratorCancellationAttribute : Attribute { }
+
+    public class Reader
+    {
+        public async IAsyncEnumerable<int> {|#0:ReadAsync|}()
+        {
+            await Task.Yield();
+            yield return 1;
+        }
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Shadowing
+{
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class EnumeratorCancellationAttribute : Attribute { }
+
+    public class Reader
+    {
+        public async IAsyncEnumerable<int> ReadAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            yield return 1;
+        }
+    }
+}";
+
+        var expected = new DiagnosticResult("CC001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadAsync");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }
