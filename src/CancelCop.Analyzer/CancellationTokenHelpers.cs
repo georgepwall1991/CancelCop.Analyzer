@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -1022,8 +1023,25 @@ public static class CancellationTokenHelpers
     /// later use — the call binds perfectly well, so only a lifetime check catches it. Approximated
     /// conservatively: any such local declared before the node and read after it withholds the fix.
     /// </remarks>
-    public static bool AwaitWouldSpanRefLikeLocal(SemanticModel semanticModel, SyntaxNode node)
+    public static bool AwaitWouldSpanRefLikeLocal(
+        SemanticModel semanticModel,
+        SyntaxNode node,
+        int? awaitPosition = null,
+        int? declarationCutoff = null
+    )
     {
+        // The node's *end*, not its start: a rewrite like `Thread.Sleep(span[0])` ->
+        // `await Task.Delay(span[0])` evaluates its arguments before suspending, so a ref-like value
+        // used only inside the call is already consumed. Callers whose await lands elsewhere —
+        // `using` -> `await using`, which awaits at scope exit — say so explicitly.
+        var position = awaitPosition ?? node.Span.End;
+
+        // Which declarations can still be live at that await. For an ordinary rewrite it is
+        // everything declared before it; for `await using` it is everything declared before the
+        // *using*, because declarations dispose in reverse order — a later ref struct has already
+        // been disposed by the time this one's disposal awaits.
+        var cutoff = declarationCutoff ?? position;
+
         var body = node.Ancestors()
             .FirstOrDefault(a =>
                 a
@@ -1031,7 +1049,10 @@ public static class CancellationTokenHelpers
                         or LocalFunctionStatementSyntax
                         or AnonymousFunctionExpressionSyntax
                         or AccessorDeclarationSyntax
-            );
+            )
+            // A top-level program has no declared body; its global statements are the synthesized
+            // entry point, and locals declared there have the same lifetimes.
+            ?? node.Ancestors().OfType<CompilationUnitSyntax>().FirstOrDefault();
         if (body is null)
             return false;
 
@@ -1087,7 +1108,7 @@ public static class CancellationTokenHelpers
 
         foreach (var declaration in declarations)
         {
-            if (declaration.SpanStart >= node.SpanStart)
+            if (declaration.SpanStart >= cutoff)
                 continue;
 
             if (
@@ -1098,8 +1119,11 @@ public static class CancellationTokenHelpers
 
             // A local declared in a sibling or already-closed block is out of scope by the time the
             // call runs, so nothing it does can span the inserted await.
+            // End-inclusive: an await that runs at scope exit (disposal) sits exactly at
+            // scope.Span.End, which TextSpan.Contains treats as outside — and that would skip every
+            // local in the scope, quietly disabling the guard for the case it was written for.
             var scope = DeclarationScopeOf(declaration);
-            if (scope is null || !scope.Span.Contains(node.Span))
+            if (scope is null || position < scope.Span.Start || position > scope.Span.End)
                 continue;
 
             // A `using var` local is disposed at scope exit, so it is live past the call whether or
@@ -1110,8 +1134,73 @@ public static class CancellationTokenHelpers
             )
                 return true;
 
-            if (ReferencesLocal(semanticModel, body, local, reference => reference.SpanStart > node.Span.End))
+            if (
+                ReferencesLocal(
+                    semanticModel,
+                    body,
+                    local,
+                    reference =>
+                        reference.SpanStart > position
+                        && !IsMutuallyExclusiveWith(reference, position)
+                )
+            )
                 return true;
+
+            // A backward `goto` is a loop the syntax does not show: control returns to a label
+            // before the call, so a reference between the label and the jump runs again after the
+            // inserted await.
+            foreach (var jump in body.DescendantNodes().OfType<GotoStatementSyntax>())
+            {
+                // `goto case` / `goto default` jump to a switch label, which can sit in an earlier
+                // section than the call. Treat the whole switch as the back-edge region: any
+                // reference in it can run again after the inserted await.
+                if (jump.Expression is not IdentifierNameSyntax labelName)
+                {
+                    var switchStatement = jump.Ancestors()
+                        .OfType<SwitchStatementSyntax>()
+                        .FirstOrDefault();
+
+                    if (
+                        switchStatement != null
+                        && switchStatement.Span.Contains(position)
+                        && ReferencesLocal(
+                            semanticModel,
+                            body,
+                            local,
+                            reference => switchStatement.Span.Contains(reference.Span)
+                        )
+                    )
+                        return true;
+
+                    continue;
+                }
+
+                var label = body.DescendantNodes()
+                    .OfType<LabeledStatementSyntax>()
+                    .FirstOrDefault(candidate =>
+                        candidate.Identifier.Text == labelName.Identifier.Text
+                    );
+
+                if (
+                    label is null
+                    || label.SpanStart > jump.SpanStart
+                    || position < label.SpanStart
+                    || position > jump.Span.End
+                )
+                    continue;
+
+                if (
+                    ReferencesLocal(
+                        semanticModel,
+                        body,
+                        local,
+                        reference =>
+                            reference.SpanStart >= label.SpanStart
+                            && reference.SpanStart <= jump.Span.End
+                    )
+                )
+                    return true;
+            }
 
             // Inside a loop, position is not execution order: a `for` condition or incrementor is
             // written before the body but runs again after it, so any reference within an enclosing
@@ -1168,7 +1257,13 @@ public static class CancellationTokenHelpers
         declaration
             .Ancestors()
             .FirstOrDefault(a =>
-                a is BlockSyntax or ForStatementSyntax or SwitchSectionSyntax or GlobalStatementSyntax
+                // CompilationUnit, not GlobalStatement: in a top-level program every global
+                // statement shares one scope, so stopping at the individual statement would make
+                // each local look confined to its own declaration.
+                a is BlockSyntax
+                    or ForStatementSyntax
+                    or SwitchSectionSyntax
+                    or CompilationUnitSyntax
             );
 
     /// <summary>
@@ -1186,10 +1281,239 @@ public static class CancellationTokenHelpers
             .Any(identifier =>
                 identifier.Identifier.Text == local.Name
                 && predicate(identifier)
+                // `nameof(span)` never reads the value at runtime, so it does not keep the local
+                // live across an await — the same compile-time-only distinction CC009/CC014/CC016
+                // draw.
+                && !IsInsideNameof(identifier, semanticModel, default)
                 && SymbolEqualityComparer.Default.Equals(
                     semanticModel.GetSymbolInfo(identifier).Symbol,
                     local
                 )
             );
 
+
+    /// <summary>
+    /// Property value used by every rule whose fix inserts an <c>await</c>, to record that the
+    /// diagnostic stands but no compilable rewrite exists at this position.
+    /// </summary>
+    public const string AwaitUnsafeReason = "await-insertion-unsafe";
+
+    /// <summary>
+    /// Returns <c>true</c> when inserting an <c>await</c> at <paramref name="node"/> would not
+    /// compile — either the syntax position forbids it, or it would cut across a ref-like lifetime.
+    /// </summary>
+    /// <remarks>
+    /// The blocking call these rules flag is just as blocking in such a position; what is missing is
+    /// a mechanical rewrite, so callers should report the diagnostic and withhold the fix rather than
+    /// stay silent.
+    /// </remarks>
+    public static bool AwaitInsertionIsUnsafe(
+        SemanticModel semanticModel,
+        SyntaxNode node,
+        int? awaitPosition = null,
+        int? declarationCutoff = null
+    ) =>
+        AwaitIsForbiddenHere(node)
+        || AwaitWouldSpanRefLikeLocal(semanticModel, node, awaitPosition, declarationCutoff)
+        || RefLikeValuePendingAt(semanticModel, node);
+
+    /// <summary>
+    /// Returns <c>true</c> when a ref-like value is still pending on the stack at
+    /// <paramref name="node"/>, so an <c>await</c> inserted there would strand it (CS4007).
+    /// </summary>
+    /// <remarks>
+    /// Declared locals are only half the story: in <c>Consume(stackalloc int[1], task.Result)</c> the
+    /// <c>Span&lt;int&gt;</c> never has a name, yet it is on the stack when the second argument is
+    /// evaluated. What matters is a value that has been produced and not yet consumed — so this walks
+    /// outward from the node and, at each level, asks only whether an <i>already-evaluated sibling</i>
+    /// is itself ref-like. Nested subexpressions are deliberately not inspected:
+    /// <c>Consume(Read(stackalloc int[1]), task.Result)</c> is safe because <c>Read</c> returns an
+    /// <c>int</c> and the span it consumed is gone.
+    /// </remarks>
+    private static bool RefLikeValuePendingAt(SemanticModel semanticModel, SyntaxNode node)
+    {
+        for (var current = node; current.Parent != null; current = current.Parent)
+        {
+            // Boundaries of the expression being evaluated. Beyond these nothing is mid-evaluation,
+            // and an expression-bodied member has no enclosing statement to stop at.
+            if (
+                current is StatementSyntax
+                || current.Parent
+                    is ArrowExpressionClauseSyntax
+                        or AnonymousFunctionExpressionSyntax
+                        or MemberDeclarationSyntax
+                        or EqualsValueClauseSyntax
+            )
+                break;
+
+            // A custom interpolated-string handler is a ref struct created before the holes are
+            // evaluated, so it is pending while one of them is awaited.
+            if (
+                current is InterpolationSyntax
+                && current.Parent is InterpolatedStringExpressionSyntax interpolated
+                && semanticModel.GetTypeInfo(interpolated).ConvertedType?.IsRefLikeType == true
+            )
+                return true;
+
+            // The receiver of a call whose arguments contain the node: `span.Slice(task.Result)`
+            // keeps the span pending while the argument is evaluated. It reaches PrecedingOperands
+            // only as a method-group expression, whose type is null.
+            if (
+                current.Parent is InvocationExpressionSyntax enclosingCall
+                && enclosingCall.Expression is MemberAccessExpressionSyntax callTarget
+                && semanticModel.GetTypeInfo(callTarget.Expression).Type?.IsRefLikeType == true
+            )
+                return true;
+
+            foreach (var sibling in PrecedingOperands(current))
+            {
+                if (IsPendingRefLike(semanticModel, sibling))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when an already-evaluated operand still holds something that cannot
+    /// survive an <c>await</c>.
+    /// </summary>
+    /// <remarks>
+    /// Three shapes qualify. The operand's own type is ref-like; or it occupies a
+    /// <i>storage-preserving</i> position — an assignment target, or a <c>ref</c>/<c>out</c>/
+    /// <c>in</c> argument — and refers into a ref-like receiver (<c>span[0] = …</c> yields an
+    /// <c>int</c> while keeping the span pending); or it is a managed reference from a
+    /// ref-returning member, which cannot cross an await either (CS8178). An ordinary value read
+    /// through a ref-like receiver is <i>not</i> pending: <c>Consume(span[0], task.Result)</c>
+    /// consumes the element before the await and rewrites safely.
+    /// </remarks>
+    private static bool IsPendingRefLike(SemanticModel semanticModel, PendingOperand operand)
+    {
+        var expression = operand.Expression;
+
+        if (semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true)
+            return true;
+
+        if (!operand.PreservesStorage)
+            return false;
+
+        var receiver = expression switch
+        {
+            ElementAccessExpressionSyntax elementAccess => elementAccess.Expression,
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            _ => null,
+        };
+
+        if (
+            receiver != null
+            && semanticModel.GetTypeInfo(receiver).Type?.IsRefLikeType == true
+        )
+            return true;
+
+        return semanticModel.GetSymbolInfo(expression).Symbol switch
+        {
+            IMethodSymbol method => method.RefKind != RefKind.None,
+            IPropertySymbol property => property.RefKind != RefKind.None,
+            ILocalSymbol local => local.RefKind != RefKind.None,
+            _ => false,
+        };
+    }
+
+    /// <summary>An operand evaluated before the insertion point, and how it is being used.</summary>
+    private readonly struct PendingOperand
+    {
+        public PendingOperand(ExpressionSyntax expression, bool preservesStorage)
+        {
+            Expression = expression;
+            PreservesStorage = preservesStorage;
+        }
+
+        public ExpressionSyntax Expression { get; }
+
+        /// <summary>
+        /// <c>true</c> when the operand denotes a location rather than a copied value — an
+        /// assignment target or a <c>ref</c>/<c>out</c>/<c>in</c> argument.
+        /// </summary>
+        public bool PreservesStorage { get; }
+    }
+
+    /// <summary>
+    /// The operands of <paramref name="node"/>'s parent that are fully evaluated before
+    /// <paramref name="node"/> is, paired with whether each denotes a storage location.
+    /// </summary>
+    private static IEnumerable<PendingOperand> PrecedingOperands(SyntaxNode node)
+    {
+        if (node.Parent is null)
+            yield break;
+
+        // The arms of a conditional are mutually exclusive: whichever one contains the node, the
+        // other never ran, so it holds nothing pending.
+        if (node.Parent is ConditionalExpressionSyntax)
+            yield break;
+
+        foreach (var child in node.Parent.ChildNodes())
+        {
+            if (child == node || child.Span.End > node.SpanStart)
+                continue;
+
+            switch (child)
+            {
+                case ArgumentSyntax argument:
+                    yield return new PendingOperand(
+                        argument.Expression,
+                        !argument.RefKindKeyword.IsKind(SyntaxKind.None)
+                    );
+                    break;
+
+                case ExpressionSyntax value:
+                    yield return new PendingOperand(
+                        value,
+                        node.Parent is AssignmentExpressionSyntax assignment
+                            && assignment.Left == value
+                    );
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="reference"/> and <paramref name="position"/> sit in
+    /// opposite arms of the same <c>if</c>, so only one of them ever runs.
+    /// </summary>
+    /// <remarks>
+    /// Source order is not execution order across a branch: a reference in the <c>else</c> arm comes
+    /// after a call in the <c>then</c> arm textually, but the two never both execute, so the value
+    /// is not live across an await inserted in the other arm.
+    /// </remarks>
+    private static bool IsMutuallyExclusiveWith(SyntaxNode reference, int position)
+    {
+        // Two switch sections of the same switch are alternative paths. A `goto case` edge between
+        // them is handled separately, before this check runs.
+        foreach (var section in reference.Ancestors().OfType<SwitchSectionSyntax>())
+        {
+            if (
+                !section.Span.Contains(position)
+                && section.Parent?.Span.Contains(position) == true
+            )
+                return true;
+        }
+
+        foreach (var ifStatement in reference.Ancestors().OfType<IfStatementSyntax>())
+        {
+            if (ifStatement.Else is null)
+                continue;
+
+            var referenceInElse = ifStatement.Else.Span.Contains(reference.Span);
+            var positionInElse = ifStatement.Else.Span.Contains(position);
+            var positionInThen = ifStatement.Statement.Span.Contains(position);
+
+            if (referenceInElse && positionInThen)
+                return true;
+            if (!referenceInElse && positionInElse)
+                return true;
+        }
+
+        return false;
+    }
 }

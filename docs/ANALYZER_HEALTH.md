@@ -1,6 +1,6 @@
 # Analyzer Health
 
-Reviewed: 2026-07-27 (refreshed through CC030 / v1.30.0; CC028 Stream coverage in v1.29.0)
+Reviewed: 2026-07-27 (refreshed through CC030 / v1.30.0; CC028 Stream coverage in v1.29.0; await-insertion fix-safety sweep in v1.31.0)
 
 A deliberately harsh health audit for the thirty implemented CancelCop rule IDs (CC001–CC006, CC009–CC030).
 Scores are 1–5, where `5` means reference-quality and hard to improve, `3` means usable but
@@ -88,6 +88,12 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   than work a pre-named item.
 
 ### P2 — Opportunistic
+
+- **Await-insertion guard, applied (v1.31.0).** Every fix that inserts an `await` now consults
+  `CancellationTokenHelpers.AwaitInsertionIsUnsafe` and is withheld in a `lock` body, exception
+  filter, unsafe context, disallowed query clause, or across a ref-like lifetime. CC013/CC015/CC022/
+  CC025/CC026 had no such guard and could turn compiling code into a build error; CC028 had only the
+  syntactic half. Any future await-inserting rule should call the same helper.
 - **Dedupe the add-token-to-declaration recipe.** The CC005C method-group fix and the CC001 fix
   both build `CancellationToken cancellationToken = default` and insert it via
   `InsertTokenParameter`; the method-group symbol resolution (symbol-or-single-candidate) is also

@@ -33,6 +33,10 @@ public class AwaitUsingCodeFixProvider : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
+        // The diagnostic stands but the analyzer determined that inserting an await here would not
+        // compile, so no rewrite is offered.
+        if (diagnostic.Properties.ContainsKey(AwaitUsingAnalyzer.NoFixProperty))
+            return;
         var node = root.FindToken(diagnostic.Location.SourceSpan.Start).Parent;
         if (node is not UsingStatementSyntax and not LocalDeclarationStatementSyntax)
             node = node?.AncestorsAndSelf().FirstOrDefault(n => n is UsingStatementSyntax or LocalDeclarationStatementSyntax);
