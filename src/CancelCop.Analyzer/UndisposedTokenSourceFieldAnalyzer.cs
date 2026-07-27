@@ -139,7 +139,9 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
     {
         var model = context.Compilation.GetSemanticModel(body.SyntaxTree);
 
-        foreach (var creation in body.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+        foreach (
+            var creation in body.DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>()
+        )
         {
             if (
                 model.GetTypeInfo(creation, context.CancellationToken).Type is { } created
@@ -224,17 +226,20 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
             )
                 continue;
 
-            // `_cts.Dispose()` / `_cts.DisposeAsync()`, however the receiver is spelled.
-            var access = identifier.Parent as MemberAccessExpressionSyntax;
-            if (
-                access?.Name.Identifier.Text is "Dispose" or "DisposeAsync"
-                && access.Expression == identifier
-            )
+            // The expression that denotes the field, which is not always the identifier: `this._cts`
+            // and `Owner._cts` put the identifier in the *name* position of a member access, so
+            // reading its immediate parent would look at the access instead of past it.
+            var reference = identifier.Parent is MemberAccessExpressionSyntax qualified
+                && qualified.Name == identifier
+                ? (ExpressionSyntax)qualified
+                : identifier;
+
+            if (IsDisposeInvocation(reference))
                 return true;
 
             // Returned, or passed to something that may take ownership.
             if (
-                identifier.Parent
+                reference.Parent
                 is ArgumentSyntax
                     or ReturnStatementSyntax
                     or ArrowExpressionClauseSyntax
@@ -244,6 +249,38 @@ public class UndisposedTokenSourceFieldAnalyzer : DiagnosticAnalyzer
 
         return false;
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="reference"/> is the receiver of an actual
+    /// <c>Dispose()</c>/<c>DisposeAsync()</c> call, written directly or through <c>?.</c>.
+    /// </summary>
+    /// <remarks>
+    /// The invocation matters: <c>Action cleanup = _cts.Dispose;</c> names the method without ever
+    /// calling it, so accepting a bare member access would exonerate a real leak.
+    /// </remarks>
+    private static bool IsDisposeInvocation(ExpressionSyntax reference)
+    {
+        if (
+            reference.Parent is MemberAccessExpressionSyntax access
+            && access.Expression == reference
+            && IsDisposeName(access.Name)
+        )
+            return access.Parent is InvocationExpressionSyntax invocation
+                && invocation.Expression == access;
+
+        // `_cts?.Dispose()` — the call hangs off the conditional access, not off the field.
+        return reference.Parent is ConditionalAccessExpressionSyntax conditional
+            && conditional.Expression == reference
+            && conditional.WhenNotNull
+                is InvocationExpressionSyntax
+                {
+                    Expression: MemberBindingExpressionSyntax binding
+                }
+            && IsDisposeName(binding.Name);
+    }
+
+    private static bool IsDisposeName(SimpleNameSyntax name) =>
+        name.Identifier.Text is "Dispose" or "DisposeAsync";
 
     private static bool IsCancellationTokenSource(ITypeSymbol? type) =>
         type is { ContainingType: null, Name: "CancellationTokenSource" }

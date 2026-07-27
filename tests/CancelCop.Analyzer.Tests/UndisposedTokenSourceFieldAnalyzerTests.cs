@@ -275,4 +275,110 @@ public partial class Worker : IDisposable
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task ImplicitNewInitializer_ShouldReportDiagnostic()
+    {
+        // `= new();` is the common modern spelling and is a different syntax node from an explicit
+        // object creation, so a rule that only looked for the explicit form missed a real leak.
+        var test =
+            @"
+using System.Threading;
+
+public class Worker
+{
+    private readonly CancellationTokenSource {|#0:_cts|} = new();
+
+    public CancellationToken Token => _cts.Token;
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task DisposedThroughThis_ShouldNotReportDiagnostic()
+    {
+        // `this._cts` puts the identifier in the *name* position of a member access, so reading its
+        // immediate parent looks at the access instead of past it.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker : IDisposable
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        this._cts.Dispose();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task DisposedNullConditionally_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker : IDisposable
+{
+    private CancellationTokenSource? _cts = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        _cts?.Dispose();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReturnedThroughThis_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+
+public class Worker
+{
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+    public CancellationTokenSource Source()
+    {
+        return this._cts;
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task DisposeMethodGroupCaptured_ShouldReportDiagnostic()
+    {
+        // Naming the method is not calling it, so the source is still never disposed.
+        var test =
+            @"
+using System;
+using System.Threading;
+
+public class Worker
+{
+    private readonly CancellationTokenSource {|#0:_cts|} = new CancellationTokenSource();
+
+    public Action Cleanup() => _cts.Dispose;
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("_cts"));
+        await t.RunAsync();
+    }
 }
