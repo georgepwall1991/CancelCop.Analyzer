@@ -21,11 +21,11 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (33 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (34 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
-- loops and async streams that ignore cancellation (`ThrowIfCancellationRequested`, `.WithCancellation`, `[EnumeratorCancellation]`)
+- loops and async streams that ignore cancellation (`ThrowIfCancellationRequested`, `.WithCancellation`, `[EnumeratorCancellation]`, iterators declared with no token at all)
 - timeout `CancellationTokenSource` that silently drops a parent token (`CreateLinkedTokenSource` + `CancelAfter`)
 - sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream APIs, `Process.WaitForExit()`, blocking sync primitives)
 - `async void`, unawaited fire-and-forget calls, swallowed `OperationCanceledException`, and resource-lifetime bugs (undisposed CTS locals and fields, premature `using` disposal)
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.34.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.35.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.34.0
+Install-Package CancelCop.Analyzer -Version 1.35.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -147,6 +147,7 @@ dotnet build samples/CancelCop.Sample
 | **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`) in async code | Warning | ❌ |
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
+| **CC034** | Public `IAsyncEnumerable<T>` iterator declared with no `CancellationToken` parameter | Warning | ✅ |
 
 ## Quick Examples
 
@@ -666,6 +667,31 @@ public sealed class Worker : IDisposable
 > the declaring type **creates** the source — an injected one is owned by whoever created it, and
 > disposing it would be a bug. Fields that escape (returned or passed as an argument) and `static`
 > fields stay quiet.
+
+### CC034: Async Iterator Missing a `CancellationToken`
+
+```csharp
+// ❌ Warning CC034 - nothing can stop this enumeration
+public async IAsyncEnumerable<int> ReadAsync()
+{
+    yield return 1;
+}
+
+// ✅ Fixed - the token flows in, and [EnumeratorCancellation] makes the consumer's
+//    .WithCancellation(token) actually reach it
+public async IAsyncEnumerable<int> ReadAsync(
+    [EnumeratorCancellation] CancellationToken cancellationToken = default)
+{
+    yield return 1;
+}
+```
+
+> Closes a gap between three rules: CC001 only covers `Task`/`ValueTask` returns, CC011 needs a token
+> parameter to already exist, and CC010 flags the consumer. A stream declared with no token slips
+> past all three. Only **iterators** (methods that yield) are flagged — a method that merely returns
+> an `IAsyncEnumerable<T>` is a pass-through — and only public/protected ones, matching CC001.
+> Overrides, interface implementations, and `extern` are excluded, since adding a parameter would
+> break the contract rather than fix it.
 
 ## Configuration
 

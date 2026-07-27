@@ -1,3 +1,11 @@
+## Release 1.35.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC034 | Usage | Warning | Async iterator should have a CancellationToken parameter
+
 ## Release 1.34.0
 
 ### New Rules
