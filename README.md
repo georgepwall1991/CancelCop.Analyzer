@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (33 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (34 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.35.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.36.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.35.0
+Install-Package CancelCop.Analyzer -Version 1.36.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -147,6 +147,7 @@ dotnet build samples/CancelCop.Sample
 | **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`) in async code | Warning | ❌ |
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
+| **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
 
 ## Quick Examples
 
@@ -666,6 +667,30 @@ public sealed class Worker : IDisposable
 > the declaring type **creates** the source — an injected one is owned by whoever created it, and
 > disposing it would be a bug. Fields that escape (returned or passed as an argument) and `static`
 > fields stay quiet.
+
+### CC034: `ParallelOptions` Missing a `CancellationToken`
+
+```csharp
+// ❌ Warning CC034 - nothing can stop this loop
+public void Process(int[] items, CancellationToken cancellationToken)
+{
+    var options = new ParallelOptions { MaxDegreeOfParallelism = 4 };
+    Parallel.ForEach(items, options, Handle);
+}
+
+// ✅ Fixed - the loop observes cancellation between partitions
+var options = new ParallelOptions
+{
+    MaxDegreeOfParallelism = 4,
+    CancellationToken = cancellationToken,
+};
+```
+
+> `ParallelOptions.CancellationToken` is the **only** way to cancel a `Parallel` loop. CC002 cannot
+> see this: it matches calls with token-accepting overloads, but here the token is a property in an
+> object initializer and `Parallel.ForEach` has no token-taking overload at all. Fires only when a
+> token is actually in scope, and stays quiet when the token is assigned afterwards
+> (`options.CancellationToken = token`).
 
 ## Configuration
 

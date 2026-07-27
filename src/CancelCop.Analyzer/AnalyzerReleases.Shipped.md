@@ -1,3 +1,11 @@
+## Release 1.36.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC034 | Usage | Warning | ParallelOptions should set CancellationToken
+
 ## Release 1.34.0
 
 ### New Rules

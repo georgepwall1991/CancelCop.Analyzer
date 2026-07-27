@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-07-27
+
+### Added
+
+- **CC034** (`ParallelOptionsTokenAnalyzer`): flags a `ParallelOptions` created without a
+  `CancellationToken` while one is in scope. Code fix adds `CancellationToken = token` to the object
+  initializer, creating the initializer when there is none.
+
+  `ParallelOptions.CancellationToken` is the *only* way to cancel a `Parallel` loop. Without it the
+  loop runs every partition to completion no matter what the caller wants, and a long parallel loop
+  over a large collection is precisely the work most worth stopping.
+
+  **CC002 structurally cannot see this.** It fires on a *call* that has a token-accepting overload;
+  here the token is neither an argument nor an overload but a property set in an object initializer,
+  and `Parallel.ForEach` has no token-taking overload at all. Verified against the shipped analyzer
+  before the rule was written: a tokenless `ParallelOptions` with a token in scope produced no
+  diagnostic from any of the 33 existing rules.
+
+  Conservative by design: fires only when a token is actually in scope, using the same walk as
+  CC002/CC012 — with nothing to suggest the rule stays quiet. It also stays quiet when the token is
+  assigned afterwards (`options.CancellationToken = cancellationToken;`), which is equally correct
+  and common when the options are built up conditionally — but only when that assignment actually
+  runs first and on every path reaching the loop. Being nested in an `if` is not itself
+  disqualifying — when the creation, the assignment and the loop all sit inside the same branch,
+  every path to the loop passes through the assignment; what disqualifies it is a conditional the
+  *use* is outside of, or a different branch of the same one. A nested function is always
+  disqualifying, since it may never be invoked, and for the same reason a use inside a lambda does
+  not bound when the assignment must happen. Only the **last** write before the first use counts, so
+  a valid assignment later overwritten with `default` no longer exonerates.
+
+  A token that cannot cancel does not count as set: `CancellationToken = default`,
+  `= CancellationToken.None`, `= new CancellationToken()`, and `= new CancellationToken(false)` all
+  satisfy the property while leaving the loop exactly as it was, and CC012 covers those spellings
+  only as invocation arguments. Implicit `new()` creation is covered, and
+  the fix appends to an existing initializer rather than replacing it, so `MaxDegreeOfParallelism`
+  and `TaskScheduler` survive.
+
 ## [1.35.0] - 2026-07-27
 
 ### Fixed
