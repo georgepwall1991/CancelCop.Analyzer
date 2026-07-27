@@ -834,4 +834,147 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task UnusableCounterpartInsideLock_ShouldNotReportDiagnostic()
+    {
+        // The subclass's broader ReadAsync(object, ...) wins resolution and is not awaitable, so no
+        // async counterpart exists — the same call outside a lock is suppressed. Withholding the fix
+        // because of the lock must not let the unsupportable claim through instead.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public int ReadAsync(object buffer, int offset, int count) => 0;
+}
+
+public class TestClass
+{
+    private readonly object _gate = new object();
+
+    public async Task<int> RunAsync(CustomStream stream, byte[] buffer)
+    {
+        var read = 0;
+        lock (_gate)
+        {
+            read = stream.Read(buffer, 0, buffer.Length);
+        }
+
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingCallInInitialFromClause_IsFixedNormally()
+    {
+        // await is legal in the initial `from` source (CS1995 allows exactly this position), so the
+        // rewrite compiles and the fix must still be offered.
+        var test =
+            @"
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Stream stream, byte[] buffer, CancellationToken token)
+    {
+        var query = from n in new[] { stream.{|#0:Read|}(buffer, 0, buffer.Length) } select n;
+        await Task.Yield();
+        return query.First();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Stream stream, byte[] buffer, CancellationToken token)
+    {
+        var query = from n in new[] { await stream.ReadAsync(buffer, 0, buffer.Length, token) } select n;
+        await Task.Yield();
+        return query.First();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Read")
+        );
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BlockingCallInWhereClause_ReportsWithoutOfferingAFix()
+    {
+        // A `where` clause is not one of the two permitted positions, so an inserted await would be
+        // CS1995. The blocking call is still reported.
+        var source =
+            @"
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Stream stream, byte[] buffer, CancellationToken token)
+    {
+        var query = from n in new[] { 1 } where stream.{|#0:Read|}(buffer, 0, buffer.Length) > 0 select n;
+        await Task.Yield();
+        return query.Count();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("Read")
+        );
+        await t.RunAsync();
+    }
 }

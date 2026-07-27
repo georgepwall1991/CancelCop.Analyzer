@@ -234,20 +234,22 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         else if (AwaitIsForbiddenHere(invocation))
             properties = properties.Add(NoFixProperty, "await-not-allowed-here");
 
-        // Final authority: ask Roslyn to bind the exact call the fix would emit. The search above
-        // approximates overload resolution well enough to *choose* a counterpart and decide whether
-        // a token can flow, but approximations keep losing to the real rules — implicit conversions
-        // alone mean a subclass overload taking `object` wins a `byte[]` argument that
-        // parameter-type equality rejects. If the rewritten call does not bind to the counterpart
-        // this diagnostic is premised on, there is no safe rewrite and no reliable claim to make.
+        // Final authority: ask Roslyn to bind the call. The search above approximates overload
+        // resolution well enough to *choose* a counterpart and decide whether a token can flow, but
+        // approximations keep losing to the real rules — implicit conversions alone mean a subclass
+        // overload taking `object` wins a `byte[]` argument that parameter-type equality rejects.
+        //
+        // This runs even when no fix will be offered, because it validates the diagnostic's premise
+        // ("an async counterpart exists here"), not just the rewrite. Withholding the fix for an
+        // unrelated reason must not let an unsupportable claim through.
         if (
-            !properties.ContainsKey(NoFixProperty)
-            && !RewriteBindsToCounterpart(
+            !RewriteBindsToCounterpart(
                 context,
                 invocation,
                 asyncName,
                 asyncCounterpart!,
-                flowToken ? tokenParameter!.Name : null
+                flowToken ? tokenParameter!.Name : null,
+                stripArgumentNames: properties.ContainsKey(NoFixProperty)
             )
         )
             return;
@@ -506,6 +508,21 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
+    /// Returns <c>true</c> when <paramref name="node"/> sits in one of the two query positions where
+    /// <c>await</c> is legal: the source expression of the initial <c>from</c> clause, or the source
+    /// of a <c>join</c> clause (CS1995).
+    /// </summary>
+    private static bool IsAwaitablePositionInQuery(QueryExpressionSyntax query, SyntaxNode node)
+    {
+        if (query.FromClause.Expression.Contains(node))
+            return true;
+
+        return query
+            .Body.Clauses.OfType<JoinClauseSyntax>()
+            .Any(join => join.InExpression.Contains(node));
+    }
+
+    /// <summary>
     /// Speculatively binds the invocation the code fix would produce and returns <c>true</c> when it
     /// resolves to <paramref name="counterpart"/> — the method this diagnostic claims exists.
     /// </summary>
@@ -520,7 +537,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         InvocationExpressionSyntax invocation,
         string asyncName,
         IMethodSymbol counterpart,
-        string? tokenName
+        string? tokenName,
+        bool stripArgumentNames
     )
     {
         ExpressionSyntax target;
@@ -543,6 +561,19 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         }
 
         var argumentList = invocation.ArgumentList.WithoutTrivia();
+
+        // When the argument names are themselves the reason no fix is offered, binding them would
+        // fail for that known reason and tell us nothing about whether a counterpart exists. Drop
+        // the names and bind positionally: the question here is reachability, not the exact rewrite.
+        if (stripArgumentNames)
+        {
+            argumentList = argumentList.WithArguments(
+                SyntaxFactory.SeparatedList(
+                    argumentList.Arguments.Select(a => a.WithNameColon(null))
+                )
+            );
+        }
+
         if (tokenName != null)
         {
             var tokenArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName));
@@ -594,11 +625,17 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         {
             switch (current)
             {
-                // CS1996 / CS7013 / CS1995: await is not permitted in these positions.
+                // CS1996 / CS7013: await is not permitted anywhere inside these.
                 case LockStatementSyntax:
                 case CatchFilterClauseSyntax:
                 case UnsafeStatementSyntax:
-                case QueryExpressionSyntax:
+                    return true;
+
+                // CS1995: inside a query, await is permitted only in the first `from` clause's
+                // source expression and in a `join` clause's source. Elsewhere in the query it is
+                // an error, so the position within the query decides. An allowed position still has
+                // to keep walking: an enclosing lock or outer query can forbid it anyway.
+                case QueryExpressionSyntax query when !IsAwaitablePositionInQuery(query, node):
                     return true;
 
                 // A nested function re-establishes an await-capable context.

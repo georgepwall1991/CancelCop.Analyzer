@@ -57,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can flow, but it is not overload resolution: a subclass overload taking `object` wins a `byte[]`
   argument by implicit conversion even though the parameter types are not equal.
 - No fix is offered where `await` is illegal — a `lock` body (CS1996), an exception filter, an
-  `unsafe` block, or a query expression. The blocking call is still reported: holding a lock across
+  `unsafe` block, or a query clause other than the initial `from` source or a `join` source, which
+  are the two positions CS1995 permits. The blocking call is still reported: holding a lock across
   synchronous I/O is exactly the stall this rule exists to surface, but resolving it means
   restructuring the lock, which is the author's decision rather than a mechanical rewrite. The walk
   stops at function boundaries, so a lambda inside a `lock` body is fixed normally.
