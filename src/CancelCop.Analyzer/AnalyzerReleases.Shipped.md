@@ -1,3 +1,11 @@
+## Release 1.38.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC036 | Usage | Warning | Avoid blocking socket calls in async code
+
 ## Release 1.37.0
 
 ### New Rules

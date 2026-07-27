@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-07-27
+
+### Added
+
+- **CC036** (`BlockingSocketIoAnalyzer`): flags a blocking `System.Net.Sockets.Socket` operation —
+  `Receive`, `ReceiveFrom`, `ReceiveMessageFrom`, `Send`, `SendTo`, `SendFile`, `Accept`, `Connect`,
+  `Disconnect` — inside async code.
+
+  A socket call blocks until the network responds, or until a TCP timeout that can run into minutes.
+  Inside async code that parks a thread-pool thread on a remote party's behaviour, which is the least
+  predictable thing a server waits on. `Accept` and `Connect` are worse still: they can block
+  indefinitely, with no data to wait for.
+
+  **Why this is a separate rule rather than an extension of CC028.** CC028 covers blocking
+  `System.IO` calls including every `Stream`, so a `NetworkStream` is already handled there. It can
+  offer a code fix only because it requires the async counterpart to be *signature-compatible* — the
+  same parameters, optionally plus a token. Socket's async APIs are not shaped that way:
+  `Receive(byte[])` pairs with `ReceiveAsync(Memory<byte>, CancellationToken)`, and `Accept()` with
+  `AcceptAsync(CancellationToken)` returning a different type. Loosening CC028's matching to reach
+  them would give up the property that makes its rewrites safe, so CC036 stands apart — and is
+  analyzer-only, because there is no mechanical rewrite.
+
+  Verified against the shipped analyzer before the rule was written: a blocking `Socket.Receive` in
+  async code produced no diagnostic from any of the 35 existing rules. `Socket` is resolved from the
+  compilation and matched by symbol, through the override chain, so a consumer's own type of the same
+  name is not mistaken for it.
+
 ## [1.37.0] - 2026-07-27
 
 ### Added

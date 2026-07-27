@@ -21,13 +21,13 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (35 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (36 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
 - loops and async streams that ignore cancellation (`ThrowIfCancellationRequested`, `.WithCancellation`, `[EnumeratorCancellation]`)
 - timeout `CancellationTokenSource` that silently drops a parent token (`CreateLinkedTokenSource` + `CancelAfter`)
-- sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream APIs, `Process.WaitForExit()`, blocking sync primitives)
+- sync-over-async and blocking I/O (`.Result` / `.Wait()`, `Thread.Sleep`, `SemaphoreSlim.Wait()`, blocking `File` / stream / socket APIs, `Process.WaitForExit()`, blocking sync primitives)
 - `async void`, unawaited fire-and-forget calls, swallowed `OperationCanceledException`, and resource-lifetime bugs (undisposed CTS locals and fields, premature `using` disposal)
 
 When the analyzer cannot prove a problem statically, it **stays quiet**. High-signal feedback, not noisy guesses.
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.37.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.38.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.37.0
+Install-Package CancelCop.Analyzer -Version 1.38.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -149,6 +149,7 @@ dotnet build samples/CancelCop.Sample
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
 | **CC035** | Empty `catch (OperationCanceledException)` silently discards the cancellation | Info | ❌ |
+| **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -711,6 +712,25 @@ catch (OperationCanceledException)
 > statement, a `when` filter, a rethrow, or even a comment recording the intent means the author
 > considered the case, and the rule stays quiet. So `catch (TaskCanceledException) { /* expected on
 > shutdown */ }` — the idiomatic wait-until-cancelled — is clean.
+
+### CC036: Blocking Socket Calls in Async Code
+
+```csharp
+// ❌ Warning CC036 - can block indefinitely waiting for a connection
+public async Task ServeAsync(Socket listener)
+{
+    var client = listener.Accept();
+}
+
+// ✅ Fixed
+var client = await listener.AcceptAsync(cancellationToken);
+```
+
+> CC028 already covers every `Stream`, so a `NetworkStream` is handled there. `Socket` itself is not,
+> because its async counterparts are **not signature-compatible** — `Receive(byte[])` pairs with
+> `ReceiveAsync(Memory<byte>, CancellationToken)` — and that compatibility is exactly what makes
+> CC028's rewrites safe. Loosening it would trade fix safety for reach, so this is a separate,
+> analyzer-only rule.
 
 ## Configuration
 
