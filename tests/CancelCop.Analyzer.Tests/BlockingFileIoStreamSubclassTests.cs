@@ -1128,4 +1128,49 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task ReorderedNamedArgumentsInsideLock_ReportsWithoutOfferingAFix()
+    {
+        // The names here are fine — it is the lock that withholds the fix. Validating this call by
+        // stripping names and keeping source order would bind `contents` to `path` and suppress a
+        // valid diagnostic entirely.
+        var source =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object _gate = new object();
+
+    public async Task RunAsync(string path, string text, CancellationToken token)
+    {
+        lock (_gate)
+        {
+            File.{|#0:WriteAllText|}(contents: text, path: path);
+        }
+
+        await Task.Yield();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = source,
+            FixedCode = source,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("WriteAllText")
+        );
+        await t.RunAsync();
+    }
 }

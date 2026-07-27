@@ -229,7 +229,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // inherited Stream.ReadAsync names them `buffer`/`offset`, so the rewrite would fail with
         // CS1739. The call is still genuinely blocking, so the diagnostic stands — only the fix is
         // withheld.
-        if (!NamedArgumentsMatch(invocation, method, asyncCounterpart!))
+        var namesWouldBeRemapped = !NamedArgumentsMatch(invocation, method, asyncCounterpart!);
+        if (namesWouldBeRemapped)
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
         else if (AwaitIsForbiddenHere(invocation))
             properties = properties.Add(NoFixProperty, "await-not-allowed-here");
@@ -249,7 +250,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 asyncName,
                 asyncCounterpart!,
                 flowToken ? tokenParameter!.Name : null,
-                stripArgumentNames: properties.ContainsKey(NoFixProperty)
+                method,
+                bindPositionally: namesWouldBeRemapped
             )
         )
             return;
@@ -544,7 +546,8 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         string asyncName,
         IMethodSymbol counterpart,
         string? tokenName,
-        bool stripArgumentNames
+        IMethodSymbol sync,
+        bool bindPositionally
     )
     {
         ExpressionSyntax target;
@@ -568,14 +571,30 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
         var argumentList = invocation.ArgumentList.WithoutTrivia();
 
-        // When the argument names are themselves the reason no fix is offered, binding them would
-        // fail for that known reason and tell us nothing about whether a counterpart exists. Drop
-        // the names and bind positionally: the question here is reachability, not the exact rewrite.
-        if (stripArgumentNames)
+        // When the argument *names* are the reason no fix is offered, binding them would fail for
+        // that known reason and say nothing about whether a counterpart exists. Bind positionally
+        // instead — but sort by the parameter each argument actually binds to on the synchronous
+        // method first, since named arguments may be written out of order and keeping source order
+        // would bind them to the wrong parameters and suppress a valid diagnostic.
+        //
+        // Only names trigger this. A call withheld for an await-forbidden context has perfectly good
+        // names and must be validated as written.
+        if (bindPositionally)
         {
             argumentList = argumentList.WithArguments(
                 SyntaxFactory.SeparatedList(
-                    argumentList.Arguments.Select(a => a.WithNameColon(null))
+                    argumentList
+                        .Arguments.Select(
+                            (argument, position) =>
+                                (
+                                    Ordinal: argument.NameColon is { } nameColon
+                                        ? IndexOfParameter(sync, nameColon.Name.Identifier.Text)
+                                        : position,
+                                    Argument: argument.WithNameColon(null)
+                                )
+                        )
+                        .OrderBy(entry => entry.Ordinal)
+                        .Select(entry => entry.Argument)
                 )
             );
         }
