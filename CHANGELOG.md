@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-07-27
+
+### Added
+
+- **CC032** (`UnawaitedAsyncCallAnalyzer`): flags a `Task`/`ValueTask`-returning call whose result is
+  discarded as a bare expression statement in non-async code, or as the body of a void-returning
+  expression-bodied lambda.
+
+  A dropped task cannot be cancelled, cannot be waited on at shutdown, and its failure is never
+  observed — the exception surfaces later on an unrelated thread, or nowhere at all. Work started
+  this way outlives the request or host that started it, which is the same class of problem as a
+  token that is never passed.
+
+  **This fills a real compiler gap.** CS4014 only fires *inside* an async method. In a constructor,
+  a synchronous method, or a non-async lambda — exactly where the mistake is easiest to make,
+  because there is no `await` available to reach for — the compiler says nothing at all. CC032
+  covers only that gap and stays quiet wherever CS4014 already reports, so the two never double up.
+
+  Conservative by design: a task that is assigned, returned, passed as an argument, or explicitly
+  discarded with `_ =` is not dropped and is not flagged. `_ =` in particular is the documented way
+  to say "I know, and I mean it" — a rule that flagged the opt-in would be impossible to satisfy.
+  A lambda converted to a `Task`-returning delegate hands the task to its caller and is likewise
+  quiet; an `async` lambda converted to `void` is CC024's finding, not this one.
+
+  Analyzer-only, like CC017, CC020, CC024, CC027, and CC031: the right resolution — make the caller
+  async and await, hand the task to something that observes it, or opt in deliberately — depends on
+  intent.
+
 ## [1.32.0] - 2026-07-27
 
 ### Added

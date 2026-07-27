@@ -1,0 +1,173 @@
+using System.Collections.Immutable;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+
+namespace CancelCop.Analyzer;
+
+/// <summary>
+/// Analyzer that detects an async call whose task is discarded as a bare expression statement in
+/// non-async code, so it can be neither awaited nor cancelled.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Rule ID:</b> CC032
+/// </para>
+/// <para>
+/// <b>Why this matters:</b>
+/// A dropped task cannot be cancelled, cannot be waited on at shutdown, and its failure is never
+/// observed — the exception surfaces later on an unrelated thread, or nowhere at all. Work started
+/// this way outlives the request or host that started it, which is the same class of problem as a
+/// token that is never passed.
+/// </para>
+/// <para>
+/// <b>The gap this fills:</b> the compiler's CS4014 only fires <i>inside</i> an async method. In a
+/// constructor, a synchronous method, or a non-async lambda — exactly where the mistake is easiest
+/// to make, because there is no <c>await</c> available to reach for — it says nothing at all.
+/// CC032 covers only that gap and stays quiet where CS4014 already reports.
+/// </para>
+/// <para>
+/// <b>Why there is no code fix:</b> the right resolution depends on intent — make the caller async
+/// and await, hand the task to something that observes it, or opt in deliberately. Analyzer-only,
+/// like CC017, CC020, CC024, CC027, and CC031.
+/// </para>
+/// <para>
+/// <b>Conservative by design:</b> a task that is assigned, returned, passed as an argument, or
+/// explicitly discarded with <c>_ =</c> is not dropped, and none of those is flagged. <c>_ =</c> in
+/// particular is the documented way to say "I know, and I mean it"; a rule that flagged the opt-in
+/// would be impossible to satisfy.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// public TestClass()
+/// {
+///     InitializeAsync();   // CC032: nothing awaits or cancels this, and CS4014 does not fire here
+/// }
+/// </code>
+/// </example>
+[DiagnosticAnalyzer(LanguageNames.CSharp)]
+public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
+{
+    /// <summary>
+    /// The diagnostic ID for this analyzer rule.
+    /// </summary>
+    public const string DiagnosticId = "CC032";
+
+    private static readonly LocalizableString Title = "Async call is not awaited in non-async code";
+    private static readonly LocalizableString MessageFormat =
+        "The task returned by '{0}' is discarded; it cannot be awaited or cancelled";
+    private static readonly LocalizableString Description =
+        "A task dropped as a bare expression statement cannot be cancelled or awaited at shutdown, and its failure is never observed. The compiler's CS4014 only reports this inside async methods.";
+    private const string Category = "Usage";
+
+    private static readonly DiagnosticDescriptor Rule = new(
+        DiagnosticId,
+        Title,
+        MessageFormat,
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: Description,
+        helpLinkUri: DiagnosticHelp.LinkUri
+    );
+
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        ImmutableArray.Create(Rule);
+
+    public override void Initialize(AnalysisContext context)
+    {
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        context.EnableConcurrentExecution();
+
+        // Registering on the statement — rather than on every invocation — is what makes "the task
+        // is discarded" a property of the syntax rather than something to infer: an expression
+        // statement is precisely the position where a value goes nowhere.
+        context.RegisterSyntaxNodeAction(
+            AnalyzeExpressionStatement,
+            SyntaxKind.ExpressionStatement
+        );
+
+        // An expression-bodied lambda has no statement to register on, but a void-returning one
+        // discards the task just as completely: `Action a = () => SaveAsync();`.
+        context.RegisterSyntaxNodeAction(
+            AnalyzeExpressionBodiedLambda,
+            SyntaxKind.SimpleLambdaExpression,
+            SyntaxKind.ParenthesizedLambdaExpression,
+            SyntaxKind.AnonymousMethodExpression
+        );
+    }
+
+    private static void AnalyzeExpressionStatement(SyntaxNodeAnalysisContext context)
+    {
+        var statement = (ExpressionStatementSyntax)context.Node;
+
+        // Only a bare call. An assignment (including the explicit `_ =` discard) hands the task
+        // somewhere, so it is not dropped by this statement.
+        if (statement.Expression is InvocationExpressionSyntax invocation)
+            Report(context, invocation);
+    }
+
+    private static void AnalyzeExpressionBodiedLambda(SyntaxNodeAnalysisContext context)
+    {
+        var lambda = (AnonymousFunctionExpressionSyntax)context.Node;
+
+        if (lambda.Body is not InvocationExpressionSyntax invocation)
+            return;
+
+        // A lambda converted to a Task-returning delegate hands the task to its caller, so nothing
+        // is discarded there. Only a void-returning conversion drops it. (An `async` lambda
+        // converted to void is CC024's finding, not this one.)
+        if (
+            context.SemanticModel.GetSymbolInfo(lambda, context.CancellationToken).Symbol
+                is not IMethodSymbol lambdaSymbol
+            || !lambdaSymbol.ReturnsVoid
+            || lambdaSymbol.IsAsync
+        )
+            return;
+
+        Report(context, invocation);
+    }
+
+    /// <summary>
+    /// Applies the shared gates — the call must return an awaitable, and must not already be covered
+    /// by CS4014 — and reports.
+    /// </summary>
+    private static void Report(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
+    {
+        if (
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is not IMethodSymbol method
+        )
+            return;
+
+        if (!CancellationTokenHelpers.IsAsyncReturnType(method.ReturnType))
+            return;
+
+        // Inside an async function the compiler already reports CS4014; a second diagnostic on the
+        // same line would be pure noise.
+        if (CancellationTokenHelpers.IsInAsyncFunction(invocation))
+            return;
+
+        var invokedName = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            IdentifierNameSyntax identifier => identifier,
+            _ => null,
+        };
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Rule,
+                invocation.GetLocation(),
+                invokedName?.Identifier.Text ?? method.Name
+            )
+        );
+    }
+}

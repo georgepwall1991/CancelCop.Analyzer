@@ -1,3 +1,11 @@
+## Release 1.33.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC032 | Usage | Warning | Async call is not awaited in non-async code
+
 ## Release 1.32.0
 
 ### New Rules
