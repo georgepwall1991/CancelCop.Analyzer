@@ -249,8 +249,46 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
     /// An awaiter is deliberately absent: the compiler never warns about discarding one.
     /// </summary>
     private static bool IsCoveredByCompilerWarning(ITypeSymbol? type) =>
-        IsDiscardedAsyncResult(type)
-        && type?.Name is not ("TaskAwaiter" or "ValueTaskAwaiter");
+        IsDiscardedAsyncResult(type) && !IsAwaiter(type);
+
+    /// <summary>Awaiter types — what <c>GetAwaiter()</c> hands back.</summary>
+    private static bool IsAwaiter(ITypeSymbol? type) =>
+        type?.Name
+            is "TaskAwaiter"
+                or "ValueTaskAwaiter"
+                or "ConfiguredTaskAwaiter"
+                or "ConfiguredValueTaskAwaiter";
+
+    /// <summary>
+    /// Returns <c>true</c> for the <c>System.Runtime.CompilerServices</c> awaitables and awaiters
+    /// that hold in-flight async work.
+    /// </summary>
+    /// <remarks>
+    /// Most are top level, and requiring that keeps a user's nested lookalike from matching. The
+    /// configured awaiters are the exception: <c>ConfiguredTaskAwaitable.ConfiguredTaskAwaiter</c>
+    /// really is nested, so it is admitted through its declaring awaitable rather than by name alone.
+    /// </remarks>
+    private static bool IsCompilerServicesAwaitable(ITypeSymbol type)
+    {
+        const string Namespace = "System.Runtime.CompilerServices";
+
+        if (type.ContainingType is null)
+        {
+            return type.ContainingNamespace?.ToDisplayString() == Namespace
+                && type.Name
+                    is "ConfiguredTaskAwaitable"
+                        or "ConfiguredValueTaskAwaitable"
+                        or "TaskAwaiter"
+                        or "ValueTaskAwaiter";
+        }
+
+        return type.Name is "ConfiguredTaskAwaiter" or "ConfiguredValueTaskAwaiter"
+            && type.ContainingType.ContainingType is null
+            && type.ContainingType.ContainingNamespace?.ToDisplayString() == Namespace
+            && type.ContainingType.Name
+                is "ConfiguredTaskAwaitable"
+                    or "ConfiguredValueTaskAwaitable";
+    }
 
     private static bool IsDiscardedAsyncResult(ITypeSymbol? type)
     {
@@ -260,15 +298,7 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
         if (CancellationTokenHelpers.IsAsyncReturnType(type))
             return true;
 
-        if (
-            type.ContainingType is null
-            && type.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"
-            && type.Name
-                is "ConfiguredTaskAwaitable"
-                    or "ConfiguredValueTaskAwaitable"
-                    or "TaskAwaiter"
-                    or "ValueTaskAwaiter"
-        )
+        if (IsCompilerServicesAwaitable(type))
             return true;
 
         // A type parameter carries its awaitability through its constraints rather than a base type.

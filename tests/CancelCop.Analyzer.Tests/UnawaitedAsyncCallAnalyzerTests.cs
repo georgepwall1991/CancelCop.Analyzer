@@ -567,4 +567,29 @@ public class TestClass
 
         await Test(test).RunAsync();
     }
+
+    [Fact]
+    public async Task DiscardedConfiguredAwaiter_ShouldReportDiagnostic()
+    {
+        // ConfiguredTaskAwaitable.ConfiguredTaskAwaiter is genuinely nested, so the top-level rule
+        // that keeps user lookalikes out would have excluded it too. Neither CS4014 nor anything
+        // else reports this chain.
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private Task SaveAsync() => Task.CompletedTask;
+
+    public void Run()
+    {
+        {|#0:SaveAsync().ConfigureAwait(false).GetAwaiter()|};
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("GetAwaiter"));
+        await t.RunAsync();
+    }
 }
