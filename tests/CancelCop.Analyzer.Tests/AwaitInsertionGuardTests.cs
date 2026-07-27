@@ -450,4 +450,110 @@ public class TestClass
             new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0)
         ).RunAsync();
     }
+
+    [Fact]
+    public async Task CC015_RefLikeTemporaryInTheSameCall_ReportsWithoutOfferingAFix()
+    {
+        // The stackalloc'd Span is a temporary with no name, so scanning declared locals never sees
+        // it — but it is on the stack when the inserted await runs (CS4007).
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Consume(Span<int> buffer, int value) { }
+
+    public async Task RunAsync(Task<int> work)
+    {
+        await Task.Yield();
+        Consume(stackalloc int[1], work.{|#0:Result|});
+    }
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC025_LaterRefStructUsing_IsStillFixed()
+    {
+        // Declarations dispose in reverse order, so the lease declared after the resource is already
+        // disposed by the time the resource's disposal awaits. Treating every ref struct in the
+        // scope as live would withhold a valid fix.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct Lease
+{
+    public void Dispose() { }
+}
+
+public class Resource : IDisposable, IAsyncDisposable
+{
+    public void Dispose() { }
+    public ValueTask DisposeAsync() => default;
+}
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        await Task.Yield();
+        {|#0:using|} var resource = new Resource();
+        using var lease = new Lease();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public ref struct Lease
+{
+    public void Dispose() { }
+}
+
+public class Resource : IDisposable, IAsyncDisposable
+{
+    public void Dispose() { }
+    public ValueTask DisposeAsync() => default;
+}
+
+public class TestClass
+{
+    public async Task RunAsync()
+    {
+        await Task.Yield();
+        await using var resource = new Resource();
+        using var lease = new Lease();
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            AwaitUsingAnalyzer,
+            AwaitUsingCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC025", DiagnosticSeverity.Info).WithLocation(0)
+        );
+        await t.RunAsync();
+    }
 }

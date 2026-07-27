@@ -132,7 +132,8 @@ public class AwaitUsingAnalyzer : DiagnosticAnalyzer
         var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
             context.SemanticModel,
             construct,
-            DisposalPositionOf(construct)
+            DisposalPositionOf(construct),
+            construct.SpanStart
         )
             ? ImmutableDictionary<string, string?>.Empty.Add(
                 NoFixProperty,

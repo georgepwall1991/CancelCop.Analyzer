@@ -1025,12 +1025,19 @@ public static class CancellationTokenHelpers
     public static bool AwaitWouldSpanRefLikeLocal(
         SemanticModel semanticModel,
         SyntaxNode node,
-        int? awaitPosition = null
+        int? awaitPosition = null,
+        int? declarationCutoff = null
     )
     {
         // Usually the await lands where the construct is, but not always: `using` -> `await using`
         // awaits at scope exit, so the caller can say where the await really goes.
         var position = awaitPosition ?? node.SpanStart;
+
+        // Which declarations can still be live at that await. For an ordinary rewrite it is
+        // everything declared before it; for `await using` it is everything declared before the
+        // *using*, because declarations dispose in reverse order — a later ref struct has already
+        // been disposed by the time this one's disposal awaits.
+        var cutoff = declarationCutoff ?? position;
 
         var body = node.Ancestors()
             .FirstOrDefault(a =>
@@ -1098,7 +1105,7 @@ public static class CancellationTokenHelpers
 
         foreach (var declaration in declarations)
         {
-            if (declaration.SpanStart >= position)
+            if (declaration.SpanStart >= cutoff)
                 continue;
 
             if (
@@ -1238,8 +1245,42 @@ public static class CancellationTokenHelpers
     public static bool AwaitInsertionIsUnsafe(
         SemanticModel semanticModel,
         SyntaxNode node,
-        int? awaitPosition = null
+        int? awaitPosition = null,
+        int? declarationCutoff = null
     ) =>
         AwaitIsForbiddenHere(node)
-        || AwaitWouldSpanRefLikeLocal(semanticModel, node, awaitPosition);
+        || AwaitWouldSpanRefLikeLocal(semanticModel, node, awaitPosition, declarationCutoff)
+        || RefLikeTemporaryPrecedes(semanticModel, node);
+
+    /// <summary>
+    /// Returns <c>true</c> when an earlier part of the same statement produces a ref-like temporary,
+    /// which would then be live across an <c>await</c> inserted at <paramref name="node"/>.
+    /// </summary>
+    /// <remarks>
+    /// Declared locals are only half the story: <c>Consume(stackalloc int[1], task.Result)</c> holds
+    /// a <c>Span&lt;int&gt;</c> that never has a name, and awaiting the second argument strands it
+    /// across the await (CS4007). Identifier references are excluded because a named local is
+    /// handled by the declaration walk, and its mere appearance does not keep it live.
+    /// </remarks>
+    private static bool RefLikeTemporaryPrecedes(SemanticModel semanticModel, SyntaxNode node)
+    {
+        // The innermost statement, and self when the node already is one. Widening to the enclosing
+        // block would sweep up every earlier ref-like expression in the method, which are separate
+        // statements whose temporaries are long gone.
+        var statement = node.AncestorsAndSelf()
+            .OfType<StatementSyntax>()
+            .FirstOrDefault(candidate => candidate is not BlockSyntax);
+        if (statement is null)
+            return false;
+
+        return statement
+            .DescendantNodes()
+            .OfType<ExpressionSyntax>()
+            .Any(expression =>
+                expression.Span.End <= node.SpanStart
+                && expression is not IdentifierNameSyntax
+                && !node.Span.Contains(expression.Span)
+                && semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true
+            );
+    }
 }
