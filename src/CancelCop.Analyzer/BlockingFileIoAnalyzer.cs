@@ -10,9 +10,9 @@ namespace CancelCop.Analyzer;
 
 /// <summary>
 /// Analyzer that detects a blocking synchronous <c>System.IO</c> call (<c>File</c> read/write/append
-/// helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, or <c>StreamWriter.Write</c>/<c>WriteLine</c>/
-/// <c>Flush</c>) inside async code when a signature-compatible async counterpart (<c>&lt;name&gt;Async</c>)
-/// exists.
+/// helpers, <c>StreamReader.ReadToEnd</c>/<c>ReadLine</c>, <c>StreamWriter.Write</c>/<c>WriteLine</c>/
+/// <c>Flush</c>, or the <c>Stream</c> primitives <c>Read</c>/<c>Write</c>/<c>CopyTo</c>/<c>Flush</c>)
+/// inside async code when a signature-compatible async counterpart (<c>&lt;name&gt;Async</c>) exists.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -35,6 +35,22 @@ namespace CancelCop.Analyzer;
 /// or anonymous method. Qualified calls and bare <c>File</c> calls imported with
 /// <c>using static</c> are supported. Overloads without an async form (e.g.
 /// <c>StreamWriter.Write(bool)</c>) are not flagged, so the rewrite always compiles.
+/// </para>
+/// <para>
+/// The <c>Stream</c> primitives (<c>Read</c>, <c>Write</c>, <c>CopyTo</c>, <c>Flush</c>) are matched
+/// by resolving the invoked member back to its original definition on <c>System.IO.Stream</c>, so
+/// concrete framework streams (<c>FileStream</c>, <c>NetworkStream</c>, <c>GZipStream</c>) and
+/// user-defined subclasses are covered through any depth of overriding, while a subclass's own
+/// same-named convenience overload is not. <c>MemoryStream</c> is excluded: it is backed by an
+/// in-memory buffer, so the call never leaves the CPU and the async counterpart only wraps the same
+/// synchronous work in a completed task.
+/// </para>
+/// <para>
+/// <b>Fix safety:</b> the analyzer speculatively binds the exact call the fix would emit and reports
+/// only when it resolves to the intended counterpart, so the rewrite compiles. Where the call is
+/// genuinely blocking but no safe mechanical rewrite exists — named arguments that would be remapped,
+/// or an <c>await</c>-forbidden context such as a <c>lock</c> body — the diagnostic is reported
+/// without a code fix.
 /// </para>
 /// </remarks>
 /// <example>
@@ -59,25 +75,68 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     public const string TokenNameProperty = "TokenName";
 
     /// <summary>
+    /// Property key set when the diagnostic is correct but no safe rewrite exists, so the code fix
+    /// must not offer one. Used for calls whose named arguments do not line up with the async
+    /// counterpart's parameter names.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
+    /// <summary>
+    /// Property key carrying the async counterpart's own token parameter name, so a fix that writes
+    /// a named token argument uses the name that overload actually declares. An override is free to
+    /// rename it (<c>ReadAsync(…, CancellationToken stop)</c>), and a hardcoded
+    /// <c>cancellationToken:</c> would then fail with CS1739.
+    /// </summary>
+    public const string TokenArgumentNameProperty = "TokenArgumentName";
+
+    /// <summary>
     /// The blocking <c>System.IO</c> methods (keyed by declaring type) that have a documented async
     /// counterpart of the form <c>&lt;name&gt;Async</c>.
     /// </summary>
-    private static readonly ImmutableDictionary<string, ImmutableHashSet<string>> BlockingMethodsByType =
-        ImmutableDictionary.CreateRange(new[]
+    private static readonly ImmutableDictionary<
+        string,
+        ImmutableHashSet<string>
+    > BlockingMethodsByType = ImmutableDictionary.CreateRange(
+        new[]
         {
-            new KeyValuePair<string, ImmutableHashSet<string>>("File", ImmutableHashSet.Create(
-                "ReadAllText", "ReadAllBytes", "ReadAllLines",
-                "WriteAllText", "WriteAllBytes", "WriteAllLines",
-                "AppendAllText", "AppendAllLines")),
-            new KeyValuePair<string, ImmutableHashSet<string>>("StreamReader", ImmutableHashSet.Create(
-                "ReadToEnd", "ReadLine")),
-            new KeyValuePair<string, ImmutableHashSet<string>>("StreamWriter", ImmutableHashSet.Create(
-                "Write", "WriteLine", "Flush")),
-        });
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "File",
+                ImmutableHashSet.Create(
+                    "ReadAllText",
+                    "ReadAllBytes",
+                    "ReadAllLines",
+                    "WriteAllText",
+                    "WriteAllBytes",
+                    "WriteAllLines",
+                    "AppendAllText",
+                    "AppendAllLines"
+                )
+            ),
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "StreamReader",
+                ImmutableHashSet.Create("ReadToEnd", "ReadLine")
+            ),
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "StreamWriter",
+                ImmutableHashSet.Create("Write", "WriteLine", "Flush")
+            ),
+        }
+    );
+
+    /// <summary>
+    /// The blocking primitives on <c>System.IO.Stream</c>. These are matched by inheritance rather
+    /// than by exact type name because the concrete streams that matter (<c>FileStream</c>,
+    /// <c>NetworkStream</c>, <c>GZipStream</c>, user-defined subclasses) each override them while
+    /// inheriting the async counterparts from <c>Stream</c>.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> StreamBlockingMethods =
+        ImmutableHashSet.Create("Read", "Write", "CopyTo", "Flush");
 
     private static readonly LocalizableString Title = "Avoid blocking I/O in async code";
-    private static readonly LocalizableString MessageFormat = "Blocking '{0}' in async code; use '{0}Async'";
-    private static readonly LocalizableString Description = "Synchronous System.IO calls block the thread in async code; use the async counterpart, which also accepts a CancellationToken.";
+    private static readonly LocalizableString MessageFormat =
+        "Blocking '{0}' in async code; use '{0}Async'";
+    private static readonly LocalizableString Description =
+        "Synchronous System.IO calls block the thread in async code; use the async counterpart, which also accepts a CancellationToken.";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -88,9 +147,11 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Description,
-        helpLinkUri: DiagnosticHelp.LinkUri);
+        helpLinkUri: DiagnosticHelp.LinkUri
+    );
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -115,68 +176,556 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
         var methodName = invokedName.Identifier.Text;
 
-        if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
+        if (
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is not IMethodSymbol method
+        )
             return;
 
         var containingType = method.ContainingType;
-        if (containingType?.ContainingNamespace?.ToDisplayString() != "System.IO")
+        if (containingType is null)
             return;
 
-        if (!BlockingMethodsByType.TryGetValue(containingType.Name, out var blockingMethods) ||
-            !blockingMethods.Contains(methodName))
-            return;
-
-        // Only flag when the framework in use actually offers a signature-compatible async counterpart,
-        // so the suggested fix always compiles. A counterpart matches when its parameters equal the
-        // blocking call's parameters, optionally followed by a single trailing CancellationToken. The
-        // overloads vary by type and target framework (e.g. StreamWriter.Write(bool) has no async form),
-        // so this signature check — not a name-only lookup — is what keeps the rewrite valid.
-        if (!HasAsyncCounterpart(containingType, method, methodName + "Async", out var asyncTakesToken))
+        if (
+            !IsCuratedBlockingCall(containingType, methodName)
+            && !IsBlockingStreamCall(context, invocation, method, containingType, methodName)
+        )
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
         var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
-            invocation, context.SemanticModel);
+            invocation,
+            context.SemanticModel
+        );
 
-        // Only ask the fixer to flow the token when the matched async overload actually accepts one;
-        // adding a token argument to a tokenless overload (e.g. StreamWriter.WriteAsync(string)) would
-        // not compile.
+        // Resolve the counterpart the way the *rewritten* call will be resolved: by overload
+        // resolution starting at the receiver's own type. Using the declaring type instead would miss
+        // members declared on a subclass — `stream.CopyTo(...)` on a subclass resolves to
+        // Stream.CopyTo, so the declaring type is Stream and a subclass's own `CopyToAsync` is
+        // invisible to the search even though it is what the rewrite would bind to.
+        var searchRoot = GetReceiverType(context, invocation) as INamedTypeSymbol ?? containingType;
+        var asyncName = methodName + "Async";
+
+        // Prefer the token-taking form when a token is in scope; otherwise the tokenless one (which
+        // includes an overload whose trailing token is optional, e.g. File.ReadAllTextAsync).
+        IMethodSymbol? asyncCounterpart = null;
+        var flowToken =
+            tokenParameter != null
+            && TryFindBoundCounterpart(searchRoot, method, asyncName, true, out asyncCounterpart);
+
+        if (
+            !flowToken
+            && !TryFindBoundCounterpart(searchRoot, method, asyncName, false, out asyncCounterpart)
+        )
+            return;
+
         var properties = ImmutableDictionary<string, string?>.Empty;
-        if (asyncTakesToken && tokenParameter != null)
-            properties = properties.Add(TokenNameProperty, tokenParameter.Name);
 
-        context.ReportDiagnostic(Diagnostic.Create(
-            Rule, invokedName.GetLocation(), properties, methodName));
+        // The fix copies the original argument list verbatim, so every named argument has to name a
+        // parameter that exists on the *async* overload. A subclass that renames its override's
+        // parameters breaks that: `stream.Read(data: b, start: 0, …)` is a valid call, but the
+        // inherited Stream.ReadAsync names them `buffer`/`offset`, so the rewrite would fail with
+        // CS1739. The call is still genuinely blocking, so the diagnostic stands — only the fix is
+        // withheld.
+        var namesWouldBeRemapped = !NamedArgumentsMatch(invocation, method, asyncCounterpart!);
+        if (namesWouldBeRemapped)
+            properties = properties.Add(NoFixProperty, "named-argument-mismatch");
+        else if (AwaitIsForbiddenHere(invocation))
+            properties = properties.Add(NoFixProperty, "await-not-allowed-here");
+
+        // Final authority: ask Roslyn to bind the call. The search above approximates overload
+        // resolution well enough to *choose* a counterpart and decide whether a token can flow, but
+        // approximations keep losing to the real rules — implicit conversions alone mean a subclass
+        // overload taking `object` wins a `byte[]` argument that parameter-type equality rejects.
+        //
+        // This runs even when no fix will be offered, because it validates the diagnostic's premise
+        // ("an async counterpart exists here"), not just the rewrite. Withholding the fix for an
+        // unrelated reason must not let an unsupportable claim through.
+        if (
+            !RewriteBindsToCounterpart(
+                context,
+                invocation,
+                asyncName,
+                asyncCounterpart!,
+                flowToken ? tokenParameter!.Name : null,
+                method,
+                bindPositionally: namesWouldBeRemapped
+            )
+        )
+            return;
+
+        if (flowToken)
+        {
+            properties = properties.Add(TokenNameProperty, tokenParameter!.Name);
+            properties = properties.Add(
+                TokenArgumentNameProperty,
+                asyncCounterpart!.Parameters[asyncCounterpart.Parameters.Length - 1].Name
+            );
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, methodName)
+        );
     }
 
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="type"/> declares an overload named
-    /// <paramref name="asyncName"/> whose parameters match the blocking call's parameters, optionally
-    /// followed by a single trailing <c>CancellationToken</c>. A token-taking overload is preferred;
-    /// <paramref name="takesToken"/> reports whether the chosen match accepts the token.
+    /// Returns <c>true</c> for the curated exact-type helpers: the <c>System.IO</c> types whose
+    /// blocking members are listed by name (<c>File</c>, <c>StreamReader</c>, <c>StreamWriter</c>).
     /// </summary>
-    private static bool HasAsyncCounterpart(
-        INamedTypeSymbol type, IMethodSymbol sync, string asyncName, out bool takesToken)
+    private static bool IsCuratedBlockingCall(INamedTypeSymbol containingType, string methodName) =>
+        containingType.ContainingNamespace?.ToDisplayString() == "System.IO"
+        && BlockingMethodsByType.TryGetValue(containingType.Name, out var blockingMethods)
+        && blockingMethods.Contains(methodName);
+
+    /// <summary>
+    /// Returns <c>true</c> for a blocking primitive on a <c>System.IO.Stream</c>. Matched by
+    /// inheritance so that concrete and user-defined streams — which override the sync members and
+    /// inherit the async ones — are covered, and so a subclass declared outside <c>System.IO</c> is
+    /// still recognised.
+    /// </summary>
+    /// <remarks>
+    /// <c>MemoryStream</c> and its subclasses are excluded: they are backed by an in-memory buffer,
+    /// so the "blocking" call never leaves the CPU and the async counterpart only wraps the same
+    /// synchronous work in an already-completed task. Flagging it would be noise, not a finding.
+    /// The exclusion tests the receiver's own type rather than the declaring type, because
+    /// <c>MemoryStream</c> does not override every member (e.g. <c>Flush</c> resolves to
+    /// <c>Stream.Flush</c>).
+    /// </remarks>
+    private static bool IsBlockingStreamCall(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol method,
+        INamedTypeSymbol containingType,
+        string methodName
+    )
     {
-        takesToken = false;
-        var found = false;
+        if (!StreamBlockingMethods.Contains(methodName))
+            return false;
 
-        foreach (var candidate in type.GetMembers(asyncName).OfType<IMethodSymbol>())
+        // Match the framework primitive, not merely a same-named member on a Stream subclass. A
+        // subclass is free to declare its own `Write(string)` convenience overload; that is not a
+        // known-blocking stream primitive and must not be flagged. Walking to the root definition
+        // resolves overrides back to Stream, so FileStream.Read still qualifies.
+        // Exact identity, not "derives from": a subclass's own Write(string) is declared on the
+        // subclass, which does derive from Stream — only members whose original definition sits on
+        // Stream itself are the known-blocking primitives.
+        if (!IsExactlySystemIoType(RootDefinition(method).ContainingType, "Stream"))
+            return false;
+
+        var receiverType = GetReceiverType(context, invocation) ?? containingType;
+        return !DerivesFrom(receiverType, "MemoryStream");
+    }
+
+    /// <summary>
+    /// Resolves the static type of the invocation's receiver, so the <c>MemoryStream</c> exclusion
+    /// sees the type the caller actually holds. Returns <c>null</c> for unqualified calls.
+    /// </summary>
+    private static ITypeSymbol? GetReceiverType(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
+    {
+        var receiver = invocation.Expression switch
         {
-            if (!ParametersMatch(sync.Parameters, candidate.Parameters, out var candidateTakesToken))
-                continue;
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            // Null-conditional (`stream?.Read(...)`): the receiver lives on the enclosing
+            // conditional access, not on the member binding.
+            MemberBindingExpressionSyntax => invocation
+                .Ancestors()
+                .OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault()
+                ?.Expression,
+            _ => null,
+        };
 
-            found = true;
-            if (candidateTakesToken)
-            {
-                takesToken = true;
+        return receiver is null
+            ? null
+            : context.SemanticModel.GetTypeInfo(receiver, context.CancellationToken).Type;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> <i>is</i> the <c>System.IO</c> type named
+    /// <paramref name="name"/> — not merely derived from it.
+    /// </summary>
+    private static bool IsExactlySystemIoType(ITypeSymbol? type, string name) =>
+        type?.Name == name && type.ContainingNamespace?.ToDisplayString() == "System.IO";
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> or any of its base types is the
+    /// <c>System.IO</c> type named <paramref name="name"/>. Namespace-gated so a same-named
+    /// user type is never mistaken for the framework one.
+    /// </summary>
+    /// <summary>
+    /// Walks an override chain back to the method that originally declared it, so a member inherited
+    /// from <c>Stream</c> is recognised through any depth of subclassing.
+    /// </summary>
+    private static IMethodSymbol RootDefinition(IMethodSymbol method)
+    {
+        var current = method;
+        while (current.OverriddenMethod != null)
+            current = current.OverriddenMethod;
+        return current;
+    }
+
+    private static bool DerivesFrom(ITypeSymbol? type, string name)
+    {
+        // A generic receiver (`T where T : MemoryStream`) carries its base through constraints
+        // rather than BaseType, so a constraint walk is what makes the exclusion hold for it.
+        if (type is ITypeParameterSymbol typeParameter)
+            return typeParameter.ConstraintTypes.Any(constraint => DerivesFrom(constraint, name));
+
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (
+                current.Name == name
+                && current.ContainingNamespace?.ToDisplayString() == "System.IO"
+            )
                 return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Finds the async counterpart that the rewritten call would actually bind to, and returns
+    /// <c>true</c> only when that member is usable — <c>public</c> and returning an awaitable.
+    /// </summary>
+    /// <param name="searchRoot">The receiver's type; resolution starts here, not at the declaring type.</param>
+    /// <param name="sync">The blocking method being replaced; its parameters shape the emitted call.</param>
+    /// <param name="asyncName">The counterpart name (<c>&lt;name&gt;Async</c>).</param>
+    /// <param name="wantToken">
+    /// <c>true</c> to require an overload that accepts a trailing <c>CancellationToken</c> (a token is
+    /// in scope and will be flowed); <c>false</c> to accept a tokenless call, which also matches an
+    /// overload whose trailing token is optional (e.g. <c>File.ReadAllTextAsync</c>).
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// The walk mirrors C# overload resolution closely enough for this rule's purpose: it goes from
+    /// the most-derived type upwards and stops at the first member that the emitted arguments would
+    /// select. Stopping is what catches shadowing — a subclass declaring
+    /// <c>new int ReadAsync(byte[], int, int)</c> wins resolution over the inherited awaitable one,
+    /// so <c>await stream.ReadAsync(b, 0, n)</c> fails with CS1061. When the winner is unusable the
+    /// rule stays quiet: there is no async alternative to point at, so the diagnostic's premise is
+    /// false.
+    /// </para>
+    /// <para>
+    /// Candidacy is decided by parameter <i>types</i> (via <see cref="ParametersMatch"/>), not by
+    /// argument count. A same-arity but type-incompatible member such as
+    /// <c>int ReadAsync(string, int, int)</c> is not what a <c>byte[]</c> call binds to, so it must
+    /// not mask the inherited overload that the call really would select.
+    /// </para>
+    /// <para>
+    /// Walking base types also matters in the ordinary case: a concrete stream overrides the blocking
+    /// member but inherits the async counterpart, so a same-type-only lookup finds nothing and the
+    /// rule would never fire.
+    /// </para>
+    /// </remarks>
+    private static bool TryFindBoundCounterpart(
+        INamedTypeSymbol? searchRoot,
+        IMethodSymbol sync,
+        string asyncName,
+        bool wantToken,
+        out IMethodSymbol? match
+    )
+    {
+        match = null;
+
+        for (INamedTypeSymbol? current = searchRoot; current != null; current = current.BaseType)
+        {
+            foreach (var candidate in current.GetMembers(asyncName).OfType<IMethodSymbol>())
+            {
+                if (
+                    !ParametersMatch(
+                        sync.Parameters,
+                        candidate.Parameters,
+                        out var candidateTakesToken
+                    )
+                )
+                    continue;
+
+                if (wantToken)
+                {
+                    if (!candidateTakesToken)
+                        continue;
+                }
+                else if (
+                    candidateTakesToken
+                    && !candidate.Parameters[candidate.Parameters.Length - 1].IsOptional
+                )
+                {
+                    // The emitted call passes no token, so an overload whose token is required is
+                    // not what it would bind to.
+                    continue;
+                }
+
+                // First applicable member wins resolution; if it is unusable, no rewrite exists.
+                // A static member cannot be invoked through an instance receiver (CS0176) — and a
+                // hiding static member still captures the name, so it must end the search rather
+                // than be skipped over in favour of the inherited instance one.
+                //
+                // A counterpart that introduces type parameters the blocking call does not supply
+                // cannot have them inferred from the arguments (CS0411), so requiring equal generic
+                // arity keeps the rewrite inferable.
+                match = candidate;
+                return candidate.DeclaredAccessibility == Accessibility.Public
+                    && candidate.IsStatic == sync.IsStatic
+                    && candidate.TypeParameters.Length == sync.TypeParameters.Length
+                    && CancellationTokenHelpers.IsAsyncReturnType(candidate.ReturnType)
+                    && AwaitedResultMatches(sync, candidate);
             }
         }
 
-        return found;
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when every named argument in the call names a parameter declared by
+    /// <paramref name="asyncCounterpart"/>, so copying the argument list into the rewritten call
+    /// still binds.
+    /// </summary>
+    /// <remarks>
+    /// A subclass may rename its override's parameters while inheriting the async counterpart, in
+    /// which case the names are valid on the blocking call but not on the async one. Matching is by
+    /// name alone, not by position: named arguments may legally be reordered
+    /// (<c>File.WriteAllText(contents: text, path: path)</c>), and such a call rewrites safely as
+    /// long as the counterpart declares the same names.
+    /// </remarks>
+    private static bool NamedArgumentsMatch(
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol sync,
+        IMethodSymbol asyncCounterpart
+    )
+    {
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            var name = argument.NameColon?.Name.Identifier.Text;
+            if (name is null)
+                continue;
+
+            // The value binds to whichever parameter carries that name. Copying the name over is
+            // only faithful when it sits at the same ordinal on both methods — an override may
+            // legally reuse the base names in a different order, and then the rewrite would compile
+            // while silently swapping two arguments.
+            if (IndexOfParameter(sync, name) != IndexOfParameter(asyncCounterpart, name))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="node"/> sits in one of the two query positions where
+    /// <c>await</c> is legal: the source expression of the initial <c>from</c> clause, or the source
+    /// of a <c>join</c> clause (CS1995).
+    /// </summary>
+    private static bool IsAwaitablePositionInQuery(QueryExpressionSyntax query, SyntaxNode node)
+    {
+        if (query.FromClause.Expression.Contains(node))
+            return true;
+
+        return query
+            .Body.Clauses.OfType<JoinClauseSyntax>()
+            .Any(join => join.InExpression.Contains(node));
+    }
+
+    /// <summary>
+    /// Speculatively binds the invocation the code fix would produce and returns <c>true</c> when it
+    /// resolves to <paramref name="counterpart"/> — the method this diagnostic claims exists.
+    /// </summary>
+    /// <remarks>
+    /// This is the one check that uses real C# overload resolution, including implicit conversions,
+    /// hiding, accessibility, and named arguments, so it catches what signature comparison cannot: a
+    /// subclass overload declaring <c>ReadAsync(object, int, int)</c> wins a <c>byte[]</c> argument
+    /// by implicit reference conversion even though its parameter types are not equal.
+    /// </remarks>
+    private static bool RewriteBindsToCounterpart(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        string asyncName,
+        IMethodSymbol counterpart,
+        string? tokenName,
+        IMethodSymbol sync,
+        bool bindPositionally
+    )
+    {
+        ExpressionSyntax target;
+        switch (invocation.Expression)
+        {
+            case MemberAccessExpressionSyntax memberAccess:
+                target = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    memberAccess.Expression.WithoutTrivia(),
+                    SyntaxFactory.IdentifierName(asyncName)
+                );
+                break;
+            case IdentifierNameSyntax:
+                target = SyntaxFactory.IdentifierName(asyncName);
+                break;
+            default:
+                // Null-conditional access; the fixer does not rewrite these, so there is nothing to
+                // verify.
+                return true;
+        }
+
+        var argumentList = invocation.ArgumentList.WithoutTrivia();
+
+        // When the argument *names* are the reason no fix is offered, binding them would fail for
+        // that known reason and say nothing about whether a counterpart exists. Bind positionally
+        // instead — but sort by the parameter each argument actually binds to on the synchronous
+        // method first, since named arguments may be written out of order and keeping source order
+        // would bind them to the wrong parameters and suppress a valid diagnostic.
+        //
+        // Only names trigger this. A call withheld for an await-forbidden context has perfectly good
+        // names and must be validated as written.
+        if (bindPositionally)
+        {
+            argumentList = argumentList.WithArguments(
+                SyntaxFactory.SeparatedList(
+                    argumentList
+                        .Arguments.Select(
+                            (argument, position) =>
+                                (
+                                    Ordinal: argument.NameColon is { } nameColon
+                                        ? IndexOfParameter(sync, nameColon.Name.Identifier.Text)
+                                        : position,
+                                    Argument: argument.WithNameColon(null)
+                                )
+                        )
+                        .OrderBy(entry => entry.Ordinal)
+                        .Select(entry => entry.Argument)
+                )
+            );
+        }
+
+        if (tokenName != null)
+        {
+            var tokenArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName));
+            if (argumentList.Arguments.Any(a => a.NameColon != null))
+            {
+                tokenArgument = tokenArgument.WithNameColon(
+                    SyntaxFactory.NameColon(
+                        SyntaxFactory.IdentifierName(
+                            counterpart.Parameters[counterpart.Parameters.Length - 1].Name
+                        )
+                    )
+                );
+            }
+
+            argumentList = argumentList.AddArguments(tokenArgument);
+        }
+
+        var speculative = SyntaxFactory.InvocationExpression(target, argumentList);
+        var bound =
+            context
+                .SemanticModel.GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    speculative,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+
+        return bound != null
+            && SymbolEqualityComparer.Default.Equals(
+                bound.OriginalDefinition,
+                counterpart.OriginalDefinition
+            );
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when awaiting <paramref name="candidate"/> yields the same type the
+    /// blocking call produced, so the rewrite can stand in for it.
+    /// </summary>
+    /// <remarks>
+    /// A hiding counterpart can be awaitable and still be the wrong method: <c>Task&lt;string&gt;</c>
+    /// where the blocking call returned <c>int</c> compiles as a counterpart but makes
+    /// <c>int n = await stream.ReadAsync(…)</c> fail with CS0029.
+    /// </remarks>
+    private static bool AwaitedResultMatches(IMethodSymbol sync, IMethodSymbol candidate)
+    {
+        var results =
+            candidate.ReturnType is INamedTypeSymbol named
+                ? named.TypeArguments
+                : ImmutableArray<ITypeSymbol>.Empty;
+
+        // Task / ValueTask — awaiting produces nothing, which suits a void-returning blocking call.
+        if (results.Length == 0)
+            return sync.ReturnsVoid;
+
+        return !sync.ReturnsVoid
+            && results.Length == 1
+            && SymbolEqualityComparer.Default.Equals(results[0], sync.ReturnType);
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the enclosing syntax forbids <c>await</c>, so inserting one would
+    /// turn compiling source into a compiler error.
+    /// </summary>
+    /// <remarks>
+    /// The blocking call is still worth reporting in these contexts — a synchronous write inside a
+    /// <c>lock</c> is exactly the kind of code that stalls a request thread — but resolving it means
+    /// restructuring the lock, which is the author's decision, not a mechanical rewrite. The walk
+    /// stops at function boundaries because a lambda declared inside a <c>lock</c> body has its own
+    /// context where <c>await</c> is legal again.
+    /// </remarks>
+    private static bool AwaitIsForbiddenHere(SyntaxNode node)
+    {
+        // An unsafe context is lexical and propagates into nested functions, and it can come from an
+        // `unsafe` modifier on the method or type rather than an `unsafe { }` block — so this walk
+        // runs to the top rather than stopping at a function boundary (CS4004).
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            var isUnsafe = current switch
+            {
+                UnsafeStatementSyntax => true,
+                LocalFunctionStatementSyntax local => local.Modifiers.Any(SyntaxKind.UnsafeKeyword),
+                MemberDeclarationSyntax member => member.Modifiers.Any(SyntaxKind.UnsafeKeyword),
+                _ => false,
+            };
+
+            if (isUnsafe)
+                return true;
+        }
+
+        for (var current = node.Parent; current != null; current = current.Parent)
+        {
+            switch (current)
+            {
+                // CS1996 / CS7013: await is not permitted anywhere inside these.
+                case LockStatementSyntax:
+                case CatchFilterClauseSyntax:
+                    return true;
+
+                // CS1995: inside a query, await is permitted only in the first `from` clause's
+                // source expression and in a `join` clause's source. Elsewhere in the query it is
+                // an error, so the position within the query decides. An allowed position still has
+                // to keep walking: an enclosing lock or outer query can forbid it anyway.
+                case QueryExpressionSyntax query when !IsAwaitablePositionInQuery(query, node):
+                    return true;
+
+                // A nested function re-establishes an await-capable context.
+                case AnonymousFunctionExpressionSyntax:
+                case LocalFunctionStatementSyntax:
+                case BaseMethodDeclarationSyntax:
+                case AccessorDeclarationSyntax:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Ordinal of the parameter named <paramref name="name"/>, or -1 when absent.</summary>
+    private static int IndexOfParameter(IMethodSymbol method, string name)
+    {
+        for (var i = 0; i < method.Parameters.Length; i++)
+        {
+            if (method.Parameters[i].Name == name)
+                return i;
+        }
+
+        return -1;
     }
 
     /// <summary>
@@ -185,12 +734,17 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// (<paramref name="takesToken"/> set accordingly).
     /// </summary>
     private static bool ParametersMatch(
-        ImmutableArray<IParameterSymbol> sync, ImmutableArray<IParameterSymbol> async, out bool takesToken)
+        ImmutableArray<IParameterSymbol> sync,
+        ImmutableArray<IParameterSymbol> async,
+        out bool takesToken
+    )
     {
         takesToken = false;
 
-        if (async.Length == sync.Length + 1 &&
-            CancellationTokenHelpers.IsCancellationToken(async[sync.Length].Type))
+        if (
+            async.Length == sync.Length + 1
+            && CancellationTokenHelpers.IsCancellationToken(async[sync.Length].Type)
+        )
             takesToken = true;
         else if (async.Length != sync.Length)
             return false;

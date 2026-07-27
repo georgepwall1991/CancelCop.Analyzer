@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-07-27
+
+### Changed
+
+- **CC028** now covers `System.IO.Stream` itself — `Read`, `Write`, `CopyTo`, and `Flush` — closing a
+  silent false negative. The rule's curated map keys on the exact declaring type name (`File`,
+  `StreamReader`, `StreamWriter`), so blocking on the stream primitives was never flagged even
+  though every one of them has a token-taking async counterpart. `source.CopyTo(destination)` inside
+  an async method is the same thread-blocking mistake as `File.ReadAllText`, and is arguably more
+  costly because it blocks for the whole transfer.
+- Stream calls are matched by resolving the invoked member back to its **original definition** on
+  `System.IO.Stream`, so concrete framework streams (`FileStream`, `NetworkStream`, `GZipStream`) and
+  user-defined subclasses are covered through any depth of overriding — while a subclass's own
+  same-named convenience overload (`Write(string)`) is not, since it is not a known-blocking
+  primitive. The async-counterpart lookup walks base types for the mirror-image reason: a concrete
+  stream overrides the blocking member but inherits `ReadAsync`/`CopyToAsync` from `Stream`, so a
+  same-type-only lookup would have found nothing and the rule would never fire.
+- `MemoryStream` and its subclasses are excluded. They are backed by an in-memory buffer, so the
+  "blocking" call never leaves the CPU and the async form only wraps the same synchronous work in a
+  completed task — flagging it would be noise. The exclusion tests the receiver's own type rather
+  than the declaring type, because `MemoryStream` does not override every member (`Flush` resolves
+  to `Stream.Flush`), and it follows generic constraints, so a `T where T : MemoryStream` receiver is
+  excluded too.
+- Overloads with no signature-compatible async form are still quiet, so the rewrite always compiles:
+  `Read(Span<byte>)` has no counterpart (`ReadAsync` takes `Memory<byte>`) and is left alone.
+- **Shadowed counterparts.** The counterpart is now resolved the way the *rewritten* call will be:
+  by overload resolution starting at the receiver's own type, stopping at the first member the
+  emitted arguments would select, and requiring it to be `public` and awaitable. A subclass declaring
+  `new int ReadAsync(byte[], int, int)` wins resolution over the inherited awaitable overload, so
+  `await stream.ReadAsync(b, 0, n)` would fail with CS1061 — the rule now stays quiet instead, since
+  no async alternative actually exists. Starting at the receiver (not the declaring type) matters
+  whenever the blocking member is inherited: `stream.CopyTo(...)` declares on `Stream`, so a
+  subclass's own `CopyToAsync` is invisible to a declaring-type search yet is what the fix binds to.
+- Candidacy is decided by parameter **types**, not argument count, so a same-arity but
+  type-incompatible member (`int ReadAsync(string, int, int)`) cannot mask the inherited overload a
+  `byte[]` call really selects — that would have suppressed a valid diagnostic and its valid fix.
+  Static/instance binding is part of usability too: a hiding `static ReadAsync` captures the name but
+  cannot be called through an instance receiver (CS0176), so the rule stays quiet rather than
+  offering that rewrite.
+- The fix now carries the **counterpart's own token parameter name**. An override may rename it
+  (`ReadAsync(…, CancellationToken stop)`), and a named-argument call would otherwise be rewritten
+  with a hardcoded `cancellationToken:` and fail with CS1739.
+- A counterpart that introduces type parameters the call cannot infer (`ReadAsync<T>(…)`) is no
+  longer treated as a token-taking match; the rule falls back to the inferable overload rather than
+  emitting CS0411.
+- **Roslyn binds the proposed rewrite.** As a final gate the analyzer speculatively binds the exact
+  call the fix would emit and reports only when it resolves to the counterpart the diagnostic is
+  premised on. Signature comparison is good enough to choose a candidate and decide whether a token
+  can flow, but it is not overload resolution: a subclass overload taking `object` wins a `byte[]`
+  argument by implicit conversion even though the parameter types are not equal.
+- A counterpart must also yield the **same type** when awaited. A hiding `Task<string> ReadAsync(…)`
+  is awaitable but not substitutable for an `int`-returning blocking call, and the rewrite would fail
+  with CS0029.
+- No fix is offered where `await` is illegal — a `lock` body (CS1996), an exception filter, an
+  unsafe context (CS4004, from an `unsafe` modifier as well as an `unsafe { }` block, and lexically
+  through nested functions), or a query clause other than the initial `from` source or a `join`
+  source, which are the two positions CS1995 permits. The blocking call is still reported: holding a lock across
+  synchronous I/O is exactly the stall this rule exists to surface, but resolving it means
+  restructuring the lock, which is the author's decision rather than a mechanical rewrite. The walk
+  stops at function boundaries, so a lambda inside a `lock` body is fixed normally.
+- Named arguments are compared by **ordinal on both methods**, not just by name. An override may
+  legally reuse the base names in a different order, and copying them across would compile while
+  silently swapping two argument values — a worse outcome than a compile error, so the fix is
+  withheld.
+- `PackageReleaseNotes` and the README install snippets describe this release rather than 1.28.1.
+  Both README install versions are now asserted against the package version by
+  `DiscoverabilityMetadataTests`, so they cannot silently drift again.
+- **Named arguments that cannot be carried over.** When a subclass renames its override's parameters,
+  `stream.Read(data: b, start: 0, …)` is valid but the inherited `Stream.ReadAsync` names them
+  `buffer`/`offset`, so copying the argument list emits CS1739. The call is still genuinely blocking,
+  so the diagnostic is reported and only the *fix* is withheld. Names are matched by name rather than
+  by position, because named arguments may legally be reordered
+  (`File.WriteAllText(contents: text, path: path)` still rewrites cleanly).
+- The code fix title is now "Use the async I/O method" (was "Use the async File method"), which the
+  rule outgrew once it covered readers, writers, and streams.
+
 ## [1.28.1] - 2026-07-26
 
 ### Changed

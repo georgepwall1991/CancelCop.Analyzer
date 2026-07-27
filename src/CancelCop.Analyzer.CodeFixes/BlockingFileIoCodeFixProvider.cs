@@ -12,13 +12,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace CancelCop.Analyzer;
 
 /// <summary>
-/// Code fix provider that rewrites a blocking qualified or <c>using static</c> call to its
-/// <c>await ...Async(..., token)</c> counterpart, flowing the in-scope token when one is available.
+/// Code fix provider that rewrites a blocking qualified or <c>using static</c> <c>System.IO</c> call
+/// (including the <c>Stream</c> primitives) to its <c>await ...Async(..., token)</c> counterpart,
+/// flowing the in-scope token when one is available.
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingFileIoCodeFixProvider)), Shared]
 public class BlockingFileIoCodeFixProvider : CodeFixProvider
 {
-    private const string Title = "Use the async File method";
+    private const string Title = "Use the async I/O method";
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(BlockingFileIoAnalyzer.DiagnosticId);
@@ -28,13 +29,23 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
-        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        var root = await context
+            .Document.GetSyntaxRootAsync(context.CancellationToken)
+            .ConfigureAwait(false);
         if (root == null)
             return;
 
         var diagnostic = context.Diagnostics.First();
+
+        // The diagnostic is correct but the analyzer determined no safe rewrite exists (e.g. the
+        // call's named arguments do not line up with the async counterpart's parameter names).
+        // Offering a fix here would emit code that does not compile.
+        if (diagnostic.Properties.ContainsKey(BlockingFileIoAnalyzer.NoFixProperty))
+            return;
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
-            .Parent?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+            .Parent?.AncestorsAndSelf()
+            .OfType<InvocationExpressionSyntax>()
+            .FirstOrDefault();
         var invokedName = invocation?.Expression switch
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
@@ -44,16 +55,38 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         if (invocation == null || invokedName == null)
             return;
 
-        var tokenName = diagnostic.Properties.TryGetValue(BlockingFileIoAnalyzer.TokenNameProperty, out var name)
+        var tokenName = diagnostic.Properties.TryGetValue(
+            BlockingFileIoAnalyzer.TokenNameProperty,
+            out var name
+        )
             ? name
             : null;
+
+        // The counterpart's own token parameter name; an override may rename it, so a named token
+        // argument must not assume "cancellationToken".
+        var tokenArgumentName = diagnostic.Properties.TryGetValue(
+            BlockingFileIoAnalyzer.TokenArgumentNameProperty,
+            out var argumentName
+        )
+            ? argumentName
+            : "cancellationToken";
 
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => ReplaceAsync(context.Document, invocation, invokedName, tokenName, c),
-                equivalenceKey: Title),
-            diagnostic);
+                createChangedDocument: c =>
+                    ReplaceAsync(
+                        context.Document,
+                        invocation,
+                        invokedName,
+                        tokenName,
+                        tokenArgumentName,
+                        c
+                    ),
+                equivalenceKey: Title
+            ),
+            diagnostic
+        );
     }
 
     private static async Task<Document> ReplaceAsync(
@@ -61,7 +94,9 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         InvocationExpressionSyntax invocation,
         SimpleNameSyntax invokedName,
         string? tokenName,
-        CancellationToken cancellationToken)
+        string tokenArgumentName,
+        CancellationToken cancellationToken
+    )
     {
         var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
         if (root == null)
@@ -74,15 +109,20 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         if (tokenName != null)
         {
             argumentList = CancellationTokenFixHelpers.AddTokenArgument(
-                argumentList, tokenName, "cancellationToken");
+                argumentList,
+                tokenName,
+                tokenArgumentName
+            );
         }
 
         var asyncName = invokedName.Identifier.Text + "Async";
         var asyncTarget = invocation.Expression is MemberAccessExpressionSyntax memberAccess
-            ? (ExpressionSyntax)SyntaxFactory.MemberAccessExpression(
-                SyntaxKind.SimpleMemberAccessExpression,
-                memberAccess.Expression.WithoutTrivia(),
-                SyntaxFactory.IdentifierName(asyncName))
+            ? (ExpressionSyntax)
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    memberAccess.Expression.WithoutTrivia(),
+                    SyntaxFactory.IdentifierName(asyncName)
+                )
             : SyntaxFactory.IdentifierName(asyncName);
         var asyncInvocation = SyntaxFactory.InvocationExpression(asyncTarget, argumentList);
 

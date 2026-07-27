@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.28.1">
+<PackageReference Include="CancelCop.Analyzer" Version="1.29.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.28.1
+Install-Package CancelCop.Analyzer -Version 1.29.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -141,7 +141,7 @@ dotnet build samples/CancelCop.Sample
 | **CC025** | Prefer `await using` for `IAsyncDisposable` | Info | ✅ |
 | **CC026** | Avoid `SemaphoreSlim.Wait()` in async code; use `await WaitAsync()` | Warning | ✅ |
 | **CC027** | Returned task uses a disposed `using` resource | Warning | ❌ |
-| **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`) in async code; use the async counterpart | Warning | ✅ |
+| **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`, `Stream`) in async code; use the async counterpart | Warning | ✅ |
 | **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
 
 ## Quick Examples
@@ -538,7 +538,23 @@ public async Task<string> LoadAsync(string path, CancellationToken cancellationT
     var text = await File.ReadAllTextAsync(path, cancellationToken);
     return text;
 }
+
+// ❌ Warning CC028 - the Stream primitives block too, on any Stream subclass
+public async Task ArchiveAsync(Stream source, Stream destination)
+{
+    source.CopyTo(destination);          // also flags Stream Read/Write/Flush
+    await Task.Yield();
+}
+
+// ✅ Fixed
+public async Task ArchiveAsync(Stream source, Stream destination, CancellationToken cancellationToken)
+{
+    await source.CopyToAsync(destination, cancellationToken);
+}
 ```
+
+> `MemoryStream` is excluded — it is backed by an in-memory buffer, so the "blocking" call never
+> leaves the CPU and the async form only wraps the same synchronous work.
 
 ### CC029: Timeout CTS Should Link the In-Scope Token
 

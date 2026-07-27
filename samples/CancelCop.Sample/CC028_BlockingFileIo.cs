@@ -13,9 +13,12 @@
 // THE RULE:
 // - Flags a well-known blocking System.IO method that has a signature-compatible
 //   <name>Async counterpart, called inside async code: the System.IO.File
-//   read/write/append helpers, StreamReader.ReadToEnd()/ReadLine(), and
-//   StreamWriter.Write/WriteLine/Flush. The token is only flowed when the matched
-//   async overload accepts one.
+//   read/write/append helpers, StreamReader.ReadToEnd()/ReadLine(),
+//   StreamWriter.Write/WriteLine/Flush, and the Stream primitives themselves
+//   (Read/Write/CopyTo/Flush) on any type deriving from System.IO.Stream. The token
+//   is only flowed when the matched async overload accepts one.
+// - MemoryStream is excluded: it is backed by an in-memory buffer, so the blocking
+//   call never leaves the CPU and the async form only wraps the same work.
 // =============================================================================
 
 using System.IO;
@@ -70,5 +73,30 @@ public class CC028_BlockingFileIo
     {
         await writer.WriteAsync(text);
         await writer.FlushAsync(cancellationToken);
+    }
+
+    // VIOLATION (CC028 warns here too — Stream.CopyTo blocks for the whole transfer)
+    public async Task ArchiveBad(Stream source, Stream destination)
+    {
+        source.CopyTo(destination);
+        await Task.Yield();
+    }
+
+    // FIXED
+    public async Task ArchiveGood(
+        Stream source,
+        Stream destination,
+        CancellationToken cancellationToken
+    )
+    {
+        await source.CopyToAsync(destination, cancellationToken);
+    }
+
+    // CLEAN — a MemoryStream read is an in-memory buffer copy, not blocking I/O
+    public async Task<int> BufferOk(MemoryStream buffer, byte[] target)
+    {
+        var read = buffer.Read(target, 0, target.Length);
+        await Task.Yield();
+        return read;
     }
 }
