@@ -556,4 +556,121 @@ public class TestClass
         );
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task CC015_NamedSpanArgumentBeforeTheCall_ReportsWithoutOfferingAFix()
+    {
+        // The span is a named local, but what matters is that its value is already on the stack as
+        // an earlier argument when the await would run — the local scan only looks at uses *after*
+        // the insertion point and never sees this.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static void Consume(Span<int> buffer, int value) { }
+
+    public async Task RunAsync(Task<int> work, int[] data)
+    {
+        await Task.Yield();
+        Consume(data.AsSpan(), work.{|#0:Result|});
+    }
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC015_ExpressionBodiedMember_ReportsWithoutOfferingAFix()
+    {
+        // An expression-bodied member has no enclosing statement, so a statement-anchored search
+        // abandoned the analysis entirely and let the fix through.
+        var source =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static int Consume(Span<int> buffer, int value) => value;
+
+    public async Task<int> RunAsync(Task<int> work) =>
+        Consume(stackalloc int[1], work.{|#0:Result|});
+}";
+
+        await NoFix<BlockingOnAsyncAnalyzer, BlockingOnAsyncCodeFixProvider>(
+            source,
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        ).RunAsync();
+    }
+
+    [Fact]
+    public async Task CC015_ConsumedRefLikeSubexpression_IsStillFixed()
+    {
+        // The stackalloc is consumed by Read, which returns an int — nothing ref-like is pending
+        // when the await runs. Rejecting every ref-like descendant would withhold a valid fix.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static int Read(Span<int> buffer) => 0;
+    private static void Consume(int a, int b) { }
+
+    public async Task RunAsync(Task<int> work)
+    {
+        await Task.Yield();
+        Consume(Read(stackalloc int[1]), work.{|#0:Result|});
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private static int Read(Span<int> buffer) => 0;
+    private static void Consume(int a, int b) { }
+
+    public async Task RunAsync(Task<int> work)
+    {
+        await Task.Yield();
+        Consume(Read(stackalloc int[1]), (await work));
+    }
+}";
+
+        var t = new CSharpCodeFixTest<
+            BlockingOnAsyncAnalyzer,
+            BlockingOnAsyncCodeFixProvider,
+            DefaultVerifier
+        >
+        {
+            TestCode = test,
+            FixedCode = fixedCode,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC015", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments(".Result")
+        );
+        await t.RunAsync();
+    }
 }

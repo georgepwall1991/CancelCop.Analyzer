@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -1250,37 +1251,70 @@ public static class CancellationTokenHelpers
     ) =>
         AwaitIsForbiddenHere(node)
         || AwaitWouldSpanRefLikeLocal(semanticModel, node, awaitPosition, declarationCutoff)
-        || RefLikeTemporaryPrecedes(semanticModel, node);
+        || RefLikeValuePendingAt(semanticModel, node);
 
     /// <summary>
-    /// Returns <c>true</c> when an earlier part of the same statement produces a ref-like temporary,
-    /// which would then be live across an <c>await</c> inserted at <paramref name="node"/>.
+    /// Returns <c>true</c> when a ref-like value is still pending on the stack at
+    /// <paramref name="node"/>, so an <c>await</c> inserted there would strand it (CS4007).
     /// </summary>
     /// <remarks>
-    /// Declared locals are only half the story: <c>Consume(stackalloc int[1], task.Result)</c> holds
-    /// a <c>Span&lt;int&gt;</c> that never has a name, and awaiting the second argument strands it
-    /// across the await (CS4007). Identifier references are excluded because a named local is
-    /// handled by the declaration walk, and its mere appearance does not keep it live.
+    /// Declared locals are only half the story: in <c>Consume(stackalloc int[1], task.Result)</c> the
+    /// <c>Span&lt;int&gt;</c> never has a name, yet it is on the stack when the second argument is
+    /// evaluated. What matters is a value that has been produced and not yet consumed — so this walks
+    /// outward from the node and, at each level, asks only whether an <i>already-evaluated sibling</i>
+    /// is itself ref-like. Nested subexpressions are deliberately not inspected:
+    /// <c>Consume(Read(stackalloc int[1]), task.Result)</c> is safe because <c>Read</c> returns an
+    /// <c>int</c> and the span it consumed is gone.
     /// </remarks>
-    private static bool RefLikeTemporaryPrecedes(SemanticModel semanticModel, SyntaxNode node)
+    private static bool RefLikeValuePendingAt(SemanticModel semanticModel, SyntaxNode node)
     {
-        // The innermost statement, and self when the node already is one. Widening to the enclosing
-        // block would sweep up every earlier ref-like expression in the method, which are separate
-        // statements whose temporaries are long gone.
-        var statement = node.AncestorsAndSelf()
-            .OfType<StatementSyntax>()
-            .FirstOrDefault(candidate => candidate is not BlockSyntax);
-        if (statement is null)
-            return false;
+        for (var current = node; current.Parent != null; current = current.Parent)
+        {
+            // Boundaries of the expression being evaluated. Beyond these nothing is mid-evaluation,
+            // and an expression-bodied member has no enclosing statement to stop at.
+            if (
+                current is StatementSyntax
+                || current.Parent
+                    is ArrowExpressionClauseSyntax
+                        or AnonymousFunctionExpressionSyntax
+                        or MemberDeclarationSyntax
+                        or EqualsValueClauseSyntax
+            )
+                break;
 
-        return statement
-            .DescendantNodes()
-            .OfType<ExpressionSyntax>()
-            .Any(expression =>
-                expression.Span.End <= node.SpanStart
-                && expression is not IdentifierNameSyntax
-                && !node.Span.Contains(expression.Span)
-                && semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true
-            );
+            foreach (var sibling in PrecedingOperands(current))
+            {
+                if (semanticModel.GetTypeInfo(sibling).Type?.IsRefLikeType == true)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The operand expressions of <paramref name="node"/>'s parent that are fully evaluated before
+    /// <paramref name="node"/> is.
+    /// </summary>
+    private static IEnumerable<ExpressionSyntax> PrecedingOperands(SyntaxNode node)
+    {
+        if (node.Parent is null)
+            yield break;
+
+        foreach (var child in node.Parent.ChildNodes())
+        {
+            if (child == node || child.Span.End > node.SpanStart)
+                continue;
+
+            var expression = child switch
+            {
+                ArgumentSyntax argument => argument.Expression,
+                ExpressionSyntax value => value,
+                _ => null,
+            };
+
+            if (expression != null)
+                yield return expression;
+        }
     }
 }
