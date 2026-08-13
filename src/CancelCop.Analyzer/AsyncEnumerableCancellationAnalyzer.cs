@@ -105,9 +105,9 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
             return;
 
         // A token must be in scope to flow it in.
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             forEach, context.SemanticModel);
-        if (tokenParameter == null)
+        if (token == null)
             return;
 
         // If the producing call already receives a token, it can route it to the iterator's
@@ -116,8 +116,8 @@ public class AsyncEnumerableCancellationAnalyzer : DiagnosticAnalyzer
             CancellationTokenHelpers.HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
-        var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, tokenParameter.Name);
-        var diagnostic = Diagnostic.Create(Rule, source.GetLocation(), properties, tokenParameter.Name);
+        var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, token.ExpressionText);
+        var diagnostic = Diagnostic.Create(Rule, source.GetLocation(), properties, token.DisplayName);
         context.ReportDiagnostic(diagnostic);
     }
 

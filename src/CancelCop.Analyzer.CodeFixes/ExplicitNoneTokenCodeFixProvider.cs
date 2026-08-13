@@ -59,7 +59,7 @@ public class ExplicitNoneTokenCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        var replacement = SyntaxFactory.IdentifierName(tokenName).WithTriviaFrom(expression);
+        var replacement = CancellationTokenHelpers.TokenExpression(tokenName).WithTriviaFrom(expression);
         var newRoot = root.ReplaceNode(expression, replacement);
         return document.WithSyntaxRoot(newRoot);
     }

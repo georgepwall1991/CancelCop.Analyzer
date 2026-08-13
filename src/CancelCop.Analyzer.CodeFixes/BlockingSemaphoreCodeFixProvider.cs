@@ -72,7 +72,7 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
             argumentList = invocation.ArgumentList.WithoutTrivia();
         else if (tokenName != null)
             argumentList = SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
-                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName))));
+                SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName))));
         else
             argumentList = SyntaxFactory.ArgumentList();
 

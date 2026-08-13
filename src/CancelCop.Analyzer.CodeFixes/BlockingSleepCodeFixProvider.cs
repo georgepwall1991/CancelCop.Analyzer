@@ -69,7 +69,7 @@ public class BlockingSleepCodeFixProvider : CodeFixProvider
         if (tokenName != null)
         {
             arguments = arguments.Add(
-                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName)));
+                SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName)));
         }
 
         var taskDelay = SyntaxFactory.InvocationExpression(

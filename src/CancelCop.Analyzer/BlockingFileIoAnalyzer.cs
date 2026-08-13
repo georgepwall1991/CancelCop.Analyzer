@@ -195,7 +195,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             invocation,
             context.SemanticModel
         );
@@ -212,7 +212,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // includes an overload whose trailing token is optional, e.g. File.ReadAllTextAsync).
         IMethodSymbol? asyncCounterpart = null;
         var flowToken =
-            tokenParameter != null
+            token != null
             && TryFindBoundCounterpart(searchRoot, method, asyncName, true, out asyncCounterpart);
 
         if (
@@ -248,22 +248,45 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // This runs even when no fix will be offered, because it validates the diagnostic's premise
         // ("an async counterpart exists here"), not just the rewrite. Withholding the fix for an
         // unrelated reason must not let an unsupportable claim through.
+        var tokenName = flowToken ? token!.ExpressionText : null;
         if (
             !RewriteBindsToCounterpart(
                 context,
                 invocation,
                 asyncName,
                 asyncCounterpart!,
-                flowToken ? tokenParameter!.Name : null,
+                tokenName,
                 method,
                 bindPositionally: namesWouldBeRemapped
             )
         )
-            return;
+        {
+            // A framework property token (`context.RequestAborted`) must be emitted as member access.
+            // If that form still does not bind — typically a nested function shadowing the receiver
+            // name — the call is still blocking. Fall back to the tokenless counterpart rather than
+            // dropping the diagnostic.
+            if (tokenName == null)
+                return;
+
+            flowToken = false;
+            if (
+                !TryFindBoundCounterpart(searchRoot, method, asyncName, false, out asyncCounterpart)
+                || !RewriteBindsToCounterpart(
+                    context,
+                    invocation,
+                    asyncName,
+                    asyncCounterpart!,
+                    tokenName: null,
+                    method,
+                    bindPositionally: namesWouldBeRemapped
+                )
+            )
+                return;
+        }
 
         if (flowToken)
         {
-            properties = properties.Add(TokenNameProperty, tokenParameter!.Name);
+            properties = properties.Add(TokenNameProperty, token!.ExpressionText);
             properties = properties.Add(
                 TokenArgumentNameProperty,
                 asyncCounterpart!.Parameters[asyncCounterpart.Parameters.Length - 1].Name
@@ -591,7 +614,9 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
         if (tokenName != null)
         {
-            var tokenArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName));
+            var tokenArgument = SyntaxFactory.Argument(
+                CancellationTokenHelpers.TokenExpression(tokenName)
+            );
             if (argumentList.Arguments.Any(a => a.NameColon != null))
             {
                 tokenArgument = tokenArgument.WithNameColon(

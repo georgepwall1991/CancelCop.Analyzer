@@ -97,3 +97,35 @@ jobs:
       with:
         name: nuget-package
         path: ./artifacts/*.nupkg
+
+  mutation-test:
+    name: Mutation test (in-scope token walk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          9.0.x
+          10.0.x
+
+    - name: Restore .NET tools
+      run: dotnet tool restore
+
+    - name: Restore dependencies
+      run: dotnet restore CancelCop.sln
+
+    - name: Run focused Stryker.NET
+      working-directory: tests/CancelCop.Analyzer.Tests
+      run: dotnet stryker
+
+    - name: Upload mutation report
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: stryker-report
+        path: tests/CancelCop.Analyzer.Tests/StrykerOutput/**/mutation-report.html
+        if-no-files-found: warn

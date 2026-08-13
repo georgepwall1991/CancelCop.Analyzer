@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.0] - 2026-08-13
+
+### Changed
+
+- **Shared in-scope token walk now includes framework property tokens.**
+  `FindEnclosingCancellationToken` still prefers a `CancellationToken` parameter (including
+  lambdas, local functions, and primary constructors). When none is in scope it uses
+  `HttpContext.RequestAborted` or `ServerCallContext.CancellationToken` — the same sources
+  CC021/CC020 already knew about, now visible to CC002/CC003/CC004 and the sibling rules that
+  share the walk (CC009, CC010, CC012, CC013, CC026, CC028, CC029, CC030, CC034). Code fixes
+  emit `context.RequestAborted` / `context.CancellationToken` as a member-access expression.
+
+  Convention ASP.NET middleware is the motivating case: `InvokeAsync(HttpContext context)` has
+  no token parameter, so outbound `HttpClient` / `Task.Delay` / EF calls were previously silent
+  even though `RequestAborted` was sitting on the context. Passing `context` to `_next` still
+  satisfies CC021; the inner call is now reported separately.
+
+- **CC001 skips convention middleware `Invoke` / `InvokeAsync`.** The first parameter must be
+  `Microsoft.AspNetCore.Http.HttpContext`. Adding `CancellationToken cancellationToken = default`
+  is not injected by the pipeline and can fail at runtime; `RequestAborted` is the token.
+  Closes the remaining half of [#1](https://github.com/georgepwall1991/CancelCop.Analyzer/issues/1).
+  `IMiddleware.InvokeAsync` was already excluded as an interface implementation. Look-alike
+  types, `HandleAsync(HttpContext)`, and `InvokeAsync` whose first parameter is not `HttpContext`
+  still report CC001.
+
+- Focused Stryker.NET mutation testing on `InScopeToken` / `InScopeTokenWalk` (CI job fails
+  below 80% mutation score). The existing xUnit suite remains the fast gate.
+
 ## [1.38.0] - 2026-07-27
 
 ### Added

@@ -19,10 +19,12 @@ namespace CancelCop.Analyzer;
 /// <b>Why this matters:</b>
 /// ASP.NET Core exposes the request's cancellation token as
 /// <c>HttpContext.RequestAborted</c>, signalled when the client disconnects. As with gRPC's
-/// <c>ServerCallContext.CancellationToken</c> (CC020), it is a property rather than a parameter, so
-/// the general propagation rule (CC002) cannot see it. Async middleware/handlers that ignore it keep
-/// working on a response nobody will read. Reported as <b>Info</b> because an <c>HttpContext</c> is
-/// frequently taken for reasons unrelated to cancellation.
+/// <c>ServerCallContext.CancellationToken</c> (CC020), it is a property rather than a parameter.
+/// CC002 now flows that property into token-taking overloads when it is in scope; this rule still
+/// reports when the method never reads <c>RequestAborted</c> and never hands the context on.
+/// Async middleware/handlers that ignore it keep working on a response nobody will read. Reported
+/// as <b>Info</b> because an <c>HttpContext</c> is frequently taken for reasons unrelated to
+/// cancellation.
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a method with a <c>Microsoft.AspNetCore.Http.HttpContext</c> parameter

@@ -19,9 +19,10 @@ namespace CancelCop.Analyzer;
 /// <b>Why this matters:</b>
 /// In a gRPC service the per-call cancellation token is exposed as
 /// <c>ServerCallContext.CancellationToken</c>, signalled when the client cancels the call or
-/// disconnects. Because it is a property rather than a parameter, the general propagation rule
-/// (CC002) cannot see it, so a method that does async work without threading
-/// <c>context.CancellationToken</c> through keeps running after the caller is gone.
+/// disconnects. CC002 now flows that property into token-taking overloads when it is in scope; this
+/// rule still reports when the method never reads <c>context.CancellationToken</c> and never hands
+/// the context on, so a method that does async work without observing cancellation keeps running
+/// after the caller is gone.
 /// </para>
 /// <para>
 /// <b>What it detects:</b> a method with a <c>Grpc.Core.ServerCallContext</c> parameter whose body
