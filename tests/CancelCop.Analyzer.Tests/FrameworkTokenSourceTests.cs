@@ -461,4 +461,49 @@ public class Middleware
 
         await VerifyCS.VerifyAnalyzerAsync(test);
     }
+
+    [Fact]
+    public async Task TwoServerCallContextParameters_PrefersTheFirst()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Grpc.Core;
+
+public class GreeterService
+{
+    public async Task<string> SayHello(ServerCallContext first, ServerCallContext second)
+    {
+        await Task.{|#0:Delay|}(100);
+        return ""hi"";
+    }
+}" + GrpcContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "first.CancellationToken");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task PrimaryConstructorHttpContext_UsesRequestAborted()
+    {
+        var test = @"
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
+public class Worker(HttpContext context)
+{
+    public async Task RunAsync()
+    {
+        await Task.{|#0:Delay|}(100);
+    }
+}" + HttpContextStub;
+
+        var expected = VerifyCS.Diagnostic("CC002")
+            .WithLocation(0)
+            .WithArguments("Delay", "context.RequestAborted");
+
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }
