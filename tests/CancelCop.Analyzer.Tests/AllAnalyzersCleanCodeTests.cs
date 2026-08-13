@@ -430,6 +430,7 @@ internal sealed class GreeterService : GreeterBase
         var code = @"
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 namespace Microsoft.AspNetCore.Http
 {
@@ -459,9 +460,14 @@ internal sealed class RequestTimingMiddleware
     }
 }
 
-internal sealed class GreeterService
+internal abstract class GreeterBase
 {
-    public async Task<string> SayHello(string request, Grpc.Core.ServerCallContext context)
+    public abstract Task<string> SayHello(string request, Grpc.Core.ServerCallContext context);
+}
+
+internal sealed class GreeterService : GreeterBase
+{
+    public override async Task<string> SayHello(string request, Grpc.Core.ServerCallContext context)
     {
         await Task.Delay(1, context.CancellationToken);
         return request;
