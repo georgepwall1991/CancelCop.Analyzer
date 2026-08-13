@@ -1,0 +1,23 @@
+{
+  "stryker-config": {
+    "project": "CancelCop.Analyzer.csproj",
+    "solution": "../../CancelCop.sln",
+    "mutate": [
+      "**/InScopeToken.cs",
+      "**/InScopeTokenWalk.cs"
+    ],
+    "thresholds": {
+      "high": 90,
+      "low": 80,
+      "break": 80
+    },
+    "reporters": [
+      "html",
+      "json",
+      "progress",
+      "cleartext"
+    ],
+    "concurrency": 2,
+    "verbosity": "info"
+  }
+}

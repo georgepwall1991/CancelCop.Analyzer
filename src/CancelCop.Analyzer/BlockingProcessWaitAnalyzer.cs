@@ -152,7 +152,7 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         )
             properties = properties.Add(NoFixProperty, "await-would-span-ref-like-local");
 
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             invocation,
             context.SemanticModel
         );
@@ -162,7 +162,7 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
         // then await something that is not awaitable. Bind the call the fixer would emit and stay
         // quiet unless it resolves to the framework method this diagnostic is premised on. This runs
         // for null-conditional calls too, which get no fix but still make the claim.
-        var tokenName = tokenParameter?.Name;
+        var tokenName = token?.ExpressionText;
         if (
             tokenName != null
             && !ResolvesToTheFrameworkCounterpart(context, invocation, method, tokenName, asyncCounterpart!)

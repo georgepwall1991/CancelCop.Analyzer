@@ -93,145 +93,45 @@ public static class CancellationTokenHelpers
 
     /// <summary>
     /// Walks up from <paramref name="node"/> through the scopes that can declare a
-    /// <c>CancellationToken</c> parameter — local functions, lambdas, and the containing method —
-    /// and returns the nearest in-scope token parameter, or <c>null</c> if none is available.
+    /// <c>CancellationToken</c> — local functions, lambdas, and the containing method —
+    /// and returns the nearest in-scope token, or <c>null</c> if none is available.
     /// </summary>
     /// <remarks>
-    /// A local function or anonymous function that has no token of its own does not stop the
-    /// search: an outer scope's token is captured and remains usable from the inner body — unless
-    /// the inner function is <c>static</c>, which forbids capturing enclosing parameters
-    /// (CS8421/CS8820), so a tokenless static function ends the search with no token. A method or
-    /// constructor parameter list is the outermost <em>local</em> scope, but a tokenless
-    /// non-static member keeps searching one level further: a C# 12 primary-constructor parameter
-    /// is captured and usable from instance-member bodies and initializers. Static members cannot
-    /// capture primary-constructor parameters, and a non-primary constructor's body cannot
-    /// reference them (CS9105), so those end the search. The first containing type declaration
-    /// always ends the search — an outer type's parameters are never in scope.
+    /// Preference at each scope: a <c>CancellationToken</c> parameter wins; otherwise a proven
+    /// framework property on a parameter of this scope (<c>HttpContext.RequestAborted</c>, then
+    /// <c>ServerCallContext.CancellationToken</c>). A local function or anonymous function that
+    /// has no token of its own does not stop the search: an outer scope's token is captured and
+    /// remains usable from the inner body — unless the inner function is <c>static</c>, which
+    /// forbids capturing enclosing parameters (CS8421/CS8820), so a tokenless static function
+    /// ends the search with no token. A method or constructor parameter list is the outermost
+    /// <em>local</em> scope, but a tokenless non-static member keeps searching one level further:
+    /// a C# 12 primary-constructor parameter is captured and usable from instance-member bodies
+    /// and initializers. Static members cannot capture primary-constructor parameters, and a
+    /// non-primary constructor's body cannot reference them (CS9105), so those end the search.
+    /// The first containing type declaration always ends the search — an outer type's parameters
+    /// are never in scope.
     /// </remarks>
+    public static InScopeToken? FindEnclosingCancellationToken(
+        SyntaxNode node,
+        SemanticModel semanticModel
+    ) => InScopeTokenWalk.Find(node, semanticModel);
+
+    /// <summary>
+    /// Parameter-only view of <see cref="FindEnclosingCancellationToken"/>. Framework property
+    /// tokens are not parameters, so this returns <see langword="null"/> for those.
+    /// </summary>
     public static IParameterSymbol? FindEnclosingCancellationTokenParameter(
         SyntaxNode node,
         SemanticModel semanticModel
-    )
-    {
-        var current = node.Parent;
-        while (current != null)
-        {
-            // Local function first (innermost), then lambda / anonymous method, then the
-            // containing member, then the containing type's primary constructor.
-            if (current is LocalFunctionStatementSyntax localFunction)
-            {
-                var token = FindCancellationTokenParameter(
-                    semanticModel.GetDeclaredSymbol(localFunction) as IMethodSymbol
-                );
-                if (token != null)
-                    return token;
-                if (localFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    return null;
-            }
-            else if (current is AnonymousFunctionExpressionSyntax anonymousFunction)
-            {
-                var token = FindCancellationTokenParameter(
-                    semanticModel.GetSymbolInfo(anonymousFunction).Symbol as IMethodSymbol
-                );
-                if (token != null)
-                    return token;
-                if (anonymousFunction.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    return null;
-            }
-            else if (current is ConstructorDeclarationSyntax constructor)
-            {
-                // A non-primary constructor's body cannot reference primary-constructor
-                // parameters (CS9105), so its own parameter list ends the search.
-                return FindCancellationTokenParameter(
-                    semanticModel.GetDeclaredSymbol(constructor) as IMethodSymbol
-                );
-            }
-            else if (current is MethodDeclarationSyntax method)
-            {
-                var token = FindCancellationTokenParameter(
-                    semanticModel.GetDeclaredSymbol(method) as IMethodSymbol
-                );
-                if (token != null)
-                    return token;
-                // A static member cannot capture primary-constructor parameters.
-                if (method.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    return null;
-            }
-            else if (current is OperatorDeclarationSyntax or ConversionOperatorDeclarationSyntax)
-            {
-                // Classic operators are static and never declare a token. (C# 14 instance
-                // compound-assignment operators could capture a primary token, but staying quiet
-                // there is the conservative side.)
-                return null;
-            }
-            else if (current is BaseFieldDeclarationSyntax field)
-            {
-                // Covers field and event-field declarations alike: a static initializer runs
-                // without instance context, so the primary token is unavailable (CS9105).
-                if (field.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    return null;
-            }
-            else if (current is BasePropertyDeclarationSyntax property)
-            {
-                if (property.Modifiers.Any(SyntaxKind.StaticKeyword))
-                    return null;
-            }
-            else if (current is TypeDeclarationSyntax typeDeclaration)
-            {
-                // Reaching the type means every enclosing member was a tokenless non-static
-                // scope; the type's primary-constructor parameters (if any) are the last chance.
-                return FindPrimaryConstructorTokenParameter(typeDeclaration, semanticModel);
-            }
-
-            current = current.Parent;
-        }
-
-        return null;
-    }
+    ) => FindEnclosingCancellationToken(node, semanticModel)?.Parameter;
 
     /// <summary>
-    /// Finds a <c>CancellationToken</c> among the type's primary-constructor parameters, looking
-    /// first at the syntactic parameter list and then — for partial types whose primary
-    /// constructor is declared on another part — through the type symbol's constructors.
+    /// Convention ASP.NET Core middleware entry point: public instance <c>Invoke</c> /
+    /// <c>InvokeAsync</c> whose first parameter is <c>Microsoft.AspNetCore.Http.HttpContext</c>.
+    /// Adding a <c>CancellationToken</c> parameter is not a valid fix — DI does not inject it.
     /// </summary>
-    private static IParameterSymbol? FindPrimaryConstructorTokenParameter(
-        TypeDeclarationSyntax typeDeclaration,
-        SemanticModel semanticModel
-    )
-    {
-        if (typeDeclaration.ParameterList != null)
-        {
-            foreach (var parameter in typeDeclaration.ParameterList.Parameters)
-            {
-                if (
-                    semanticModel.GetDeclaredSymbol(parameter) is IParameterSymbol parameterSymbol
-                    && IsCancellationToken(parameterSymbol.Type)
-                )
-                {
-                    return parameterSymbol;
-                }
-            }
-
-            return null;
-        }
-
-        // A partial part without the parameter list: the primary constructor is the instance
-        // constructor whose declaring syntax is a type declaration (capture from any part is
-        // legal, so the token must still be found).
-        if (semanticModel.GetDeclaredSymbol(typeDeclaration) is INamedTypeSymbol typeSymbol)
-        {
-            foreach (var constructor in typeSymbol.InstanceConstructors)
-            {
-                foreach (var reference in constructor.DeclaringSyntaxReferences)
-                {
-                    if (reference.GetSyntax() is TypeDeclarationSyntax)
-                        return FindCancellationTokenParameter(constructor);
-                }
-            }
-        }
-
-        return null;
-    }
+    public static bool IsConventionMiddlewareEntryPoint(IMethodSymbol method) =>
+        InScopeTokenWalk.IsConventionMiddlewareEntryPoint(method);
 
     /// <summary>
     /// The shared tail of the token-propagation rules (CC002/CC003/CC004): given an invocation
@@ -256,13 +156,13 @@ public static class CancellationTokenHelpers
         if (HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
-        // Find the nearest in-scope CancellationToken parameter — from a containing local
-        // function, lambda, constructor, method, or primary constructor.
-        var tokenParameter = FindEnclosingCancellationTokenParameter(
+        // Find the nearest in-scope CancellationToken — a parameter, or a framework property
+        // (HttpContext.RequestAborted / ServerCallContext.CancellationToken).
+        var token = FindEnclosingCancellationToken(
             invocation,
             context.SemanticModel
         );
-        if (tokenParameter == null)
+        if (token == null)
             return;
 
         // An invocation inside an expression tree is data, not executable code: the token cannot
@@ -279,7 +179,7 @@ public static class CancellationTokenHelpers
             return;
 
         var properties = ImmutableDictionary.CreateBuilder<string, string?>();
-        properties.Add("TokenParameterName", tokenParameter.Name);
+        properties.Add("TokenParameterName", token.ExpressionText);
         properties.Add("TokenArgumentName", overloadTokenName);
 
         var diagnostic = Diagnostic.Create(
@@ -289,7 +189,7 @@ public static class CancellationTokenHelpers
                 : invocation.Expression.GetLocation(),
             properties.ToImmutable(),
             methodSymbol.Name,
-            tokenParameter.Name
+            token.DisplayName
         );
 
         context.ReportDiagnostic(diagnostic);
@@ -976,11 +876,32 @@ public static class CancellationTokenHelpers
         if (tokenName != null)
         {
             argumentList = argumentList.AddArguments(
-                SyntaxFactory.Argument(IdentifierNameFor(tokenName))
+                SyntaxFactory.Argument(TokenExpression(tokenName))
             );
         }
 
         return invocation.WithExpression(target).WithArgumentList(argumentList);
+    }
+
+    /// <summary>
+    /// Builds an expression for an in-scope token: a simple identifier (keyword-escaped) or a
+    /// member access such as <c>context.RequestAborted</c>. Built with factory methods so elastic
+    /// trivia is present and the formatter can indent inserted statements.
+    /// </summary>
+    public static ExpressionSyntax TokenExpression(string text)
+    {
+        var parts = text.Split('.');
+        ExpressionSyntax expression = IdentifierNameFor(parts[0]);
+        for (var i = 1; i < parts.Length; i++)
+        {
+            expression = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                expression,
+                IdentifierNameFor(parts[i])
+            );
+        }
+
+        return expression;
     }
 
     /// <summary>

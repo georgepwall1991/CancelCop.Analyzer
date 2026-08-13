@@ -73,7 +73,7 @@ public class AsyncEnumerableCancellationCodeFixProvider : CodeFixProvider
                     SyntaxFactory.IdentifierName("WithCancellation")),
                 SyntaxFactory.ArgumentList(
                     SyntaxFactory.SingletonSeparatedList(
-                        SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName)))))
+                        SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName)))))
             .WithTriviaFrom(source);
 
         var newRoot = root.ReplaceNode(source, withCancellation);

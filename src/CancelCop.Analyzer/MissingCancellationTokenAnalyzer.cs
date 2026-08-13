@@ -33,6 +33,8 @@ namespace CancelCop.Analyzer;
 /// <item>Private and internal methods (implementation details)</item>
 /// <item>Methods that already have a CancellationToken parameter</item>
 /// <item>Non-async methods</item>
+/// <item>Overrides, interface implementations, and <c>extern</c> methods</item>
+/// <item>Convention ASP.NET middleware <c>Invoke</c>/<c>InvokeAsync</c> (use <c>HttpContext.RequestAborted</c>)</item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -107,6 +109,12 @@ public class MissingCancellationTokenAnalyzer : DiagnosticAnalyzer
         // Don't flag methods whose signature is fixed by a base type or interface — the fix
         // would break the override/implementation (CS0115/CS0535).
         if (CancellationTokenHelpers.IsSignatureExternallyControlled(methodSymbol))
+            return;
+
+        // Convention middleware Invoke/InvokeAsync(HttpContext, ...) is not an interface member, but
+        // the signature is still dictated by the ASP.NET Core pipeline. Adding a CancellationToken
+        // parameter is not injected by DI — RequestAborted is the token (CC021 + the shared walk).
+        if (CancellationTokenHelpers.IsConventionMiddlewareEntryPoint(methodSymbol))
             return;
 
         // The program entry point (`static [async] Task Main(...)`) has a runtime-fixed signature;

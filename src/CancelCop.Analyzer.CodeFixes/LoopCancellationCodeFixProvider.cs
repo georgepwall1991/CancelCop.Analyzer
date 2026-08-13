@@ -89,7 +89,7 @@ public class LoopCancellationCodeFixProvider : CodeFixProvider
             SyntaxFactory.InvocationExpression(
                 SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
-                    SyntaxFactory.IdentifierName(tokenName),
+                    CancellationTokenHelpers.TokenExpression(tokenName),
                     SyntaxFactory.IdentifierName("ThrowIfCancellationRequested"))));
     }
 

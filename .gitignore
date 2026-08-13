@@ -8,3 +8,6 @@ riderModule.iml
 .complexity-log.md
 .plugin-config/
 artifacts/
+
+# Stryker.NET mutation reports
+StrykerOutput/

@@ -135,23 +135,23 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     private void AnalyzeLoop(SyntaxNodeAnalysisContext context, SyntaxNode loopNode, StatementSyntax loopBody, SyntaxToken loopKeyword, ExpressionSyntax? condition)
     {
         // Find the containing method, local function, or lambda that has a CancellationToken parameter
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             loopNode, context.SemanticModel);
-        if (tokenParameter == null)
+        if (token == null)
             return;
 
         // A cancellation check satisfies the rule whether it is in the loop body or the loop
         // condition — `while (!token.IsCancellationRequested)` and
         // `for (...; !token.IsCancellationRequested; ...)` are canonical cancellation-aware loops.
         if (HasCancellationCheck(
-                loopBody, tokenParameter, context.SemanticModel, context.CancellationToken) ||
+                loopBody, token, context.SemanticModel, context.CancellationToken) ||
             (condition != null && HasCancellationCheck(
-                condition, tokenParameter, context.SemanticModel, context.CancellationToken)))
+                condition, token, context.SemanticModel, context.CancellationToken)))
             return;
 
         // Report diagnostic
-        var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, tokenParameter.Name);
-        var diagnostic = Diagnostic.Create(Rule, loopKeyword.GetLocation(), properties, tokenParameter.Name);
+        var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, token.ExpressionText);
+        var diagnostic = Diagnostic.Create(Rule, loopKeyword.GetLocation(), properties, token.DisplayName);
         context.ReportDiagnostic(diagnostic);
     }
 
@@ -159,13 +159,13 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     /// Checks if <paramref name="loopBody"/> (a loop body or a loop condition) contains a
     /// cancellation check (ThrowIfCancellationRequested or IsCancellationRequested) on the specific
     /// in-scope token. The receiver is resolved through the semantic model and compared to
-    /// <paramref name="tokenParameter"/> by symbol identity, so a look-alike named "...token" is
+    /// <paramref name="token"/> by symbol identity, so a look-alike named "...token" is
     /// rejected, a real token with a plain name is accepted, and a check on a different token does
     /// not satisfy the rule for the reported token.
     /// </summary>
     private static bool HasCancellationCheck(
         SyntaxNode loopBody,
-        IParameterSymbol tokenParameter,
+        InScopeToken token,
         SemanticModel semanticModel,
         System.Threading.CancellationToken cancellationToken)
     {
@@ -180,7 +180,7 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
             if (node is InvocationExpressionSyntax invocation &&
                 invocation.Expression is MemberAccessExpressionSyntax call &&
                 call.Name.Identifier.Text == "ThrowIfCancellationRequested" &&
-                IsTokenReceiver(call.Expression, tokenParameter, semanticModel))
+                IsTokenReceiver(call.Expression, token, semanticModel))
             {
                 return true;
             }
@@ -188,7 +188,7 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
             // IsCancellationRequested property access on the in-scope token.
             if (node is MemberAccessExpressionSyntax propAccess &&
                 propAccess.Name.Identifier.Text == "IsCancellationRequested" &&
-                IsTokenReceiver(propAccess.Expression, tokenParameter, semanticModel) &&
+                IsTokenReceiver(propAccess.Expression, token, semanticModel) &&
                 !CancellationTokenHelpers.IsInsideNameof(
                     propAccess, semanticModel, cancellationToken))
             {
@@ -200,11 +200,11 @@ public class LoopCancellationAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Returns true when the expression resolves to the supplied token parameter symbol.
+    /// Returns true when the expression resolves to the supplied in-scope token symbol.
     /// </summary>
-    private static bool IsTokenReceiver(ExpressionSyntax expression, IParameterSymbol tokenParameter, SemanticModel semanticModel)
+    private static bool IsTokenReceiver(ExpressionSyntax expression, InScopeToken token, SemanticModel semanticModel)
     {
         var symbol = semanticModel.GetSymbolInfo(expression).Symbol;
-        return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, tokenParameter);
+        return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, token.TokenSymbol);
     }
 }

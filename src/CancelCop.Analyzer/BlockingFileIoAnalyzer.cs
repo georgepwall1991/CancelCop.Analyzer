@@ -195,7 +195,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             invocation,
             context.SemanticModel
         );
@@ -212,7 +212,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // includes an overload whose trailing token is optional, e.g. File.ReadAllTextAsync).
         IMethodSymbol? asyncCounterpart = null;
         var flowToken =
-            tokenParameter != null
+            token != null
             && TryFindBoundCounterpart(searchRoot, method, asyncName, true, out asyncCounterpart);
 
         if (
@@ -254,7 +254,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
                 invocation,
                 asyncName,
                 asyncCounterpart!,
-                flowToken ? tokenParameter!.Name : null,
+                flowToken ? token!.ExpressionText : null,
                 method,
                 bindPositionally: namesWouldBeRemapped
             )
@@ -263,7 +263,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
 
         if (flowToken)
         {
-            properties = properties.Add(TokenNameProperty, tokenParameter!.Name);
+            properties = properties.Add(TokenNameProperty, token!.ExpressionText);
             properties = properties.Add(
                 TokenArgumentNameProperty,
                 asyncCounterpart!.Parameters[asyncCounterpart.Parameters.Length - 1].Name

@@ -169,6 +169,8 @@ public async Task ProcessDataAsync(CancellationToken cancellationToken = default
 }
 ```
 
+Convention ASP.NET middleware `Invoke`/`InvokeAsync(HttpContext)` is **not** flagged: the pipeline does not inject a `CancellationToken` parameter. Use `context.RequestAborted` (CC002/CC004/CC021).
+
 ### CC002: Token Not Propagated
 
 ```csharp
@@ -184,6 +186,22 @@ public async Task ProcessAsync(CancellationToken cancellationToken)
 {
     await Task.Delay(100, cancellationToken);
     await DoWorkAsync(cancellationToken);
+}
+```
+
+When the enclosing method has an `HttpContext` (or gRPC `ServerCallContext`) instead of a token parameter, the same rule flows `context.RequestAborted` / `context.CancellationToken`:
+
+```csharp
+// ❌ Warning CC002 — RequestAborted is in scope but not passed
+public async Task InvokeAsync(HttpContext context)
+{
+    await Task.Delay(100);
+}
+
+// ✅ Fixed
+public async Task InvokeAsync(HttpContext context)
+{
+    await Task.Delay(100, context.RequestAborted);
 }
 ```
 
@@ -216,6 +234,22 @@ public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
 public async Task<string> FetchDataAsync(CancellationToken cancellationToken)
 {
     return await _httpClient.GetStringAsync("https://api.example.com", cancellationToken);
+}
+```
+
+Middleware with no token parameter is covered too — the in-scope token is `RequestAborted`:
+
+```csharp
+// ❌ Warning CC004
+public async Task InvokeAsync(HttpContext context)
+{
+    return await _httpClient.GetStringAsync("https://api.example.com");
+}
+
+// ✅ Fixed
+public async Task InvokeAsync(HttpContext context)
+{
+    return await _httpClient.GetStringAsync("https://api.example.com", context.RequestAborted);
 }
 ```
 

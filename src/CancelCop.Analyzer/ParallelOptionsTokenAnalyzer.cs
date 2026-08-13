@@ -108,11 +108,11 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
 
         // With no token available there is nothing to suggest, which is the same gate CC002 and
         // CC012 apply.
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             creation,
             context.SemanticModel
         );
-        if (tokenParameter is null)
+        if (token is null)
             return;
 
         if (TokenAssignedAfterwards(creation, context))
@@ -120,11 +120,11 @@ public class ParallelOptionsTokenAnalyzer : DiagnosticAnalyzer
 
         var properties = ImmutableDictionary<string, string?>.Empty.Add(
             TokenNameProperty,
-            tokenParameter.Name
+            token.ExpressionText
         );
 
         context.ReportDiagnostic(
-            Diagnostic.Create(Rule, creation.GetLocation(), properties, tokenParameter.Name)
+            Diagnostic.Create(Rule, creation.GetLocation(), properties, token.DisplayName)
         );
     }
 

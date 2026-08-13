@@ -116,12 +116,12 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             invocation, context.SemanticModel);
 
         var properties = ImmutableDictionary<string, string?>.Empty;
-        if (tokenParameter != null)
-            properties = properties.Add(TokenNameProperty, tokenParameter.Name);
+        if (token != null)
+            properties = properties.Add(TokenNameProperty, token.ExpressionText);
 
         // The call is blocking either way, but where an inserted await would not compile — a lock
         // body, an exception filter, an unsafe context, most query clauses, or across a ref-like

@@ -78,7 +78,7 @@ public class ParallelOptionsTokenCodeFixProvider : CodeFixProvider
         var assignment = SyntaxFactory.AssignmentExpression(
             SyntaxKind.SimpleAssignmentExpression,
             SyntaxFactory.IdentifierName("CancellationToken"),
-            CancellationTokenHelpers.IdentifierNameFor(tokenName)
+            CancellationTokenHelpers.TokenExpression(tokenName)
         );
 
         // Append to the existing initializer, or create one. Appending keeps whatever the author

@@ -423,6 +423,61 @@ internal sealed class GreeterService : GreeterBase
     }
 
     [Fact]
+    public async Task IdiomaticMiddlewareAndGrpcPropagation_ProducesNoDiagnostics()
+    {
+        // Convention middleware has no CancellationToken parameter; RequestAborted is the token.
+        // CC001 stays quiet, and the shared walk flows the property into Delay / loops.
+        var code = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Microsoft.AspNetCore.Http
+{
+    public abstract class HttpContext
+    {
+        public CancellationToken RequestAborted => default;
+    }
+}
+
+namespace Grpc.Core
+{
+    public abstract class ServerCallContext
+    {
+        public CancellationToken CancellationToken => default;
+    }
+}
+
+internal sealed class RequestTimingMiddleware
+{
+    public async Task InvokeAsync(HttpContext context)
+    {
+        await Task.Delay(1, context.RequestAborted);
+        for (int i = 0; i < 3; i++)
+        {
+            context.RequestAborted.ThrowIfCancellationRequested();
+        }
+    }
+}
+
+internal sealed class GreeterService
+{
+    public async Task<string> SayHello(string request, Grpc.Core.ServerCallContext context)
+    {
+        await Task.Delay(1, context.CancellationToken);
+        return request;
+    }
+}";
+
+        var test = new AllAnalyzersTest
+        {
+            TestCode = code,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+
+        await test.RunAsync();
+    }
+
+    [Fact]
     public async Task ModernCSharpShapes_ProduceNoDiagnostics()
     {
         // Primary-constructor class and record struct, a file-scoped namespace, and an expression-bodied

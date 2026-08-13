@@ -183,7 +183,7 @@ public class LinkedTimeoutTokenSourceCodeFixProvider : CodeFixProvider
                 SyntaxFactory.IdentifierName("CreateLinkedTokenSource")),
             SyntaxFactory.ArgumentList(
                 SyntaxFactory.SingletonSeparatedList(
-                    SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenName)))));
+                    SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName)))));
 
     private static ExpressionStatementSyntax CreateCancelAfterStatement(
         string localName,

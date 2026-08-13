@@ -117,12 +117,12 @@ public class LinkedTimeoutTokenSourceAnalyzer : DiagnosticAnalyzer
         if (!IsTimeoutConstructor(methodSymbol))
             return;
 
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             creation, context.SemanticModel);
-        if (tokenParameter == null)
+        if (token == null)
             return;
 
-        Report(context, creation.GetLocation(), tokenParameter.Name);
+        Report(context, creation.GetLocation(), token.ExpressionText);
     }
 
     private static void AnalyzeCancelAfter(SyntaxNodeAnalysisContext context)
@@ -153,12 +153,12 @@ public class LinkedTimeoutTokenSourceAnalyzer : DiagnosticAnalyzer
         if (!IsParameterlessCancellationTokenSourceCreation(local, context.SemanticModel, context.CancellationToken))
             return;
 
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             invocation, context.SemanticModel);
-        if (tokenParameter == null)
+        if (token == null)
             return;
 
-        Report(context, memberAccess.Name.GetLocation(), tokenParameter.Name);
+        Report(context, memberAccess.Name.GetLocation(), token.ExpressionText);
     }
 
     private static void Report(SyntaxNodeAnalysisContext context, Location location, string tokenName)

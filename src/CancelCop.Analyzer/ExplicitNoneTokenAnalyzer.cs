@@ -97,14 +97,14 @@ public class ExplicitNoneTokenAnalyzer : DiagnosticAnalyzer
             return;
 
         // A real token must be available to offer instead; otherwise None/default is the only choice.
-        var tokenParameter = CancellationTokenHelpers.FindEnclosingCancellationTokenParameter(
+        var token = CancellationTokenHelpers.FindEnclosingCancellationToken(
             argument, context.SemanticModel);
-        if (tokenParameter == null)
+        if (token == null)
             return;
 
-        var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, tokenParameter.Name);
+        var properties = ImmutableDictionary<string, string?>.Empty.Add(TokenNameProperty, token.ExpressionText);
         var diagnostic = Diagnostic.Create(
-            Rule, argument.Expression.GetLocation(), properties, displayText, tokenParameter.Name);
+            Rule, argument.Expression.GetLocation(), properties, displayText, token.DisplayName);
         context.ReportDiagnostic(diagnostic);
     }
 

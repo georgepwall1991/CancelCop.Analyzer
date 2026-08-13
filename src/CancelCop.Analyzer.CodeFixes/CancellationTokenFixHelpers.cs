@@ -117,7 +117,7 @@ internal static class CancellationTokenFixHelpers
         string tokenExpression,
         string? namedParameterName)
     {
-        var tokenArgument = SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tokenExpression));
+        var tokenArgument = SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenExpression));
 
         if (namedParameterName != null &&
             argumentList.Arguments.Any(a => a.NameColon != null))
