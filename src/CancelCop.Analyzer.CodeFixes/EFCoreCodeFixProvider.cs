@@ -14,7 +14,7 @@ namespace CancelCop.Analyzer;
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(EFCoreCodeFixProvider)), Shared]
 public class EFCoreCodeFixProvider : CodeFixProvider
 {
-    private const string Title = "Pass CancellationToken parameter";
+    private const string Title = "Pass in-scope cancellation token";
 
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(EFCoreAnalyzer.DiagnosticId);
