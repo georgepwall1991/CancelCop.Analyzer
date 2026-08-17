@@ -767,6 +767,134 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReaderWriterLockAcquireReaderLock_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        // The pre-Slim ReaderWriterLock is also not a WaitHandle. AcquireReaderLock parks until
+        // every writer exits; Timeout.Infinite is an unbounded wait.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLock gate)
+    {
+        gate.{|#0:AcquireReaderLock|}(Timeout.Infinite);
+        try
+        {
+            await Task.Yield();
+        }
+        finally
+        {
+            gate.ReleaseReaderLock();
+        }
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLock.AcquireReaderLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockAcquireWriterLock_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLock gate)
+    {
+        gate.{|#0:AcquireWriterLock|}(TimeSpan.FromSeconds(5));
+        try
+        {
+            await Task.Yield();
+        }
+        finally
+        {
+            gate.ReleaseWriterLock();
+        }
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLock.AcquireWriterLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockAcquireReaderLockZeroTimeout_ShouldNotReportDiagnostic()
+    {
+        // AcquireReaderLock(0) tries to take the lock without waiting — a probe, like Wait(0).
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLock gate)
+    {
+        gate.AcquireReaderLock(0);
+        gate.AcquireWriterLock(TimeSpan.Zero);
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockAcquireReaderLock_InSyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run(ReaderWriterLock gate)
+    {
+        gate.AcquireReaderLock(Timeout.Infinite);
+        gate.ReleaseReaderLock();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockLookalike_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class ReaderWriterLock
+{
+    public void AcquireReaderLock(int timeout) { }
+    public void ReleaseReaderLock() { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLock gate)
+    {
+        gate.AcquireReaderLock(-1);
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
     public async Task ReaderWriterLockSlimLookalike_ShouldNotReportDiagnostic()
     {
         var test =

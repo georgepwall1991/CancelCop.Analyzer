@@ -12,12 +12,12 @@
     <PackageId>CancelCop.Analyzer</PackageId>
     <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-    <Version>1.39.2</Version>
+    <Version>1.39.3</Version>
     <Authors>George Wall</Authors>
     <Title>CancelCop.Analyzer — CancellationToken and async/await Roslyn analyzer for C#/.NET</Title>
     <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 36 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
     <PackageTags>roslyn;roslyn-analyzer;analyzers;analyzer;codefix;code-fix;static-analysis;codeanalysis;csharp;dotnet;cancellation;cancellationtoken;async;async-await;sync-over-async;deadlock;async-void;aspnetcore;RequestAborted;BackgroundService;efcore;httpclient;grpc;signalr;mediatr;WithCancellation;OperationCanceledException;blocking</PackageTags>
-    <PackageReleaseNotes>CC031 now flags Barrier.SignalAndWait in async code. Barrier is not a WaitHandle and has no …Async counterpart, so the previous type map missed it. Zero-timeout overloads still report because the last arriver runs the post-phase action. Look-alikes and synchronous methods stay quiet. 36 diagnostics.</PackageReleaseNotes>
+    <PackageReleaseNotes>CC031 now flags ReaderWriterLock.AcquireReaderLock / AcquireWriterLock in async code. The pre-Slim lock is not a WaitHandle and has no …Async counterpart. Zero-timeout try-acquires, look-alikes, and synchronous methods stay quiet. 36 diagnostics.</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>

@@ -4,7 +4,8 @@
 //
 // WHY THIS MATTERS:
 // ManualResetEventSlim.Wait(), CountdownEvent.Wait(), WaitHandle.WaitOne(),
-// Monitor.Wait(), Thread.Join(), ReaderWriterLockSlim.Enter*Lock(), and
+// Monitor.Wait(), Thread.Join(), ReaderWriterLockSlim.Enter*Lock(),
+// ReaderWriterLock.Acquire*Lock(), and
 // Barrier.SignalAndWait() park a
 // thread-pool thread until another thread signals (or every conflicting holder
 // / participant arrives). In async code that is the worst kind of blocking: the wait is
@@ -80,6 +81,20 @@ public class CC031_BlockingSyncPrimitive
         finally
         {
             _rwlock.ExitReadLock();
+        }
+    }
+
+    // VIOLATION (CC031 warns here — the pre-Slim ReaderWriterLock is not a WaitHandle)
+    public async Task AcquireReaderLockBad(ReaderWriterLock gate)
+    {
+        gate.AcquireReaderLock(Timeout.Infinite);
+        try
+        {
+            await Task.Yield();
+        }
+        finally
+        {
+            gate.ReleaseReaderLock();
         }
     }
 
