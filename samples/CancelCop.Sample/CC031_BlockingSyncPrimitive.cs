@@ -4,9 +4,10 @@
 //
 // WHY THIS MATTERS:
 // ManualResetEventSlim.Wait(), CountdownEvent.Wait(), WaitHandle.WaitOne(),
-// Monitor.Wait(), Thread.Join(), and ReaderWriterLockSlim.Enter*Lock() park a
+// Monitor.Wait(), Thread.Join(), ReaderWriterLockSlim.Enter*Lock(), and
+// Barrier.SignalAndWait() park a
 // thread-pool thread until another thread signals (or every conflicting holder
-// exits). In async code that is the worst kind of blocking: the wait is
+// / participant arrives). In async code that is the worst kind of blocking: the wait is
 // unbounded, it consumes a pooled thread that the continuations it waits for may
 // themselves need, and under load it can deadlock the pool outright. None of
 // them observes a CancellationToken by default, so shutdown and request abort
@@ -80,6 +81,15 @@ public class CC031_BlockingSyncPrimitive
         {
             _rwlock.ExitReadLock();
         }
+    }
+
+    // VIOLATION (CC031 warns here — Barrier is not a WaitHandle).
+    // The participant count is the caller's: a one-participant barrier is a probe,
+    // not a wait, so the sample takes the gate rather than constructing Barrier(1).
+    public async Task SignalAndWaitBad(Barrier barrier)
+    {
+        barrier.SignalAndWait();
+        await Task.Yield();
     }
 
     // VIOLATION (CC031 warns here too — Timeout.Infinite is an unbounded enter)
