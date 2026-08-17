@@ -430,4 +430,223 @@ public class TestClass
         t.ExpectedDiagnostics.Add(Expected("ManualResetEventSlim.Wait"));
         await t.RunAsync();
     }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimEnterReadLock_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        // ReaderWriterLockSlim is not a WaitHandle and has no …Async counterpart, so it belongs
+        // on CC031. The curated type map previously omitted it, which left a silent false
+        // negative: EnterReadLock parks a pool thread until every writer exits.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        gate.{|#0:EnterReadLock|}();
+        try
+        {
+            await Task.Yield();
+        }
+        finally
+        {
+            gate.ExitReadLock();
+        }
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLockSlim.EnterReadLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimEnterWriteLock_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        gate.{|#0:EnterWriteLock|}();
+        try
+        {
+            await Task.Yield();
+        }
+        finally
+        {
+            gate.ExitWriteLock();
+        }
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLockSlim.EnterWriteLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimEnterUpgradeableReadLock_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        gate.{|#0:EnterUpgradeableReadLock|}();
+        try
+        {
+            await Task.Yield();
+        }
+        finally
+        {
+            gate.ExitUpgradeableReadLock();
+        }
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLockSlim.EnterUpgradeableReadLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimEnterReadLock_InSyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run(ReaderWriterLockSlim gate)
+    {
+        gate.EnterReadLock();
+        gate.ExitReadLock();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimTryEnterWriteLockInfinite_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        // TryEnterWriteLock(Timeout.Infinite) is EnterWriteLock by another name: it parks the
+        // thread with no deadline. Leaving TryEnter* off the map was a remaining false negative.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        if (gate.{|#0:TryEnterWriteLock|}(Timeout.Infinite))
+        {
+            try
+            {
+                await Task.Yield();
+            }
+            finally
+            {
+                gate.ExitWriteLock();
+            }
+        }
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLockSlim.TryEnterWriteLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimTryEnterReadLockNonZeroTimeout_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        if (gate.{|#0:TryEnterReadLock|}(TimeSpan.FromSeconds(5)))
+        {
+            gate.ExitReadLock();
+        }
+
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLockSlim.TryEnterReadLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimTryEnterReadLockZeroTimeout_ShouldNotReportDiagnostic()
+    {
+        // A zero timeout is an immediate probe, matching Wait(0) on the other primitives.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        var a = gate.TryEnterReadLock(0);
+        var b = gate.TryEnterWriteLock(TimeSpan.Zero);
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockSlimLookalike_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class ReaderWriterLockSlim
+{
+    public void EnterReadLock() { }
+    public void EnterWriteLock() { }
+    public void ExitReadLock() { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLockSlim gate)
+    {
+        gate.EnterReadLock();
+        gate.EnterWriteLock();
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
 }

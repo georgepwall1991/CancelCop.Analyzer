@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.1] - 2026-08-17
+
+### Changed
+
+- **CC031 now flags `ReaderWriterLockSlim` enters in async code.** The lock is not a
+  `WaitHandle` and has no `…Async` counterpart, so it belongs on this analyzer-only
+  rule — but the curated type map omitted it. `Enter*Lock` and `TryEnter*Lock` park a
+  thread-pool thread until every conflicting holder exits (or the timeout elapses).
+  `TryEnterWriteLock(Timeout.Infinite)` is `EnterWriteLock` by another name. Look-alike
+  types, synchronous methods, and provably-zero `TryEnter*Lock` probes stay quiet.
+
 ## [1.39.0] - 2026-08-13
 
 ### Changed
