@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.3] - 2026-08-17
+
+### Changed
+
+- **CC031 now flags `ReaderWriterLock.AcquireReaderLock` / `AcquireWriterLock` in
+  async code.** The pre-Slim lock is also not a `WaitHandle` and has no `…Async`
+  counterpart. `Acquire*Lock(Timeout.Infinite)` is an unbounded wait; a zero
+  timeout is a non-blocking try-acquire and stays quiet, as do look-alikes and
+  synchronous methods.
+
 ## [1.39.2] - 2026-08-17
 
 ### Changed

@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.39.2">
+<PackageReference Include="CancelCop.Analyzer" Version="1.39.3">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.39.2
+Install-Package CancelCop.Analyzer -Version 1.39.3
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -144,7 +144,7 @@ dotnet build samples/CancelCop.Sample
 | **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`, `Stream`) in async code; use the async counterpart | Warning | ✅ |
 | **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
 | **CC030** | Avoid blocking `Process.WaitForExit()` in async code; use `await WaitForExitAsync(token)` | Warning | ✅ |
-| **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`, `ReaderWriterLockSlim.Enter*Lock`/`TryEnter*Lock`, `Barrier.SignalAndWait`) in async code | Warning | ❌ |
+| **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`, `ReaderWriterLockSlim.Enter*Lock`/`TryEnter*Lock`, `ReaderWriterLock.Acquire*Lock`, `Barrier.SignalAndWait`) in async code | Warning | ❌ |
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
@@ -656,11 +656,12 @@ public async Task WaitForReadyAsync(SemaphoreSlim ready, CancellationToken cance
 > Analyzer-only by design. These primitives have no `…Async` counterpart in .NET, so resolving the
 > finding is a design change — a `SemaphoreSlim`, a `TaskCompletionSource`, or awaiting the task
 > instead of joining the thread — rather than a mechanical rewrite. `SemaphoreSlim.Wait` belongs to
-> CC026, which can offer a real fix. `ReaderWriterLockSlim.Enter*Lock` / `TryEnter*Lock` and
-> `Barrier.SignalAndWait` are included because they are not `WaitHandle` members and would
-> otherwise be a silent false negative. A zero-timeout `TryEnter` is an immediate probe and
-> stays quiet. `Barrier.SignalAndWait(0)` still reports: the last arriver runs the
-> post-phase action before returning.
+> CC026, which can offer a real fix. `ReaderWriterLockSlim.Enter*Lock` / `TryEnter*Lock`,
+> `ReaderWriterLock.Acquire*Lock`, and `Barrier.SignalAndWait` are included because they
+> are not `WaitHandle` members and would otherwise be a silent false negative. A
+> zero-timeout `TryEnter` or `Acquire*Lock` is an immediate probe and stays quiet.
+> `Barrier.SignalAndWait(0)` still reports: the last arriver runs the post-phase action
+> before returning.
 
 ### CC032: Async Call Not Awaited in Non-Async Code
 
