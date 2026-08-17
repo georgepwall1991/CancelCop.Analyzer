@@ -84,6 +84,14 @@ public class CC031_BlockingSyncPrimitive
         }
     }
 
+    // VIOLATION (CC031 warns here — UpgradeToWriterLock was still silent after Acquire*Lock)
+    public async Task UpgradeToWriterLockBad(ReaderWriterLock gate)
+    {
+        var cookie = gate.UpgradeToWriterLock(Timeout.Infinite);
+        gate.DowngradeFromWriterLock(ref cookie);
+        await Task.Yield();
+    }
+
     // VIOLATION (CC031 warns here — the pre-Slim ReaderWriterLock is not a WaitHandle)
     public async Task AcquireReaderLockBad(ReaderWriterLock gate)
     {

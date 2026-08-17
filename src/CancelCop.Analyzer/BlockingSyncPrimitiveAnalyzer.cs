@@ -12,8 +12,8 @@ namespace CancelCop.Analyzer;
 /// Analyzer that detects a blocking synchronization primitive — <c>ManualResetEventSlim.Wait</c>,
 /// <c>CountdownEvent.Wait</c>, <c>WaitHandle.WaitOne</c>, <c>Monitor.Wait</c>,
 /// <c>Thread.Join</c>, <c>ReaderWriterLockSlim.Enter*Lock</c>/<c>TryEnter*Lock</c>,
-/// <c>ReaderWriterLock.Acquire*Lock</c>, or <c>Barrier.SignalAndWait</c> — inside async
-/// code.
+/// <c>ReaderWriterLock.Acquire*Lock</c>/<c>UpgradeToWriterLock</c>, or
+/// <c>Barrier.SignalAndWait</c> — inside async code.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -108,7 +108,11 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
             ),
             new KeyValuePair<string, ImmutableHashSet<string>>(
                 "ReaderWriterLock",
-                ImmutableHashSet.Create("AcquireReaderLock", "AcquireWriterLock")
+                ImmutableHashSet.Create(
+                    "AcquireReaderLock",
+                    "AcquireWriterLock",
+                    "UpgradeToWriterLock"
+                )
             ),
         }
     );
@@ -218,8 +222,11 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
         // CC015, and CC026 make. Monitor.Wait is the exception: a zero timeout only ends the
         // condition wait, and the call still cannot return until it reacquires the monitor, which
         // can block behind another thread.
+        // UpgradeToWriterLock(0) is not a probe: on contention the BCL releases the read lock
+        // and restores it via RecoverLock(Timeout.Infinite), so the call can still park.
         if (
             !ZeroTimeoutStillBlocks.Contains(declaringType.Name)
+            && definition.Name != "UpgradeToWriterLock"
             && CancellationTokenHelpers.HasProvablyZeroTimeout(
                 invocation,
                 context.SemanticModel,

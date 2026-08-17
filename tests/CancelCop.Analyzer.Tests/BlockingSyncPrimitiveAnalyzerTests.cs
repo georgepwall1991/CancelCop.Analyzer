@@ -767,6 +767,57 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ReaderWriterLockUpgradeToWriterLock_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        // UpgradeToWriterLock parks until every other reader/writer exits. It was left off the
+        // v1.39.3 Acquire*Lock slice even though it is the same type and the same class of wait.
+        // AcquireReaderLock is omitted here so the test isolates the upgrade diagnostic.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLock gate)
+    {
+        var cookie = gate.{|#0:UpgradeToWriterLock|}(Timeout.Infinite);
+        gate.DowngradeFromWriterLock(ref cookie);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLock.UpgradeToWriterLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task ReaderWriterLockUpgradeToWriterLockZeroTimeout_StillReportsDiagnostic()
+    {
+        // Unlike Acquire*Lock(0), a failed upgrade restores the read lock with Timeout.Infinite,
+        // so the call can still park.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(ReaderWriterLock gate)
+    {
+        var cookie = gate.{|#0:UpgradeToWriterLock|}(0);
+        gate.DowngradeFromWriterLock(ref cookie);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("ReaderWriterLock.UpgradeToWriterLock"));
+        await t.RunAsync();
+    }
+
+    [Fact]
     public async Task ReaderWriterLockAcquireReaderLock_InAsyncMethod_ShouldReportDiagnostic()
     {
         // The pre-Slim ReaderWriterLock is also not a WaitHandle. AcquireReaderLock parks until
