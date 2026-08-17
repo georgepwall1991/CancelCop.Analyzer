@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.4] - 2026-08-17
+
+### Changed
+
+- **CC031 now flags `ReaderWriterLock.UpgradeToWriterLock` in async code.** The
+  v1.39.3 slice covered `Acquire*Lock` but left the upgrade path silent.
+  `UpgradeToWriterLock` parks until every other holder exits, including the
+  zero-timeout form: a failed upgrade restores the read lock with
+  `Timeout.Infinite`. `Acquire*Lock(0)` remains a try-acquire and stays quiet.
+
 ## [1.39.3] - 2026-08-17
 
 ### Changed
