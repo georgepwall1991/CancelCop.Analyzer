@@ -11,8 +11,8 @@ namespace CancelCop.Analyzer;
 /// <summary>
 /// Analyzer that detects a blocking synchronization primitive — <c>ManualResetEventSlim.Wait</c>,
 /// <c>CountdownEvent.Wait</c>, <c>WaitHandle.WaitOne</c>, <c>Monitor.Wait</c>,
-/// <c>Thread.Join</c>, or <c>ReaderWriterLockSlim.Enter*Lock</c>/<c>TryEnter*Lock</c> —
-/// inside async code.
+/// <c>Thread.Join</c>, <c>ReaderWriterLockSlim.Enter*Lock</c>/<c>TryEnter*Lock</c>, or
+/// <c>Barrier.SignalAndWait</c> — inside async code.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -101,15 +101,21 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
                     "TryEnterUpgradeableReadLock"
                 )
             ),
+            new KeyValuePair<string, ImmutableHashSet<string>>(
+                "Barrier",
+                ImmutableHashSet.Create("SignalAndWait")
+            ),
         }
     );
 
     /// <summary>
     /// Declaring types whose members can block even with a zero timeout, so the probe exclusion must
     /// not apply. <c>Monitor.Wait</c> releases the monitor and must reacquire it before returning.
+    /// <c>Barrier.SignalAndWait</c> runs the post-phase action synchronously on the last arriver
+    /// before returning, even when the timeout is zero.
     /// </summary>
     private static readonly ImmutableHashSet<string> ZeroTimeoutStillBlocks =
-        ImmutableHashSet.Create("Monitor");
+        ImmutableHashSet.Create("Monitor", "Barrier");
 
     private static readonly LocalizableString Title =
         "Avoid blocking synchronization primitives in async code";

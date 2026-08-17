@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.2] - 2026-08-17
+
+### Changed
+
+- **CC031 now flags `Barrier.SignalAndWait` in async code.** `Barrier` is not a
+  `WaitHandle` and has no `…Async` counterpart, so the previous type map never saw
+  it. `SignalAndWait` parks every participant until the last one arrives — the same
+  class of problem as `Thread.Join`. Zero-timeout overloads still report: the last
+  arriver runs the post-phase action synchronously before returning (same reason
+  `Monitor.Wait(0)` is not treated as a probe). Look-alike types and synchronous
+  methods stay quiet.
+
 ## [1.39.1] - 2026-08-17
 
 ### Changed

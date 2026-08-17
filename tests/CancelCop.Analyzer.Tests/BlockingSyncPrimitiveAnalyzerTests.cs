@@ -624,6 +624,149 @@ public class TestClass
     }
 
     [Fact]
+    public async Task BarrierSignalAndWait_InAsyncMethod_ShouldReportDiagnostic()
+    {
+        // Barrier is not a WaitHandle and has no …Async counterpart. SignalAndWait parks every
+        // participant until the last one arrives — the same class of problem as Join / WaitOne.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Barrier barrier)
+    {
+        barrier.{|#0:SignalAndWait|}();
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Barrier.SignalAndWait"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BarrierSignalAndWaitInfinite_ShouldReportDiagnostic()
+    {
+        // Timeout.Infinite is SignalAndWait() by another name: unbounded park of every participant.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Barrier barrier)
+    {
+        barrier.{|#0:SignalAndWait|}(Timeout.Infinite);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Barrier.SignalAndWait"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BarrierSignalAndWaitNonZeroTimeout_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Barrier barrier)
+    {
+        barrier.{|#0:SignalAndWait|}(TimeSpan.FromSeconds(5));
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Barrier.SignalAndWait"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BarrierSignalAndWaitZeroTimeout_StillReportsDiagnostic()
+    {
+        // Unlike Wait(0) on ManualResetEventSlim, SignalAndWait(0) is not a pure probe: the last
+        // arriver still runs the post-phase action synchronously before returning.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Barrier barrier)
+    {
+        var a = barrier.{|#0:SignalAndWait|}(0);
+        var b = barrier.{|#1:SignalAndWait|}(TimeSpan.Zero);
+        await Task.Yield();
+    }
+}";
+
+        var t = Test(test);
+        t.ExpectedDiagnostics.Add(Expected("Barrier.SignalAndWait"));
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC031", DiagnosticSeverity.Warning)
+                .WithLocation(1)
+                .WithArguments("Barrier.SignalAndWait")
+        );
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task BarrierSignalAndWait_InSyncMethod_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading;
+
+public class TestClass
+{
+    public void Run(Barrier barrier)
+    {
+        barrier.SignalAndWait();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
+    public async Task BarrierLookalike_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class Barrier
+{
+    public void SignalAndWait() { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Barrier barrier)
+    {
+        barrier.SignalAndWait();
+        await Task.Yield();
+    }
+}";
+
+        await Test(test).RunAsync();
+    }
+
+    [Fact]
     public async Task ReaderWriterLockSlimLookalike_ShouldNotReportDiagnostic()
     {
         var test =
