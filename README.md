@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.41.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.41.1">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.41.0
+Install-Package CancelCop.Analyzer -Version 1.41.1
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -815,8 +815,11 @@ await listener.AcceptTcpClientAsync(cancellationToken);
 ```
 
 > CC036 covers `Socket.Accept`. CC037 covers `TcpClient.Connect`. The listener accept
-> path is a third type, which none of the previous rules reported. `if (listener.Pending())`
-> and `listener.Server.Blocking = false` stay quiet. Analyzer-only in this release; a fixer
+> path is a third type, which none of the previous rules reported. A *positive*
+> `if (listener.Pending())` / `while (Pending())` / `while (flag && Pending())`
+> guard, the inverted poll (`if (!Pending()) continue;` then accept), and
+> `listener.Server.Blocking = false` stay quiet; `if (!listener.Pending()) Accept`
+> is the blocking path and still reports. Analyzer-only in this release; a fixer
 > is a follow-up. The token-taking `Accept*Async` overloads are modern .NET only —
 > `netstandard2.0` / .NET Framework have the tokenless form.
 
