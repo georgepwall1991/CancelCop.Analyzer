@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-08-18
+
+### Added
+
+- **CC046** (`BlockingDbCommandAnalyzer`): flags blocking
+  `DbCommand.ExecuteReader` in async code (parameterless and
+  `CommandBehavior`). ExecuteReader parks a pool thread on a database
+  query. `ExecuteReaderAsync` yields and has accepted a
+  `CancellationToken` since .NET Framework 4.5. `ExecuteReader` is not
+  virtual — providers hide it with `new` for a covariant reader — so the
+  rule matches inheritance plus the framework shape (instance, arity 0,
+  `DbDataReader` return, parameterless or one `CommandBehavior`), not
+  only `OverriddenMethod`. Custom helpers, generic helpers, and statics
+  stay quiet. CC003
+  is EF Core; CC045 is `DbConnection.Open` — verified empirically.
+  Analyzer-only in this slice. Look-alikes, `IDbCommand`,
+  `ExecuteReaderAsync`, and `ExecuteNonQuery` stay quiet.
+  `ExecuteNonQuery` / `ExecuteScalar` are siblings, deferred.
+
 ## [1.48.0] - 2026-08-18
 
 ### Added
