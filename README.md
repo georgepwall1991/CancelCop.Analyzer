@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (44 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (45 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.47.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.48.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.47.0
+Install-Package CancelCop.Analyzer -Version 1.48.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -158,6 +158,7 @@ dotnet build samples/CancelCop.Sample
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
+| **CC045** | Blocking `DbConnection.Open` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -960,6 +961,26 @@ await Dns.GetHostEntryAsync(host, cancellationToken);
 > Analyzer-only in this release; a fixer is a follow-up. The token-taking
 > string `GetHostEntryAsync` overload is modern .NET only; the `IPAddress`
 > async form is tokenless.
+
+### CC045: Blocking `DbConnection.Open` in Async Code
+
+```csharp
+// ❌ Warning CC045 - parks a pool thread on a database handshake
+public async Task RunAsync(DbConnection connection, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    connection.Open();
+}
+
+// ✅ Fixed
+await connection.OpenAsync(cancellationToken);
+```
+
+> CC003 covers EF Core queries. ADO.NET `Open` is a separate type, which none
+> of the previous rules reported. Concrete providers match through the
+> override chain. `DbCommand.Execute*` is a sibling, deferred. Analyzer-only
+> in this release; a fixer is a follow-up. `OpenAsync` has accepted a
+> `CancellationToken` since .NET Framework 4.5.
 
 ## Configuration
 
