@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.46.1] - 2026-08-18
+
+### Changed
+
+- **CC043 stays quiet when the host argument is a compile-time constant IP.**
+  `Dns.GetHostAddresses("127.0.0.1")` and `const string ip = "::1"; GetHostAddresses(ip)`
+  are parses, not queries. `"localhost"`, leading-zero IPv4 (`"010.0.0.1"` —
+  a real query on modern .NET), non-const locals, and interpolated
+  non-constant strings still report. IPv4 matching is host-independent so the
+  analyzer host's parser cannot silence a query.
+
 ## [1.46.0] - 2026-08-18
 
 ### Added
