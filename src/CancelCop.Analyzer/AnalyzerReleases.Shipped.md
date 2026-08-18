@@ -1,3 +1,11 @@
+## Release 1.42.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC039 | Usage | Warning | Avoid blocking UdpClient.Receive in async code
+
 ## Release 1.41.0
 
 ### New Rules

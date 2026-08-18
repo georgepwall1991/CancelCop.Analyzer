@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-08-18
+
+### Added
+
+- **CC039** (`BlockingUdpClientAnalyzer`): flags blocking `UdpClient.Receive` in
+  async code. Receive parks a pool thread until a datagram arrives.
+  `ReceiveAsync` yields and accepts a token. CC036 is Socket-only, CC037 is
+  `TcpClient.Connect`, and CC038 is `TcpListener` accept; the UDP wrapper is a
+  fourth type — verified empirically. Analyzer-only in this slice (fixer is a
+  follow-up). Look-alikes, synchronous methods, `Available > 0` (and
+  `if (Available == 0) continue;` then receive), and
+  `client.Client.Blocking = false` stay quiet.
+
 ## [1.41.1] - 2026-08-18
 
 ### Changed
