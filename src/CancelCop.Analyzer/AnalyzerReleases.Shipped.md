@@ -1,3 +1,11 @@
+## Release 1.40.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC037 | Usage | Warning | Avoid blocking TcpClient.Connect in async code
+
 ## Release 1.38.0
 
 ### New Rules
