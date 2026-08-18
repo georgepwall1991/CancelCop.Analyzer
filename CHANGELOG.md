@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-08-18
+
+### Added
+
+- **CC045** (`BlockingDbConnectionAnalyzer`): flags blocking
+  `DbConnection.Open` in async code. Open parks a pool thread on a database
+  handshake. `OpenAsync` yields and has accepted a `CancellationToken` since
+  .NET Framework 4.5. Concrete providers match through the override chain.
+  CC003 is EF Core only — verified empirically. Analyzer-only in this slice.
+  Look-alikes and synchronous methods stay quiet. `DbCommand.Execute*` is a
+  sibling, deferred.
+
 ## [1.47.0] - 2026-08-18
 
 ### Added

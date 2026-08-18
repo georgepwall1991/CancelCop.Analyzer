@@ -1,3 +1,11 @@
+## Release 1.48.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC045 | Usage | Warning | Avoid blocking DbConnection.Open in async code
+
 ## Release 1.47.0
 
 ### New Rules
