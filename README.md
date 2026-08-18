@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.46.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.46.1">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.46.0
+Install-Package CancelCop.Analyzer -Version 1.46.1
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -931,10 +931,12 @@ await Dns.GetHostAddressesAsync(host, cancellationToken);
 > CC036–CC042 cover Socket / Tcp / Udp / HttpListener / named-pipe. DNS is a
 > separate type, which none of the previous rules reported. CC002 cannot see
 > it (no token overload of the invoked method). The `AddressFamily` overload
-> and `using static System.Net.Dns` also report. `GetHostEntry` is a sibling,
-> deferred. Analyzer-only in this release; a fixer is a follow-up. The
-> token-taking `GetHostAddressesAsync` overload is modern .NET only — .NET
-> Framework has the tokenless form.
+> and `using static System.Net.Dns` also report. A compile-time constant IP
+> (`"127.0.0.1"`, `"::1"`, `const string`) is a parse, not a query, and stays
+> quiet; `"localhost"` and non-const locals still report. `GetHostEntry` is a
+> sibling, deferred. Analyzer-only in this release; a fixer is a follow-up.
+> The token-taking `GetHostAddressesAsync` overload is modern .NET only —
+> .NET Framework has the tokenless form.
 
 ## Configuration
 
