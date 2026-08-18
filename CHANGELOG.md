@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.41.0] - 2026-08-18
+
+### Added
+
+- **CC038** (`BlockingTcpListenerAnalyzer`): flags blocking `TcpListener.AcceptTcpClient`
+  and `AcceptSocket` in async code. Both park a pool thread until a client connects.
+  `AcceptTcpClientAsync` / `AcceptSocketAsync` yield and accept a token. CC036 is
+  Socket-only and CC037 is `TcpClient.Connect`; the listener accept path is a third
+  type — verified empirically. Analyzer-only in this slice (fixer is a follow-up).
+  Look-alikes, synchronous methods, `Pending()`-guarded accepts, and
+  `listener.Server.Blocking = false` stay quiet.
+
 ## [1.40.0] - 2026-08-17
 
 ### Added

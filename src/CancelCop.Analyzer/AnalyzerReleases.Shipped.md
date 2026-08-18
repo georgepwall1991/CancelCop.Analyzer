@@ -1,3 +1,11 @@
+## Release 1.41.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC038 | Usage | Warning | Avoid blocking TcpListener accept in async code
+
 ## Release 1.40.0
 
 ### New Rules
