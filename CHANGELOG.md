@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.40.0] - 2026-08-17
+
+### Added
+
+- **CC037** (`BlockingTcpClientAnalyzer`): flags blocking `TcpClient.Connect` in async
+  code. `Connect` parks a pool thread until the handshake finishes or TCP times out,
+  and it does not take a `CancellationToken`. `ConnectAsync` yields and accepts a
+  token. CC036 already covers `Socket.Connect`; application code almost always uses
+  the `TcpClient` wrapper, which none of the 36 shipped rules reported — verified
+  empirically. Analyzer-only in this slice (fixer is a follow-up). Look-alikes and
+  synchronous methods stay quiet. `thisClient.Client.Blocking = false` silences only
+  IP/endpoint overloads on that same simple local, parameter, or field —
+  hostname `Connect` still does synchronous DNS, property/method receivers are
+  not exempt (a getter may return a new instance), an unrelated
+  `Socket.Blocking = false` does not exempt, and a later write to the client
+  (or its `Client` property) invalidates the exemption.
+
 ## [1.39.4] - 2026-08-17
 
 ### Changed
