@@ -1,3 +1,11 @@
+## Release 1.49.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC046 | Usage | Warning | Avoid blocking DbCommand.ExecuteReader in async code
+
 ## Release 1.48.0
 
 ### New Rules

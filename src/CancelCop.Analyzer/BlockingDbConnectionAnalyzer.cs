@@ -25,7 +25,7 @@ namespace CancelCop.Analyzer;
 /// <para>
 /// <b>Why this is not CC003:</b> CC003 is symbol-gated to EF Core query
 /// methods. ADO.NET Open produced zero diagnostics from every shipped rule —
-/// verified empirically. <c>DbCommand.Execute*</c> is a sibling, deferred.
+/// verified empirically. <c>DbCommand.ExecuteReader</c> is CC046.
 /// </para>
 /// <para>
 /// Analyzer-only in this slice: a mechanical rewrite is a follow-up.
