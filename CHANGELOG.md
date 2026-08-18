@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.45.0] - 2026-08-18
+
+### Added
+
+- **CC042** (`BlockingNamedPipeClientAnalyzer`): flags blocking
+  `NamedPipeClientStream.Connect` in async code (parameterless, `int`, and
+  `TimeSpan` overloads). Connect parks a pool thread until the server accepts
+  or a timeout elapses. `ConnectAsync` yields; on modern .NET it takes a
+  `CancellationToken`. CC041 is the server accept wait; the client is a sibling
+  type — verified empirically. Analyzer-only in this slice. Look-alikes and
+  synchronous methods stay quiet.
+
 ## [1.44.0] - 2026-08-18
 
 ### Added
