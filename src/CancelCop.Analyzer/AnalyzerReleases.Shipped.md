@@ -1,3 +1,11 @@
+## Release 1.46.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC043 | Usage | Warning | Avoid blocking Dns.GetHostAddresses in async code
+
 ## Release 1.45.0
 
 ### New Rules

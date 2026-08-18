@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (42 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (43 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.45.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.46.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.45.0
+Install-Package CancelCop.Analyzer -Version 1.46.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -156,6 +156,7 @@ dotnet build samples/CancelCop.Sample
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
+| **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -912,6 +913,28 @@ await client.ConnectAsync(cancellationToken);
 > Analyzer-only in this release; a fixer is a follow-up. `ConnectAsync` is
 > modern .NET only — the rule stays quiet where that member is absent
 > (.NET Framework has no `ConnectAsync` at all).
+
+### CC043: Blocking `Dns.GetHostAddresses` in Async Code
+
+```csharp
+// ❌ Warning CC043 - parks a pool thread on a DNS query
+public async Task RunAsync(string host, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    Dns.GetHostAddresses(host);
+}
+
+// ✅ Fixed
+await Dns.GetHostAddressesAsync(host, cancellationToken);
+```
+
+> CC036–CC042 cover Socket / Tcp / Udp / HttpListener / named-pipe. DNS is a
+> separate type, which none of the previous rules reported. CC002 cannot see
+> it (no token overload of the invoked method). The `AddressFamily` overload
+> and `using static System.Net.Dns` also report. `GetHostEntry` is a sibling,
+> deferred. Analyzer-only in this release; a fixer is a follow-up. The
+> token-taking `GetHostAddressesAsync` overload is modern .NET only — .NET
+> Framework has the tokenless form.
 
 ## Configuration
 

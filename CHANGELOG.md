@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.46.0] - 2026-08-18
+
+### Added
+
+- **CC043** (`BlockingDnsAnalyzer`): flags blocking `Dns.GetHostAddresses` in
+  async code (string and `AddressFamily` overloads, including `using static`).
+  GetHostAddresses parks a pool thread on a DNS query. `GetHostAddressesAsync`
+  yields; on modern .NET it takes a `CancellationToken`. CC002 cannot see it
+  (no token overload of the invoked method). CC036–CC042 are Socket/Tcp/Udp/
+  HttpListener/named-pipe; DNS is a separate type — verified empirically.
+  Analyzer-only in this slice. Look-alikes and synchronous methods stay quiet.
+  `GetHostEntry` is a sibling, deferred.
+
 ## [1.45.0] - 2026-08-18
 
 ### Added
