@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.41.1] - 2026-08-18
+
+### Changed
+
+- **CC038 only treats a *positive* `Pending()` guard as non-blocking.**
+  `if (!listener.Pending()) AcceptTcpClient()` is the blocking path (no client
+  is queued) and now reports. `if (listener.Pending() == false)` is the same.
+  `if (!Pending()) { } else Accept`, `while (Pending())`,
+  `while (flag && Pending())`, `if (Pending() is true)`, and the inverted
+  poll (`if (!Pending()) continue;` then accept) stay quiet — those still
+  require a queued client.
+
 ## [1.41.0] - 2026-08-18
 
 ### Added

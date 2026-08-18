@@ -118,6 +118,373 @@ public class Server
     }
 
     [Fact]
+    public async Task AcceptTcpClient_AfterNegatedPendingGuard_ShouldReportDiagnostic()
+    {
+        // if (!Pending()) is the blocking path: no client is queued, so Accept parks.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listener.Pending())
+            listener.{|#0:AcceptTcpClient|}();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(Expected("AcceptTcpClient"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_AfterPendingEqualsFalse_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (listener.Pending() == false)
+            listener.{|#0:AcceptTcpClient|}();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(Expected("AcceptTcpClient"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_WhilePending_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        while (listener.Pending())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            listener.AcceptTcpClient();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_WhileNotPending_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        while (!listener.Pending())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            listener.{|#0:AcceptTcpClient|}();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(Expected("AcceptTcpClient"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_AfterNegatedPendingContinue_ShouldNotReportDiagnostic()
+    {
+        // Canonical poll: skip the accept when nothing is queued.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (!listener.Pending())
+            {
+                await Task.Delay(10, cancellationToken);
+                continue;
+            }
+            listener.AcceptTcpClient();
+        }
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_WhilePendingAndNotCancelled_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested && listener.Pending())
+            listener.AcceptTcpClient();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_AfterNegatedPendingReturn_ShouldNotReportDiagnostic()
+    {
+        // Method-level inverted poll: leave when nothing is queued.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listener.Pending())
+            return;
+        listener.AcceptTcpClient();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptSocket_AfterNegatedPendingGuard_ShouldReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listener.Pending())
+            listener.{|#0:AcceptSocket|}();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(Expected("AcceptSocket"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_AfterNegatedPendingWithoutExit_ShouldReportDiagnostic()
+    {
+        // Fall-through after a negated probe is still the blocking path.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listener.Pending())
+            await Task.Delay(10, cancellationToken);
+        listener.{|#0:AcceptTcpClient|}();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(Expected("AcceptTcpClient"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_AfterPositivePendingContinue_ShouldReportDiagnostic()
+    {
+        // if (Pending()) continue; then Accept runs when nothing is queued.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (listener.Pending())
+                continue;
+            listener.{|#0:AcceptTcpClient|}();
+        }
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        t.ExpectedDiagnostics.Add(Expected("AcceptTcpClient"));
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_AfterPendingIsTrue_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (listener.Pending() is true)
+            listener.AcceptTcpClient();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task AcceptTcpClient_InElseOfNegatedPending_ShouldNotReportDiagnostic()
+    {
+        // if (!Pending()) { } else Accept  is the same as if (Pending()) Accept.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listener.Pending())
+        {
+        }
+        else
+        {
+            listener.AcceptTcpClient();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
     public async Task AcceptTcpClient_AfterOtherListenerPending_ShouldReportDiagnostic()
     {
         var test =

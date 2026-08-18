@@ -148,6 +148,14 @@ public class BlockingTcpListenerAnalyzer : DiagnosticAnalyzer
         );
     }
 
+    /// <summary>
+    /// True when the accept sits in a branch that requires <c>Pending()</c> to be
+    /// true — the documented non-blocking path. A negated guard
+    /// (<c>if (!listener.Pending()) Accept</c>) is the blocking path and does
+    /// not exempt. An inverted early-exit
+    /// (<c>if (!Pending()) continue;</c> then accept) and a conjunct
+    /// (<c>while (flag &amp;&amp; Pending())</c>) are the positive path.
+    /// </summary>
     private static bool PendingWasCheckedOnThisListener(
         InvocationExpressionSyntax accept,
         SyntaxNodeAnalysisContext context,
@@ -170,28 +178,335 @@ public class BlockingTcpListenerAnalyzer : DiagnosticAnalyzer
         if (pending is null)
             return false;
 
-        var guard = scope
-            .DescendantNodes(descendIntoChildren: child =>
-                child == scope
-                || child is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax)
-            )
-            .OfType<InvocationExpressionSyntax>()
-            .Where(invocation =>
-                invocation.SpanStart < accept.SpanStart
-                && SymbolEqualityComparer.Default.Equals(
-                    context
-                        .SemanticModel.GetSymbolInfo(invocation, context.CancellationToken)
-                        .Symbol,
-                    pending
-                )
-                && SameListener(invocation, accept, acceptReceiver, acceptIsCurrent, context)
-            )
-            .OrderBy(invocation => invocation.SpanStart)
-            .LastOrDefault();
+        foreach (var ancestor in accept.Ancestors())
+        {
+            if (ancestor == scope)
+                break;
 
-        return guard != null
-            && !ReceiverWasReassignedAfter(scope, guard, accept, acceptReceiver, context);
+            InvocationExpressionSyntax? pendingCall = null;
+            var pendingMustBeTrue = false;
+            SyntaxNode? guardedBody = null;
+
+            switch (ancestor)
+            {
+                case IfStatementSyntax ifStatement:
+                    if (
+                        !TryGetPendingPolarity(
+                            ifStatement.Condition,
+                            accept,
+                            acceptReceiver,
+                            acceptIsCurrent,
+                            pending,
+                            context,
+                            out pendingMustBeTrue,
+                            out pendingCall
+                        )
+                    )
+                        continue;
+                    if (ifStatement.Statement.Span.Contains(accept.Span) && pendingMustBeTrue)
+                        guardedBody = ifStatement.Statement;
+                    else if (
+                        ifStatement.Else?.Statement.Span.Contains(accept.Span) == true
+                        && !pendingMustBeTrue
+                    )
+                        guardedBody = ifStatement.Else.Statement;
+                    break;
+                case WhileStatementSyntax whileStatement:
+                    if (
+                        !TryGetPendingPolarity(
+                            whileStatement.Condition,
+                            accept,
+                            acceptReceiver,
+                            acceptIsCurrent,
+                            pending,
+                            context,
+                            out pendingMustBeTrue,
+                            out pendingCall
+                        )
+                    )
+                        continue;
+                    if (pendingMustBeTrue && whileStatement.Statement.Span.Contains(accept.Span))
+                        guardedBody = whileStatement.Statement;
+                    break;
+                case BlockSyntax block:
+                    // if (!Pending()) { ... continue/return; } accept — the if is a
+                    // sibling, not an ancestor, so the cases above never see it.
+                    if (
+                        !EarlyExitPendingDominates(
+                            block,
+                            accept,
+                            acceptReceiver,
+                            acceptIsCurrent,
+                            pending,
+                            context,
+                            out pendingCall
+                        )
+                    )
+                        continue;
+                    guardedBody = block;
+                    break;
+            }
+
+            if (
+                guardedBody != null
+                && pendingCall != null
+                && !ReceiverWasReassignedAfter(scope, pendingCall, accept, acceptReceiver, context)
+            )
+                return true;
+        }
+
+        return false;
     }
+
+    /// <summary>
+    /// True when a preceding sibling <c>if</c> runs only when <c>Pending()</c> is
+    /// false and every path in that body exits. Remaining statements in the
+    /// block then run only on the non-blocking path.
+    /// </summary>
+    private static bool EarlyExitPendingDominates(
+        BlockSyntax block,
+        InvocationExpressionSyntax accept,
+        ISymbol? acceptReceiver,
+        bool acceptIsCurrent,
+        IMethodSymbol pending,
+        SyntaxNodeAnalysisContext context,
+        out InvocationExpressionSyntax? pendingCall
+    )
+    {
+        pendingCall = null;
+        var acceptStatement = block.Statements.FirstOrDefault(statement =>
+            statement.Span.Contains(accept.Span)
+        );
+        if (acceptStatement is null)
+            return false;
+
+        foreach (var preceding in block.Statements)
+        {
+            if (preceding.SpanStart >= acceptStatement.SpanStart)
+                break;
+            if (preceding is not IfStatementSyntax ifStatement)
+                continue;
+            if (
+                !TryGetPendingPolarity(
+                    ifStatement.Condition,
+                    accept,
+                    acceptReceiver,
+                    acceptIsCurrent,
+                    pending,
+                    context,
+                    out var pendingMustBeTrue,
+                    out var call
+                )
+            )
+                continue;
+            if (pendingMustBeTrue || !AllPathsExit(ifStatement.Statement) || call is null)
+                continue;
+
+            pendingCall = call;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="condition"/> is this listener's
+    /// <c>Pending()</c> with optional <c>!</c> / <c>== bool</c> wrappers.
+    /// <paramref name="pendingMustBeTrue"/> is the value <c>Pending()</c> must
+    /// have for the then/while body to run.
+    /// </summary>
+    private static bool TryGetPendingPolarity(
+        ExpressionSyntax condition,
+        InvocationExpressionSyntax accept,
+        ISymbol? acceptReceiver,
+        bool acceptIsCurrent,
+        IMethodSymbol pending,
+        SyntaxNodeAnalysisContext context,
+        out bool pendingMustBeTrue,
+        out InvocationExpressionSyntax? pendingCall
+    )
+    {
+        pendingMustBeTrue = true;
+        pendingCall = null;
+        condition = Unwrap(condition);
+
+        if (
+            condition is BinaryExpressionSyntax andCondition
+            && andCondition.IsKind(SyntaxKind.LogicalAndExpression)
+        )
+        {
+            foreach (var operand in AndOperands(andCondition))
+            {
+                if (
+                    TryGetPendingPolarity(
+                        operand,
+                        accept,
+                        acceptReceiver,
+                        acceptIsCurrent,
+                        pending,
+                        context,
+                        out var operandPendingTrue,
+                        out var operandCall
+                    ) && operandPendingTrue
+                )
+                {
+                    pendingMustBeTrue = true;
+                    pendingCall = operandCall;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        var negated = false;
+        while (
+            condition is PrefixUnaryExpressionSyntax prefix
+            && prefix.IsKind(SyntaxKind.LogicalNotExpression)
+        )
+        {
+            negated = !negated;
+            condition = Unwrap(prefix.Operand);
+        }
+
+        if (
+            condition is BinaryExpressionSyntax binary
+            && (
+                binary.IsKind(SyntaxKind.EqualsExpression)
+                || binary.IsKind(SyntaxKind.NotEqualsExpression)
+            )
+        )
+        {
+            var left = Unwrap(binary.Left);
+            var right = Unwrap(binary.Right);
+            var constant = context.SemanticModel.GetConstantValue(
+                left is InvocationExpressionSyntax ? right : left,
+                context.CancellationToken
+            );
+            var invocation =
+                left is InvocationExpressionSyntax leftInvocation ? leftInvocation
+                : right is InvocationExpressionSyntax rightInvocation ? rightInvocation
+                : null;
+            if (invocation is null || !constant.HasValue || constant.Value is not bool required)
+                return false;
+
+            if (
+                !IsThisListenersPending(
+                    invocation,
+                    accept,
+                    acceptReceiver,
+                    acceptIsCurrent,
+                    pending,
+                    context
+                )
+            )
+                return false;
+
+            pendingCall = invocation;
+            var equals = binary.IsKind(SyntaxKind.EqualsExpression);
+            pendingMustBeTrue = equals ? required != negated : required == negated;
+            return true;
+        }
+
+        if (
+            condition is IsPatternExpressionSyntax isPattern
+            && isPattern.Pattern is ConstantPatternSyntax constantPattern
+        )
+        {
+            var required = context.SemanticModel.GetConstantValue(
+                constantPattern.Expression,
+                context.CancellationToken
+            );
+            if (
+                Unwrap(isPattern.Expression) is InvocationExpressionSyntax patternInvocation
+                && required is { HasValue: true, Value: bool patternRequired }
+                && IsThisListenersPending(
+                    patternInvocation,
+                    accept,
+                    acceptReceiver,
+                    acceptIsCurrent,
+                    pending,
+                    context
+                )
+            )
+            {
+                pendingCall = patternInvocation;
+                pendingMustBeTrue = patternRequired != negated;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (condition is not InvocationExpressionSyntax pendingInvocation)
+            return false;
+        if (
+            !IsThisListenersPending(
+                pendingInvocation,
+                accept,
+                acceptReceiver,
+                acceptIsCurrent,
+                pending,
+                context
+            )
+        )
+            return false;
+
+        pendingCall = pendingInvocation;
+        pendingMustBeTrue = !negated;
+        return true;
+    }
+
+    private static IEnumerable<ExpressionSyntax> AndOperands(ExpressionSyntax expression)
+    {
+        expression = Unwrap(expression);
+        if (
+            expression is BinaryExpressionSyntax binary
+            && binary.IsKind(SyntaxKind.LogicalAndExpression)
+        )
+        {
+            foreach (var operand in AndOperands(binary.Left))
+                yield return operand;
+            foreach (var operand in AndOperands(binary.Right))
+                yield return operand;
+            yield break;
+        }
+
+        yield return expression;
+    }
+
+    private static bool AllPathsExit(StatementSyntax statement)
+    {
+        switch (statement)
+        {
+            case ContinueStatementSyntax:
+            case ReturnStatementSyntax:
+            case ThrowStatementSyntax:
+            case BreakStatementSyntax:
+                return true;
+            case BlockSyntax { Statements.Count: > 0 } block:
+                return AllPathsExit(block.Statements[block.Statements.Count - 1]);
+            case IfStatementSyntax ifStatement:
+                return AllPathsExit(ifStatement.Statement)
+                    && ifStatement.Else != null
+                    && AllPathsExit(ifStatement.Else.Statement);
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsThisListenersPending(
+        InvocationExpressionSyntax invocation,
+        InvocationExpressionSyntax accept,
+        ISymbol? acceptReceiver,
+        bool acceptIsCurrent,
+        IMethodSymbol pending,
+        SyntaxNodeAnalysisContext context
+    ) =>
+        SymbolEqualityComparer.Default.Equals(
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol,
+            pending
+        ) && SameListener(invocation, accept, acceptReceiver, acceptIsCurrent, context);
 
     private static bool ServerNonBlockingIsSet(
         InvocationExpressionSyntax accept,
