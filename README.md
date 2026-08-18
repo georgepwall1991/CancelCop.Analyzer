@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (43 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (44 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.46.1">
+<PackageReference Include="CancelCop.Analyzer" Version="1.47.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.46.1
+Install-Package CancelCop.Analyzer -Version 1.47.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -157,6 +157,7 @@ dotnet build samples/CancelCop.Sample
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
+| **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -933,10 +934,32 @@ await Dns.GetHostAddressesAsync(host, cancellationToken);
 > it (no token overload of the invoked method). The `AddressFamily` overload
 > and `using static System.Net.Dns` also report. A compile-time constant IP
 > (`"127.0.0.1"`, `"::1"`, `const string`) is a parse, not a query, and stays
-> quiet; `"localhost"` and non-const locals still report. `GetHostEntry` is a
-> sibling, deferred. Analyzer-only in this release; a fixer is a follow-up.
-> The token-taking `GetHostAddressesAsync` overload is modern .NET only —
-> .NET Framework has the tokenless form.
+> quiet; `"localhost"` and non-const locals still report. Analyzer-only in
+> this release; a fixer is a follow-up. The token-taking
+> `GetHostAddressesAsync` overload is modern .NET only — .NET Framework has
+> the tokenless form.
+
+### CC044: Blocking `Dns.GetHostEntry` in Async Code
+
+```csharp
+// ❌ Warning CC044 - parks a pool thread on a DNS query (incl. reverse lookup)
+public async Task RunAsync(string host, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    Dns.GetHostEntry(host);
+}
+
+// ✅ Fixed
+await Dns.GetHostEntryAsync(host, cancellationToken);
+```
+
+> CC043 covers `GetHostAddresses` only. GetHostEntry is a sibling, which
+> none of the previous rules reported. A numeric IP still reports — unlike
+> GetHostAddresses, GetHostEntry does reverse DNS for that address. The
+> `AddressFamily` and `IPAddress` overloads and `using static` also report.
+> Analyzer-only in this release; a fixer is a follow-up. The token-taking
+> string `GetHostEntryAsync` overload is modern .NET only; the `IPAddress`
+> async form is tokenless.
 
 ## Configuration
 

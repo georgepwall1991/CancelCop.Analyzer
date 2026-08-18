@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.47.0] - 2026-08-18
+
+### Added
+
+- **CC044** (`BlockingDnsGetHostEntryAnalyzer`): flags blocking
+  `Dns.GetHostEntry` in async code (string, `AddressFamily`, and `IPAddress`
+  overloads, including `using static`). GetHostEntry parks a pool thread on a
+  DNS query, including reverse lookup of a numeric IP — so the CC043
+  constant-IP exemption does **not** apply. `GetHostEntryAsync` yields; on
+  modern .NET the string overloads take a `CancellationToken`. CC043 is
+  GetHostAddresses only — verified empirically. Analyzer-only in this slice.
+  Look-alikes and synchronous methods stay quiet.
+
 ## [1.46.1] - 2026-08-18
 
 ### Changed
