@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.44.0] - 2026-08-18
+
+### Added
+
+- **CC041** (`BlockingNamedPipeAnalyzer`): flags blocking
+  `NamedPipeServerStream.WaitForConnection` in async code. WaitForConnection parks
+  a pool thread until a client connects. `WaitForConnectionAsync` yields; on
+  modern .NET it takes a `CancellationToken`. CC028 maps File/Stream
+  Read/Write/CopyTo/Flush only; CC036–CC040 are Socket/TcpClient/TcpListener/
+  UdpClient/HttpListener; the named-pipe server is a sixth type — verified
+  empirically. Analyzer-only in this slice. Look-alikes and synchronous methods
+  stay quiet.
+
 ## [1.43.0] - 2026-08-18
 
 ### Added
