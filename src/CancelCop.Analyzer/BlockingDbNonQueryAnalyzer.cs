@@ -8,29 +8,28 @@ namespace CancelCop.Analyzer;
 
 /// <summary>
 /// Analyzer that detects a blocking
-/// <c>System.Data.Common.DbCommand.ExecuteReader</c> inside async code.
+/// <c>System.Data.Common.DbCommand.ExecuteNonQuery</c> inside async code.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Rule ID:</b> CC046
+/// <b>Rule ID:</b> CC047
 /// </para>
 /// <para>
 /// <b>Why this matters:</b>
-/// <c>DbCommand.ExecuteReader</c> parks a thread-pool thread on a database
-/// query. That wait is not a <c>CancellationToken</c>.
-/// <c>ExecuteReaderAsync</c> yields the thread and accepts a token (since
-/// .NET Framework 4.5). Concrete providers (SqlCommand, NpgsqlCommand, …)
-/// typically hide <c>ExecuteReader</c> with <c>new</c> for a covariant
-/// reader, so the rule matches inheritance plus the framework shape —
-/// not only <c>OverriddenMethod</c>, which is empty because the method
-/// is not virtual. Custom helpers, generic helpers, and statics stay quiet.
+/// <c>DbCommand.ExecuteNonQuery</c> parks a thread-pool thread on a
+/// command that does not return rows. That wait is not a
+/// <c>CancellationToken</c>. <c>ExecuteNonQueryAsync</c> yields the thread
+/// and accepts a token (since .NET Framework 4.5). The method is abstract,
+/// so overrides match; <c>new</c> hiders still match by inheritance plus
+/// the framework shape. Custom helpers, generic helpers, and statics stay
+/// quiet.
 /// </para>
 /// <para>
-/// <b>Why this is not CC003 or CC045:</b> CC003 is symbol-gated to EF Core
-/// query methods. CC045 is <c>DbConnection.Open</c>. ADO.NET
-/// <c>ExecuteReader</c> produced zero diagnostics from every shipped rule —
-/// verified empirically. <c>ExecuteNonQuery</c> is CC047.
-/// <c>ExecuteScalar</c> is a sibling, deferred.
+/// <b>Why this is not CC003, CC045, or CC046:</b> CC003 is EF Core. CC045
+/// is <c>DbConnection.Open</c>. CC046 is <c>ExecuteReader</c>. ADO.NET
+/// <c>ExecuteNonQuery</c> produced zero diagnostics from every shipped
+/// rule — verified empirically. <c>ExecuteScalar</c> is a sibling,
+/// deferred.
 /// </para>
 /// <para>
 /// Analyzer-only in this slice: a mechanical rewrite is a follow-up.
@@ -40,24 +39,24 @@ namespace CancelCop.Analyzer;
 /// <code>
 /// public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
 /// {
-///     command.ExecuteReader();   // CC046
+///     command.ExecuteNonQuery();   // CC047
 /// }
 /// </code>
 /// </example>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
+public class BlockingDbNonQueryAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
     /// The diagnostic ID for this analyzer rule.
     /// </summary>
-    public const string DiagnosticId = "CC046";
+    public const string DiagnosticId = "CC047";
 
     private static readonly LocalizableString Title =
-        "Avoid blocking DbCommand.ExecuteReader in async code";
+        "Avoid blocking DbCommand.ExecuteNonQuery in async code";
     private static readonly LocalizableString MessageFormat =
         "Blocking 'DbCommand.{0}' in async code; use '{0}Async'";
     private static readonly LocalizableString Description =
-        "DbCommand.ExecuteReader parks a thread-pool thread on a database query; in async code use ExecuteReaderAsync. ExecuteReaderAsync has accepted a CancellationToken since .NET Framework 4.5.";
+        "DbCommand.ExecuteNonQuery parks a thread-pool thread on a command that does not return rows; in async code use ExecuteNonQueryAsync. ExecuteNonQueryAsync has accepted a CancellationToken since .NET Framework 4.5.";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -87,16 +86,8 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
             if (commandType is null)
                 return;
 
-            var readerType = start.Compilation.GetTypeByMetadataName(
-                "System.Data.Common.DbDataReader"
-            );
-            var behaviorType = start.Compilation.GetTypeByMetadataName(
-                "System.Data.CommandBehavior"
-            );
-
             start.RegisterSyntaxNodeAction(
-                nodeContext =>
-                    AnalyzeInvocation(nodeContext, commandType, readerType, behaviorType),
+                nodeContext => AnalyzeInvocation(nodeContext, commandType),
                 SyntaxKind.InvocationExpression
             );
         });
@@ -104,9 +95,7 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeInvocation(
         SyntaxNodeAnalysisContext context,
-        INamedTypeSymbol commandType,
-        INamedTypeSymbol? readerType,
-        INamedTypeSymbol? behaviorType
+        INamedTypeSymbol commandType
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
@@ -117,7 +106,7 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
             IdentifierNameSyntax identifier => identifier,
             _ => null,
         };
-        if (invokedName is null || invokedName.Identifier.Text != "ExecuteReader")
+        if (invokedName is null || invokedName.Identifier.Text != "ExecuteNonQuery")
             return;
 
         if (
@@ -126,10 +115,10 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        if (!IsFrameworkExecuteReader(method, commandType, readerType, behaviorType))
+        if (!IsFrameworkExecuteNonQuery(method, commandType))
             return;
 
-        if (commandType.GetMembers("ExecuteReaderAsync").IsEmpty)
+        if (commandType.GetMembers("ExecuteNonQueryAsync").IsEmpty)
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
@@ -139,44 +128,31 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// <c>ExecuteReader</c> is not virtual. Providers hide the framework
-    /// overloads with <c>new</c> for a covariant reader, so
-    /// <c>OverriddenMethod</c> is empty. Match those hiders by shape:
-    /// instance, returns <c>DbDataReader</c> (or subclass), and either
-    /// parameterless or a single <c>CommandBehavior</c>. Custom helpers,
-    /// generic helpers, and statics stay quiet.
+    /// Match the framework <c>ExecuteNonQuery()</c> shape: instance, arity
+    /// 0, returns <c>int</c>, no parameters, declared on
+    /// <c>DbCommand</c> or a subclass. Overrides and <c>new</c> hiders
+    /// report; custom helpers and generics stay quiet.
     /// </summary>
-    private static bool IsFrameworkExecuteReader(
+    private static bool IsFrameworkExecuteNonQuery(
         IMethodSymbol method,
-        INamedTypeSymbol commandType,
-        INamedTypeSymbol? readerType,
-        INamedTypeSymbol? behaviorType
+        INamedTypeSymbol commandType
     )
     {
-        if (method.IsStatic || method.Arity != 0 || readerType is null)
+        if (method.IsStatic || method.Arity != 0)
             return false;
 
         if (!IsOrInherits(method.ContainingType, commandType))
             return false;
 
-        if (!IsOrInherits(method.ReturnType, readerType))
+        if (method.ReturnType.SpecialType != SpecialType.System_Int32)
             return false;
 
-        if (method.Parameters.Length == 0)
-            return true;
-
-        return method.Parameters.Length == 1
-            && behaviorType is not null
-            && SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, behaviorType);
+        return method.Parameters.Length == 0;
     }
 
-    private static bool IsOrInherits(ITypeSymbol? type, INamedTypeSymbol expected)
+    private static bool IsOrInherits(INamedTypeSymbol? type, INamedTypeSymbol expected)
     {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
+        for (var current = type; current is not null; current = current.BaseType)
         {
             if (SymbolEqualityComparer.Default.Equals(current, expected))
                 return true;
