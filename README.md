@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (38 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (39 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.41.1">
+<PackageReference Include="CancelCop.Analyzer" Version="1.42.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.41.1
+Install-Package CancelCop.Analyzer -Version 1.42.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -152,6 +152,7 @@ dotnet build samples/CancelCop.Sample
 | **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ❌ |
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ❌ |
+| **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -822,6 +823,31 @@ await listener.AcceptTcpClientAsync(cancellationToken);
 > is the blocking path and still reports. Analyzer-only in this release; a fixer
 > is a follow-up. The token-taking `Accept*Async` overloads are modern .NET only —
 > `netstandard2.0` / .NET Framework have the tokenless form.
+
+### CC039: Blocking `UdpClient.Receive` in Async Code
+
+```csharp
+// ❌ Warning CC039 - parks a pool thread until a datagram arrives
+public async Task RunAsync(UdpClient client, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    IPEndPoint? remote = null;
+    client.Receive(ref remote);
+}
+
+// ✅ Fixed (.NET 6+; older targets use ReceiveAsync() without a token)
+await client.ReceiveAsync(cancellationToken);
+```
+
+> CC036 covers `Socket.Receive`. CC037 covers `TcpClient.Connect`. CC038 covers
+> `TcpListener` accept. The UDP wrapper is a fourth type, which none of the
+> previous rules reported. `if (client.Available > 0)`,
+> `while (Available > 0)`, the inverted poll (`if (Available == 0) continue;`
+> then receive), and `client.Client.Blocking = false` stay quiet;
+> `if (Available == 0) Receive` is the blocking path and still reports.
+> Analyzer-only in this release; a fixer is a follow-up. The token-taking
+> `ReceiveAsync` overload is modern .NET only — `netstandard2.0` / .NET
+> Framework have the tokenless form.
 
 ## Configuration
 
