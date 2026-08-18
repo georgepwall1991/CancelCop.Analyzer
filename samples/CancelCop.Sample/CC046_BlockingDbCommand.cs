@@ -10,7 +10,7 @@
 //
 // WHY THIS IS NOT CC003 OR CC045:
 // CC003 is EF Core query methods. CC045 is DbConnection.Open.
-// ExecuteNonQuery / ExecuteScalar are siblings, deferred.
+// ExecuteNonQuery is CC047. ExecuteScalar is CC048.
 // =============================================================================
 
 using System.Data.Common;
