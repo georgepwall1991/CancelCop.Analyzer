@@ -1,3 +1,11 @@
+## Release 1.45.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC042 | Usage | Warning | Avoid blocking NamedPipeClientStream.Connect in async code
+
 ## Release 1.44.0
 
 ### New Rules
