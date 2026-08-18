@@ -205,7 +205,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.51.0: 1224 tests, green locally. **new rule CC048** — blocking
+- v1.51.0: 1225 tests, green locally. **new rule CC048** — blocking
   `DbCommand.ExecuteScalar` in async code. Empirically 0 diagnostics
   from every shipped rule. Overrides and `new` hiders match by
   inheritance + framework shape (instance, arity 0, non-`void` return),

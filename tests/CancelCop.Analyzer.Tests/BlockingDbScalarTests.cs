@@ -372,6 +372,39 @@ public class Work
     }
 
     [Fact]
+    public async Task ExecuteScalar_TaskDerivedReturnHider_ShouldNotReportDiagnostic()
+    {
+        var test =
+            MidCommandScaffold
+            + @"
+public class MyTask : Task<object>
+{
+    public MyTask() : base(() => null!) { }
+}
+
+public class HiddenCommand : MidCommand
+{
+    public new MyTask ExecuteScalar() => new MyTask();
+}
+
+public class Work
+{
+    public async Task RunAsync(HiddenCommand command, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await command.ExecuteScalar();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
     public async Task ExecuteScalar_AwaitableReturnHider_ShouldNotReportDiagnostic()
     {
         // A new Task<object> ExecuteScalar() is already async-shaped; it

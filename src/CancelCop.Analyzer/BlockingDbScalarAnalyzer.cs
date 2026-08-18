@@ -153,14 +153,21 @@ public class BlockingDbScalarAnalyzer : DiagnosticAnalyzer
 
     private static bool IsTaskLike(ITypeSymbol type)
     {
-        if (type is not INamedTypeSymbol named)
-            return false;
+        for (
+            var current = type as INamedTypeSymbol;
+            current is not null;
+            current = current.BaseType
+        )
+        {
+            var definition = current.OriginalDefinition;
+            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
+                continue;
 
-        var definition = named.OriginalDefinition;
-        if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-            return false;
+            if (definition.Name is "Task" or "ValueTask")
+                return true;
+        }
 
-        return definition.Name is "Task" or "ValueTask";
+        return false;
     }
 
     private static bool IsOrInherits(INamedTypeSymbol? type, INamedTypeSymbol expected)
