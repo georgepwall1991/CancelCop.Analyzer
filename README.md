@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (37 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (38 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.40.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.41.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.40.0
+Install-Package CancelCop.Analyzer -Version 1.41.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -151,6 +151,7 @@ dotnet build samples/CancelCop.Sample
 | **CC035** | Empty `catch (OperationCanceledException)` silently discards the cancellation | Info | ❌ |
 | **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ❌ |
+| **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -784,7 +785,7 @@ public async Task RunAsync(TcpClient client, CancellationToken cancellationToken
     client.Connect(host, port);
 }
 
-// ✅ Fixed (.NET 5+; older targets use ConnectAsync(host, port) without a token)
+// ✅ Fixed (.NET 6+; older targets use ConnectAsync(host, port) without a token)
 await client.ConnectAsync(host, port, cancellationToken);
 ```
 
@@ -798,6 +799,26 @@ await client.ConnectAsync(host, port, cancellationToken);
 > exemption. Analyzer-only
 > in this release; a fixer is a follow-up. The token-taking `ConnectAsync` overload is modern
 > .NET only — `netstandard2.0` / .NET Framework have the tokenless form.
+
+### CC038: Blocking `TcpListener` Accept in Async Code
+
+```csharp
+// ❌ Warning CC038 - parks a pool thread until a client connects
+public async Task RunAsync(TcpListener listener, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    listener.AcceptTcpClient();
+}
+
+// ✅ Fixed (.NET 6+; older targets use AcceptTcpClientAsync() without a token)
+await listener.AcceptTcpClientAsync(cancellationToken);
+```
+
+> CC036 covers `Socket.Accept`. CC037 covers `TcpClient.Connect`. The listener accept
+> path is a third type, which none of the previous rules reported. `if (listener.Pending())`
+> and `listener.Server.Blocking = false` stay quiet. Analyzer-only in this release; a fixer
+> is a follow-up. The token-taking `Accept*Async` overloads are modern .NET only —
+> `netstandard2.0` / .NET Framework have the tokenless form.
 
 ## Configuration
 
