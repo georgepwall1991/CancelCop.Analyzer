@@ -1001,7 +1001,8 @@ await command.ExecuteReaderAsync(cancellationToken);
 > `ExecuteReader` is a separate member, which none of the previous rules
 > reported. The method is not virtual — providers hide it with `new` for a
 > covariant reader — and those hiders still report when they match the
-> framework shape. Custom helpers and statics stay quiet. `IDbCommand`
+> framework shape. Custom helpers, generic helpers, and statics stay
+> quiet. `IDbCommand`
 > stays quiet. `ExecuteNonQuery` / `ExecuteScalar` are siblings, deferred.
 > Analyzer-only in this release; a fixer is a follow-up. `ExecuteReaderAsync`
 > has accepted a `CancellationToken` since .NET Framework 4.5.

@@ -23,7 +23,7 @@ namespace CancelCop.Analyzer;
 /// typically hide <c>ExecuteReader</c> with <c>new</c> for a covariant
 /// reader, so the rule matches inheritance plus the framework shape —
 /// not only <c>OverriddenMethod</c>, which is empty because the method
-/// is not virtual. Custom helpers and statics stay quiet.
+/// is not virtual. Custom helpers, generic helpers, and statics stay quiet.
 /// </para>
 /// <para>
 /// <b>Why this is not CC003 or CC045:</b> CC003 is symbol-gated to EF Core
@@ -143,8 +143,8 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
     /// overloads with <c>new</c> for a covariant reader, so
     /// <c>OverriddenMethod</c> is empty. Match those hiders by shape:
     /// instance, returns <c>DbDataReader</c> (or subclass), and either
-    /// parameterless or a single <c>CommandBehavior</c>. Custom helpers
-    /// and statics stay quiet.
+    /// parameterless or a single <c>CommandBehavior</c>. Custom helpers,
+    /// generic helpers, and statics stay quiet.
     /// </summary>
     private static bool IsFrameworkExecuteReader(
         IMethodSymbol method,
@@ -153,7 +153,7 @@ public class BlockingDbCommandAnalyzer : DiagnosticAnalyzer
         INamedTypeSymbol? behaviorType
     )
     {
-        if (method.IsStatic || readerType is null)
+        if (method.IsStatic || method.Arity != 0 || readerType is null)
             return false;
 
         if (!IsOrInherits(method.ContainingType, commandType))

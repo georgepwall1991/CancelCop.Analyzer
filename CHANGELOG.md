@@ -17,9 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   query. `ExecuteReaderAsync` yields and has accepted a
   `CancellationToken` since .NET Framework 4.5. `ExecuteReader` is not
   virtual — providers hide it with `new` for a covariant reader — so the
-  rule matches inheritance plus the framework shape (instance,
+  rule matches inheritance plus the framework shape (instance, arity 0,
   `DbDataReader` return, parameterless or one `CommandBehavior`), not
-  only `OverriddenMethod`. Custom helpers and statics stay quiet. CC003
+  only `OverriddenMethod`. Custom helpers, generic helpers, and statics
+  stay quiet. CC003
   is EF Core; CC045 is `DbConnection.Open` — verified empirically.
   Analyzer-only in this slice. Look-alikes, `IDbCommand`,
   `ExecuteReaderAsync`, and `ExecuteNonQuery` stay quiet.

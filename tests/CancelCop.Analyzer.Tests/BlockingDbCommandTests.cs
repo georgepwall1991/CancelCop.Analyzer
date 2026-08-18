@@ -350,6 +350,38 @@ public class Work
     }
 
     [Fact]
+    public async Task ExecuteReader_GenericHelperOnSubclass_ShouldNotReportDiagnostic()
+    {
+        // Generic arity is not in Parameters. ExecuteReader<T>() is not the
+        // framework API even when it is instance, returns DbDataReader, and
+        // takes no arguments.
+        var test =
+            MidCommandScaffold
+            + @"
+public class HiddenCommand : MidCommand
+{
+    public DbDataReader ExecuteReader<T>() => null!;
+}
+
+public class Work
+{
+    public async Task RunAsync(HiddenCommand command, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        command.ExecuteReader<int>();
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
     public async Task ExecuteReader_NonReaderReturnHider_ShouldNotReportDiagnostic()
     {
         var test =
