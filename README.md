@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (39 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (40 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.42.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.43.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.42.0
+Install-Package CancelCop.Analyzer -Version 1.43.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -153,6 +153,7 @@ dotnet build samples/CancelCop.Sample
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ❌ |
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ❌ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ❌ |
+| **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -848,6 +849,25 @@ await client.ReceiveAsync(cancellationToken);
 > Analyzer-only in this release; a fixer is a follow-up. The token-taking
 > `ReceiveAsync` overload is modern .NET only — `netstandard2.0` / .NET
 > Framework have the tokenless form.
+
+### CC040: Blocking `HttpListener.GetContext` in Async Code
+
+```csharp
+// ❌ Warning CC040 - parks a pool thread until a request arrives
+public async Task RunAsync(HttpListener listener, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    listener.GetContext();
+}
+
+// ✅ Fixed
+await listener.GetContextAsync();
+```
+
+> CC036–CC039 cover Socket / TcpClient / TcpListener / UdpClient. The HTTP
+> listener is a fifth type, which none of the previous rules reported.
+> Analyzer-only in this release; `GetContextAsync` does not take a
+> `CancellationToken`. A fixer is a follow-up.
 
 ## Configuration
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-08-18
+
+### Added
+
+- **CC040** (`BlockingHttpListenerAnalyzer`): flags blocking `HttpListener.GetContext`
+  in async code. GetContext parks a pool thread until a request arrives.
+  `GetContextAsync` yields. CC036–CC039 are Socket/TcpClient/TcpListener/UdpClient;
+  the HTTP listener is a fifth type — verified empirically. Analyzer-only in this
+  slice (no token-taking GetContextAsync). Look-alikes and synchronous methods
+  stay quiet.
+
 ## [1.42.0] - 2026-08-18
 
 ### Added
