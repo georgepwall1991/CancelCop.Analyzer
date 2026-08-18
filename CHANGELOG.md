@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-08-19
+
+### Added
+
+- **CC047** (`BlockingDbNonQueryAnalyzer`): flags blocking
+  `DbCommand.ExecuteNonQuery` in async code. ExecuteNonQuery parks a pool
+  thread on a command that does not return rows. `ExecuteNonQueryAsync`
+  yields and has accepted a `CancellationToken` since .NET Framework 4.5.
+  The method is abstract, so overrides match; `new` hiders still match
+  by inheritance plus the framework shape (instance, arity 0, `int`
+  return, no parameters). Custom helpers, generic helpers, and statics
+  stay quiet. CC046 is ExecuteReader — verified empirically.
+  Analyzer-only in this slice. Look-alikes, `IDbCommand`,
+  `ExecuteNonQueryAsync`, and `ExecuteScalar` stay quiet. `ExecuteScalar`
+  is a sibling, deferred.
+
 ## [1.49.0] - 2026-08-18
 
 ### Added

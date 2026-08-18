@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (46 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (47 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.49.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.50.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.49.0
+Install-Package CancelCop.Analyzer -Version 1.50.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -160,6 +160,7 @@ dotnet build samples/CancelCop.Sample
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ❌ |
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ❌ |
+| **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -1003,9 +1004,33 @@ await command.ExecuteReaderAsync(cancellationToken);
 > covariant reader — and those hiders still report when they match the
 > framework shape. Custom helpers, generic helpers, and statics stay
 > quiet. `IDbCommand`
-> stays quiet. `ExecuteNonQuery` / `ExecuteScalar` are siblings, deferred.
-> Analyzer-only in this release; a fixer is a follow-up. `ExecuteReaderAsync`
-> has accepted a `CancellationToken` since .NET Framework 4.5.
+> stays quiet. `ExecuteNonQuery` is CC047. `ExecuteScalar` is a sibling,
+> deferred. Analyzer-only in this release; a fixer is a follow-up.
+> `ExecuteReaderAsync` has accepted a `CancellationToken` since .NET
+> Framework 4.5.
+
+### CC047: Blocking `DbCommand.ExecuteNonQuery` in Async Code
+
+```csharp
+// ❌ Warning CC047 - parks a pool thread on a command that does not return rows
+public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    command.ExecuteNonQuery();
+}
+
+// ✅ Fixed
+await command.ExecuteNonQueryAsync(cancellationToken);
+```
+
+> CC003 covers EF Core queries. CC045 covers `DbConnection.Open`. CC046
+> covers `ExecuteReader`. ADO.NET `ExecuteNonQuery` is a separate member,
+> which none of the previous rules reported. Overrides and `new` hiders
+> that match the framework shape still report. Custom helpers, generic
+> helpers, and `IDbCommand` stay quiet. `ExecuteScalar` is a sibling,
+> deferred. Analyzer-only in this release; a fixer is a follow-up.
+> `ExecuteNonQueryAsync` has accepted a `CancellationToken` since .NET
+> Framework 4.5.
 
 ## Configuration
 
@@ -1107,7 +1132,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **46 rules** spanning token presence, propagation, positioning, loop checks,
+CancelCop now ships **47 rules** spanning token presence, propagation, positioning, loop checks,
 async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →

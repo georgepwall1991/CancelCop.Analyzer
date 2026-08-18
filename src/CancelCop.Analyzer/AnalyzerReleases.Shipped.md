@@ -1,3 +1,11 @@
+## Release 1.50.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC047 | Usage | Warning | Avoid blocking DbCommand.ExecuteNonQuery in async code
+
 ## Release 1.49.0
 
 ### New Rules

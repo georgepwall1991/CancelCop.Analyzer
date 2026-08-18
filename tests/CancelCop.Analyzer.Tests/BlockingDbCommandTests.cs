@@ -595,9 +595,9 @@ public class Work
     }
 
     [Fact]
-    public async Task ExecuteNonQuery_ShouldNotReportDiagnostic()
+    public async Task ExecuteNonQuery_IsOwnedByCc047NotCc046()
     {
-        // Sibling deferred — one method per iteration, matching CC043/CC044.
+        // CC046 stays ExecuteReader-only; CC047 owns ExecuteNonQuery.
         var test =
             @"
 using System.Data.Common;
@@ -609,7 +609,7 @@ public class Work
     public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        command.ExecuteNonQuery();
+        command.{|#0:ExecuteNonQuery|}();
         await Task.Yield();
     }
 }";
@@ -619,6 +619,11 @@ public class Work
             TestCode = test,
             ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
         };
+        t.ExpectedDiagnostics.Add(
+            new DiagnosticResult("CC047", DiagnosticSeverity.Warning)
+                .WithLocation(0)
+                .WithArguments("ExecuteNonQuery")
+        );
         await t.RunAsync();
     }
 }
