@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (40 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (41 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.43.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.44.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.43.0
+Install-Package CancelCop.Analyzer -Version 1.44.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -154,6 +154,7 @@ dotnet build samples/CancelCop.Sample
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ❌ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ❌ |
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
+| **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -868,6 +869,27 @@ await listener.GetContextAsync();
 > listener is a fifth type, which none of the previous rules reported.
 > Analyzer-only in this release; `GetContextAsync` does not take a
 > `CancellationToken`. A fixer is a follow-up.
+
+### CC041: Blocking `NamedPipeServerStream.WaitForConnection` in Async Code
+
+```csharp
+// ❌ Warning CC041 - parks a pool thread until a client connects
+public async Task RunAsync(NamedPipeServerStream server, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    server.WaitForConnection();
+}
+
+// ✅ Fixed
+await server.WaitForConnectionAsync(cancellationToken);
+```
+
+> CC028 covers File/Stream `Read`/`Write`/`CopyTo`/`Flush`. CC036–CC040 cover
+> Socket / TcpClient / TcpListener / UdpClient / HttpListener. The named-pipe
+> server is a sixth type, which none of the previous rules reported.
+> Analyzer-only in this release; a fixer is a follow-up. The token-taking
+> `WaitForConnectionAsync` overload is modern .NET only — .NET Framework has
+> the tokenless form.
 
 ## Configuration
 

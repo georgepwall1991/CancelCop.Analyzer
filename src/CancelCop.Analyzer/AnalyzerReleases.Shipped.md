@@ -1,3 +1,11 @@
+## Release 1.44.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC041 | Usage | Warning | Avoid blocking NamedPipeServerStream.WaitForConnection in async code
+
 ## Release 1.43.0
 
 ### New Rules
