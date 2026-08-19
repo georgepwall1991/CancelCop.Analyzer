@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.18] - 2026-08-19
+
+### Fixed
+
+- **CC046 fixer:** rewrite `ExecuteReader` when it is an argument
+  inside an unrelated `?.` (`host?.Use(command.ExecuteReader())`
+  → `host?.Use(await command.ExecuteReaderAsync(...))`). The
+  shared builder used to withhold any call that merely sat
+  inside a `?.` expression. `host?.Command.ExecuteReader()` is
+  still reported without a rewrite.
+
 ## [1.52.17] - 2026-08-19
 
 ### Fixed

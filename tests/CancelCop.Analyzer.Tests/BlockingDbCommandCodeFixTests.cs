@@ -556,6 +556,54 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ExecuteReaderAsArgumentInsideUnrelatedConditionalAccess_IsFixed()
+    {
+        // The ExecuteReader call is an argument, not the WhenNotNull branch, so
+        // await is legal: host?.Use(await command.ExecuteReaderAsync(...)).
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public void Use(DbDataReader reader) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, DbCommand command, CancellationToken cancellationToken)
+    {
+        host?.Use(command.{|#0:ExecuteReader|}());
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public void Use(DbDataReader reader) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, DbCommand command, CancellationToken cancellationToken)
+    {
+        host?.Use(await command.ExecuteReaderAsync(cancellationToken));
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
     public async Task ExecuteReaderAsyncHiderOnProvider_StillFixes()
     {
         // DbCommand.ExecuteReaderAsync(CancellationToken) is not virtual
