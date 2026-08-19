@@ -52,7 +52,7 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         // Only withhold when this Wait (or a postfix chain on it) is the WhenNotNull
         // branch of `?.`. An argument nested inside an unrelated `holder?.Consume(...)`
         // is still a legal await.
-        if (IsWhenNotNullOfConditionalAccess(invocation))
+        if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
             return;
 
         var tokenName = diagnostic.Properties.TryGetValue(
@@ -114,43 +114,5 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
 
         var newRoot = root.ReplaceNode(invocation, replacement.WithTriviaFrom(invocation));
         return document.WithSyntaxRoot(newRoot);
-    }
-
-    /// <summary>
-    /// True when <paramref name="invocation"/> sits on the left spine of a
-    /// conditional-access <c>WhenNotNull</c>, so wrapping it in <c>await</c> would
-    /// produce <c>holder?await .Gate...</c>. An argument nested inside that
-    /// branch is not on the spine and still rewrites.
-    /// </summary>
-    private static bool IsWhenNotNullOfConditionalAccess(InvocationExpressionSyntax invocation)
-    {
-        SyntaxNode current = invocation;
-        while (current.Parent != null)
-        {
-            switch (current.Parent)
-            {
-                case ConditionalAccessExpressionSyntax conditional
-                    when conditional.WhenNotNull == current:
-                    return true;
-                case MemberAccessExpressionSyntax member when member.Expression == current:
-                case InvocationExpressionSyntax call when call.Expression == current:
-                case ElementAccessExpressionSyntax element when element.Expression == current:
-                case ConditionalAccessExpressionSyntax nested when nested.Expression == current:
-                case PostfixUnaryExpressionSyntax postfix when postfix.Operand == current:
-                case PrefixUnaryExpressionSyntax prefix when prefix.Operand == current:
-                case CastExpressionSyntax cast when cast.Expression == current:
-                case ParenthesizedExpressionSyntax paren when paren.Expression == current:
-                case BinaryExpressionSyntax binary when binary.Left == current:
-                case AssignmentExpressionSyntax assignment when assignment.Left == current:
-                case ConditionalExpressionSyntax ternary when ternary.Condition == current:
-                case IsPatternExpressionSyntax isPattern when isPattern.Expression == current:
-                    current = current.Parent;
-                    continue;
-                default:
-                    return false;
-            }
-        }
-
-        return false;
     }
 }

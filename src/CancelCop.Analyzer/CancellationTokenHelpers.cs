@@ -925,6 +925,63 @@ public static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// True when <paramref name="invocation"/> sits on the left spine of a
+    /// conditional-access <c>WhenNotNull</c>, so wrapping it in <c>await</c> would
+    /// produce <c>holder?await .Reader...</c>. An argument nested inside that
+    /// branch is not on the spine.
+    /// </summary>
+    /// <remarks>
+    /// Speculatively binding a reconstructed member access for this shape throws
+    /// inside the compiler (<c>FindConditionalAccessNodeForBinding</c>) because
+    /// the left of the access is a <c>MemberBinding</c> with no enclosing <c>?.</c>.
+    /// </remarks>
+    public static bool IsWhenNotNullOfConditionalAccess(InvocationExpressionSyntax invocation) =>
+        TryGetWhenNotNullConditionalAccess(invocation, out _);
+
+    /// <summary>
+    /// The nearest <c>?.</c> whose <c>WhenNotNull</c> spine contains
+    /// <paramref name="invocation"/>, or <c>false</c> when the call is only nested
+    /// as an argument inside someone else's <c>?.</c>.
+    /// </summary>
+    public static bool TryGetWhenNotNullConditionalAccess(
+        InvocationExpressionSyntax invocation,
+        out ConditionalAccessExpressionSyntax? conditionalAccess
+    )
+    {
+        SyntaxNode current = invocation;
+        while (current.Parent != null)
+        {
+            switch (current.Parent)
+            {
+                case ConditionalAccessExpressionSyntax conditional
+                    when conditional.WhenNotNull == current:
+                    conditionalAccess = conditional;
+                    return true;
+                case MemberAccessExpressionSyntax member when member.Expression == current:
+                case InvocationExpressionSyntax call when call.Expression == current:
+                case ElementAccessExpressionSyntax element when element.Expression == current:
+                case ConditionalAccessExpressionSyntax nested when nested.Expression == current:
+                case PostfixUnaryExpressionSyntax postfix when postfix.Operand == current:
+                case PrefixUnaryExpressionSyntax prefix when prefix.Operand == current:
+                case CastExpressionSyntax cast when cast.Expression == current:
+                case ParenthesizedExpressionSyntax paren when paren.Expression == current:
+                case BinaryExpressionSyntax binary when binary.Left == current:
+                case AssignmentExpressionSyntax assignment when assignment.Left == current:
+                case ConditionalExpressionSyntax ternary when ternary.Condition == current:
+                case IsPatternExpressionSyntax isPattern when isPattern.Expression == current:
+                    current = current.Parent;
+                    continue;
+                default:
+                    conditionalAccess = null;
+                    return false;
+            }
+        }
+
+        conditionalAccess = null;
+        return false;
+    }
+
+    /// <summary>
     /// Builds an expression for an in-scope token: a simple identifier (keyword-escaped) or a
     /// member access such as <c>context.RequestAborted</c>. Built with factory methods so elastic
     /// trivia is present and the formatter can indent inserted statements.

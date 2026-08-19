@@ -438,6 +438,89 @@ public class TestClass
     }
 
     [Fact]
+    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    {
+        // `holder?.Reader.ReadLine()` reaches the fixer as an ordinary member access,
+        // but the invocation is the WhenNotNull branch of `?.`. Wrapping just that
+        // branch yields `holder?await .Reader.ReadLineAsync(...)`, which is not valid.
+        var source =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public StreamReader Reader { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, CancellationToken cancellationToken)
+    {
+        _ = holder?.Reader.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(source, source, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReadLineAsArgumentInsideUnrelatedConditionalAccess_IsFixed()
+    {
+        // The ReadLine call is an argument, not the WhenNotNull branch, so await
+        // is legal: holder?.Consume(await reader.ReadLineAsync(...)).
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public void Consume(string? line) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, StreamReader reader, CancellationToken cancellationToken)
+    {
+        holder?.Consume(reader.{|#0:ReadLine|}());
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public void Consume(string? line) { }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, StreamReader reader, CancellationToken cancellationToken)
+    {
+        holder?.Consume(await reader.ReadLineAsync(cancellationToken));
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task ResultUsedAsReceiver_ThroughNullForgiving_ParenthesizesAwait()
     {
         // File.ReadAllText(p)!.Trim() -> (await File.ReadAllTextAsync(p, token))!.Trim()

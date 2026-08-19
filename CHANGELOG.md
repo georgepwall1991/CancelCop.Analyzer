@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.17] - 2026-08-19
+
+### Fixed
+
+- **CC028:** `holder?.Reader.ReadLine()` no longer crashes the
+  analyzer (AD0001 from speculative bind of a `MemberBinding`
+  left-hand side) and is reported without a rewrite. Inserting
+  `await` inside that `?.` branch is not valid syntax. A
+  `ReadLine` used as an argument inside an unrelated `?.` still
+  rewrites.
+
 ## [1.52.16] - 2026-08-19
 
 ### Fixed
