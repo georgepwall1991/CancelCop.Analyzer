@@ -15,7 +15,10 @@ namespace CancelCop.Analyzer;
 /// Code fix provider that rewrites a synchronous <c>gate.Wait()</c> to
 /// <c>await gate.WaitAsync(token)</c>, flowing the in-scope token when one is available.
 /// </summary>
-[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingSemaphoreCodeFixProvider)), Shared]
+[
+    ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingSemaphoreCodeFixProvider)),
+    Shared
+]
 public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
 {
     private const string Title = "Use await WaitAsync()";
@@ -28,7 +31,9 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
-        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        var root = await context
+            .Document.GetSyntaxRootAsync(context.CancellationToken)
+            .ConfigureAwait(false);
         if (root == null)
             return;
 
@@ -38,20 +43,34 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         if (diagnostic.Properties.ContainsKey(BlockingSemaphoreAnalyzer.NoFixProperty))
             return;
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
-            .Parent?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+            .Parent?.AncestorsAndSelf()
+            .OfType<InvocationExpressionSyntax>()
+            .FirstOrDefault();
         if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)
             return;
 
-        var tokenName = diagnostic.Properties.TryGetValue(BlockingSemaphoreAnalyzer.TokenNameProperty, out var name)
+        // Only withhold when this Wait (or a postfix chain on it) is the WhenNotNull
+        // branch of `?.`. An argument nested inside an unrelated `holder?.Consume(...)`
+        // is still a legal await.
+        if (IsWhenNotNullOfConditionalAccess(invocation))
+            return;
+
+        var tokenName = diagnostic.Properties.TryGetValue(
+            BlockingSemaphoreAnalyzer.TokenNameProperty,
+            out var name
+        )
             ? name
             : null;
 
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => ReplaceAsync(context.Document, invocation, memberAccess, tokenName, c),
-                equivalenceKey: Title),
-            diagnostic);
+                createChangedDocument: c =>
+                    ReplaceAsync(context.Document, invocation, memberAccess, tokenName, c),
+                equivalenceKey: Title
+            ),
+            diagnostic
+        );
     }
 
     private static async Task<Document> ReplaceAsync(
@@ -59,7 +78,8 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         InvocationExpressionSyntax invocation,
         MemberAccessExpressionSyntax memberAccess,
         string? tokenName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
         if (root == null)
@@ -71,8 +91,11 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         if (invocation.ArgumentList.Arguments.Count > 0)
             argumentList = invocation.ArgumentList.WithoutTrivia();
         else if (tokenName != null)
-            argumentList = SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
-                SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName))));
+            argumentList = SyntaxFactory.ArgumentList(
+                SyntaxFactory.SingletonSeparatedList(
+                    SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName))
+                )
+            );
         else
             argumentList = SyntaxFactory.ArgumentList();
 
@@ -80,12 +103,54 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
             SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
                 memberAccess.Expression.WithoutTrivia(),
-                SyntaxFactory.IdentifierName("WaitAsync")),
-            argumentList);
+                SyntaxFactory.IdentifierName("WaitAsync")
+            ),
+            argumentList
+        );
 
-        var awaitExpression = SyntaxFactory.AwaitExpression(waitAsync).WithTriviaFrom(invocation);
+        ExpressionSyntax replacement = SyntaxFactory.AwaitExpression(waitAsync);
+        if (CancellationTokenHelpers.AwaitNeedsParentheses(invocation))
+            replacement = SyntaxFactory.ParenthesizedExpression(replacement);
 
-        var newRoot = root.ReplaceNode(invocation, awaitExpression);
+        var newRoot = root.ReplaceNode(invocation, replacement.WithTriviaFrom(invocation));
         return document.WithSyntaxRoot(newRoot);
+    }
+
+    /// <summary>
+    /// True when <paramref name="invocation"/> sits on the left spine of a
+    /// conditional-access <c>WhenNotNull</c>, so wrapping it in <c>await</c> would
+    /// produce <c>holder?await .Gate...</c>. An argument nested inside that
+    /// branch is not on the spine and still rewrites.
+    /// </summary>
+    private static bool IsWhenNotNullOfConditionalAccess(InvocationExpressionSyntax invocation)
+    {
+        SyntaxNode current = invocation;
+        while (current.Parent != null)
+        {
+            switch (current.Parent)
+            {
+                case ConditionalAccessExpressionSyntax conditional
+                    when conditional.WhenNotNull == current:
+                    return true;
+                case MemberAccessExpressionSyntax member when member.Expression == current:
+                case InvocationExpressionSyntax call when call.Expression == current:
+                case ElementAccessExpressionSyntax element when element.Expression == current:
+                case ConditionalAccessExpressionSyntax nested when nested.Expression == current:
+                case PostfixUnaryExpressionSyntax postfix when postfix.Operand == current:
+                case PrefixUnaryExpressionSyntax prefix when prefix.Operand == current:
+                case CastExpressionSyntax cast when cast.Expression == current:
+                case ParenthesizedExpressionSyntax paren when paren.Expression == current:
+                case BinaryExpressionSyntax binary when binary.Left == current:
+                case AssignmentExpressionSyntax assignment when assignment.Left == current:
+                case ConditionalExpressionSyntax ternary when ternary.Condition == current:
+                case IsPatternExpressionSyntax isPattern when isPattern.Expression == current:
+                    current = current.Parent;
+                    continue;
+                default:
+                    return false;
+            }
+        }
+
+        return false;
     }
 }
