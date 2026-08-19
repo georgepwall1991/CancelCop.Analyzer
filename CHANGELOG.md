@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.9] - 2026-08-19
+
+### Added
+
+- **CC040 fixer** (`BlockingHttpListenerCodeFixProvider`): rewrites a
+  blocking `HttpListener.GetContext()` to `await GetContextAsync()`.
+  The framework TAP is tokenless, so the rewrite never invents a
+  token argument even when one is in scope. Null-conditional calls
+  and positions where `await` cannot compile are reported without a
+  rewrite. `HttpListener` is sealed, so a this-alias recursion
+  rewrite cannot compile on a real subclass.
+
 ## [1.52.8] - 2026-08-19
 
 ### Added

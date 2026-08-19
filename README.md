@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.8">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.9">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.8
+Install-Package CancelCop.Analyzer -Version 1.52.9
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -153,7 +153,7 @@ dotnet build samples/CancelCop.Sample
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ✅ |
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ✅ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ✅ |
-| **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
+| **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ✅ |
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
@@ -890,8 +890,10 @@ await listener.GetContextAsync();
 
 > CC036–CC039 cover Socket / TcpClient / TcpListener / UdpClient. The HTTP
 > listener is a fifth type, which none of the previous rules reported.
-> Analyzer-only in this release; `GetContextAsync` does not take a
-> `CancellationToken`. A fixer is a follow-up.
+> The fixer rewrites a safe `GetContext()` to `await GetContextAsync()`.
+> `GetContextAsync` does not take a `CancellationToken`, so the rewrite
+> never invents one. Null-conditional calls and positions where `await`
+> cannot compile are reported without a rewrite. `HttpListener` is sealed.
 
 ### CC041: Blocking `NamedPipeServerStream.WaitForConnection` in Async Code
 
