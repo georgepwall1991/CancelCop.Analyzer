@@ -15,7 +15,10 @@ namespace CancelCop.Analyzer;
 /// Code fix provider that replaces a synchronous block on a task (<c>.Result</c>, <c>.Wait()</c>,
 /// <c>.GetAwaiter().GetResult()</c>) with an <c>await</c> of the task.
 /// </summary>
-[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingOnAsyncCodeFixProvider)), Shared]
+[
+    ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(BlockingOnAsyncCodeFixProvider)),
+    Shared
+]
 public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
 {
     private const string Title = "Await the task";
@@ -28,7 +31,9 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
-        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        var root = await context
+            .Document.GetSyntaxRootAsync(context.CancellationToken)
+            .ConfigureAwait(false);
         if (root == null)
             return;
 
@@ -44,18 +49,27 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
         if (!TryBuildRewrite(memberAccess, out var target, out var replacement))
             return;
 
+        // `host?.Work.Result` is an ordinary member access, but it is the WhenNotNull
+        // of `?.`. Replacing it with `(await .Work)` yields `host?(await .Work)`.
+        if (target is not null && CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(target))
+            return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => ReplaceAsync(context.Document, target!, replacement!, c),
-                equivalenceKey: Title),
-            diagnostic);
+                createChangedDocument: c =>
+                    ReplaceAsync(context.Document, target!, replacement!, c),
+                equivalenceKey: Title
+            ),
+            diagnostic
+        );
     }
 
     private static bool TryBuildRewrite(
         MemberAccessExpressionSyntax memberAccess,
         out SyntaxNode? target,
-        out ExpressionSyntax? replacement)
+        out ExpressionSyntax? replacement
+    )
     {
         target = null;
         replacement = null;
@@ -70,19 +84,27 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
             case "Wait":
                 // Only the parameterless Wait() maps cleanly to `await task`; Wait(timeout) /
                 // Wait(token) change semantics, so they report without a fix.
-                if (memberAccess.Parent is not InvocationExpressionSyntax waitInvocation ||
-                    waitInvocation.ArgumentList.Arguments.Count != 0)
+                if (
+                    memberAccess.Parent is not InvocationExpressionSyntax waitInvocation
+                    || waitInvocation.ArgumentList.Arguments.Count != 0
+                )
                     return false;
                 target = waitInvocation;
-                replacement = SyntaxFactory.AwaitExpression(memberAccess.Expression.WithoutTrivia());
+                replacement = SyntaxFactory.AwaitExpression(
+                    memberAccess.Expression.WithoutTrivia()
+                );
                 return true;
 
             case "GetResult":
                 // memberAccess is `<X>.GetResult`; its parent is `<X>.GetResult()`, and
                 // <X> is `<task>.GetAwaiter()`.
-                if (memberAccess.Parent is not InvocationExpressionSyntax getResultInvocation ||
-                    memberAccess.Expression is not InvocationExpressionSyntax getAwaiterInvocation ||
-                    getAwaiterInvocation.Expression is not MemberAccessExpressionSyntax getAwaiterAccess)
+                if (
+                    memberAccess.Parent is not InvocationExpressionSyntax getResultInvocation
+                    || memberAccess.Expression
+                        is not InvocationExpressionSyntax getAwaiterInvocation
+                    || getAwaiterInvocation.Expression
+                        is not MemberAccessExpressionSyntax getAwaiterAccess
+                )
                     return false;
                 target = getResultInvocation;
                 replacement = ParenthesizedAwait(getAwaiterAccess.Expression);
@@ -95,13 +117,15 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
 
     private static ExpressionSyntax ParenthesizedAwait(ExpressionSyntax awaited) =>
         SyntaxFactory.ParenthesizedExpression(
-            SyntaxFactory.AwaitExpression(awaited.WithoutTrivia()));
+            SyntaxFactory.AwaitExpression(awaited.WithoutTrivia())
+        );
 
     private static async Task<Document> ReplaceAsync(
         Document document,
         SyntaxNode target,
         ExpressionSyntax replacement,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
         if (root == null)
