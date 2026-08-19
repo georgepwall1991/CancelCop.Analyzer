@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.5">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.6">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.5
+Install-Package CancelCop.Analyzer -Version 1.52.6
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -150,7 +150,7 @@ dotnet build samples/CancelCop.Sample
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
 | **CC035** | Empty `catch (OperationCanceledException)` silently discards the cancellation | Info | ❌ |
 | **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
-| **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ❌ |
+| **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ✅ |
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ❌ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ❌ |
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
@@ -807,9 +807,13 @@ await client.ConnectAsync(host, port, cancellationToken);
 > reports — `TcpClient.Connect(string, int)` does synchronous DNS. Property or method receivers
 > are not exempt (a getter may return a new instance). An unrelated `Socket.Blocking = false`
 > does not exempt, and reassigning the client after `Blocking = false` invalidates the
-> exemption. Analyzer-only
-> in this release; a fixer is a follow-up. The token-taking `ConnectAsync` overload is modern
-> .NET only — `netstandard2.0` / .NET Framework have the tokenless form.
+> exemption. The fixer rewrites a safe `Connect` to `await ConnectAsync`,
+> flowing an in-scope token. Named `hostname:` arguments are reported
+> without a rewrite (`ConnectAsync` uses `host`). Null-conditional calls,
+> positions where `await` cannot compile, and a this/base/this-alias call
+> inside `ConnectAsync` are reported without a fix. The token-taking
+> `ConnectAsync` overload is modern .NET only — `netstandard2.0` / .NET
+> Framework have the tokenless form.
 
 ### CC038: Blocking `TcpListener` Accept in Async Code
 

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.6] - 2026-08-19
+
+### Added
+
+- **CC037 fixer** (`BlockingTcpClientCodeFixProvider`): rewrites a
+  blocking `TcpClient.Connect` to `await ConnectAsync`, flowing an
+  in-scope token when the rewritten call still binds. The tokenless
+  form is used when no token is in scope. A named original argument
+  keeps the token named when those names still bind
+  (`remoteEP:`). `Connect(hostname: …)` is reported without a rewrite
+  because `ConnectAsync` names that parameter `host`. Null-conditional
+  calls, positions where `await` cannot compile, and a this/base/this-alias
+  call inside `ConnectAsync` are reported without a rewrite.
+
 ## [1.52.5] - 2026-08-19
 
 ### Added
