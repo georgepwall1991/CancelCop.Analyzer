@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.1">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.2">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.1
+Install-Package CancelCop.Analyzer -Version 1.52.2
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -159,7 +159,7 @@ dotnet build samples/CancelCop.Sample
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
-| **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ❌ |
+| **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ✅ |
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ❌ |
 | **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ❌ |
 | **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ❌ |
@@ -1008,7 +1008,12 @@ await command.ExecuteReaderAsync(cancellationToken);
 > framework shape. Custom helpers, generic helpers, and statics stay
 > quiet. `IDbCommand`
 > stays quiet. `ExecuteNonQuery` is CC047. `ExecuteScalar` is CC048.
-> Analyzer-only in this release; a fixer is a follow-up.
+> The fixer rewrites a safe `ExecuteReader` to `await ExecuteReaderAsync`,
+> preserving a `CommandBehavior` argument and flowing an in-scope token.
+> Null-conditional calls and positions where `await` cannot compile are
+> reported without a fix. Provider `new` TAP hiders still match —
+> `ExecuteReaderAsync()` / `ExecuteReaderAsync(CancellationToken)` are not
+> virtual. A `Task<int>` hider is not a reader API and stays quiet.
 > `ExecuteReaderAsync` has accepted a `CancellationToken` since .NET
 > Framework 4.5.
 

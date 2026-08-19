@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.2] - 2026-08-19
+
+### Added
+
+- **CC046 fixer** (`BlockingDbCommandCodeFixProvider`): rewrites a
+  blocking `DbCommand.ExecuteReader` / `ExecuteReader(CommandBehavior)`
+  to `await ExecuteReaderAsync`, preserving the behavior argument and
+  flowing an in-scope token when the rewritten call still binds to a
+  TAP-shaped reader method. A named `behavior:` argument keeps the
+  token named too, so the rewrite compiles. The parameterless /
+  behavior-only form is used when
+  no token is in scope or the token-taking overload would not bind.
+  Null-conditional calls and positions where `await` cannot compile
+  (lock, ref-like lifetime) are reported without a fix. Provider `new`
+  TAP hiders still match — `ExecuteReaderAsync()` and
+  `ExecuteReaderAsync(CancellationToken)` are not virtual. Stay quiet
+  when every reachable `ExecuteReaderAsync` shape is an unusable hider
+  (`int` or `Task<int>`, not a reader). If only the token-taking TAP
+  form is reachable and no token is in scope, the diagnostic is
+  reported without a fix.
+
 ## [1.52.1] - 2026-08-19
 
 ### Added
