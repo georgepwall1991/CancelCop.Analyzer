@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.3">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.4">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.3
+Install-Package CancelCop.Analyzer -Version 1.52.4
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -161,7 +161,7 @@ dotnet build samples/CancelCop.Sample
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ✅ |
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ✅ |
-| **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ❌ |
+| **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ✅ |
 | **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ❌ |
 
 ## Quick Examples
@@ -1065,7 +1065,11 @@ await command.ExecuteScalarAsync(cancellationToken);
 > still report, including a more-derived return such as `string`. Custom
 > helpers, generic helpers, statics, `void` hiders, `Task`/`ValueTask`
 > hiders, and `IDbCommand` stay
-> quiet. Analyzer-only in this release; a fixer is a follow-up.
+> quiet. The fixer rewrites a safe `ExecuteScalar()` to
+> `await ExecuteScalarAsync`, flowing an in-scope token. Null-conditional
+> calls, positions where `await` cannot compile, and a this/base/this-alias
+> call inside `ExecuteScalarAsync` are reported without a fix. Covariant
+> `Task<string>` hiders still match.
 > `ExecuteScalarAsync` has accepted a `CancellationToken` since .NET
 > Framework 4.5.
 

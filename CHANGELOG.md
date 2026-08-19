@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.4] - 2026-08-19
+
+### Added
+
+- **CC048 fixer** (`BlockingDbScalarCodeFixProvider`): rewrites a
+  blocking `DbCommand.ExecuteScalar()` to `await ExecuteScalarAsync`,
+  flowing an in-scope token when the rewritten call still binds to a
+  `Task<T>` TAP method (`T` a reference type). The parameterless form
+  is used when no token is in scope. Provider overrides and covariant
+  `Task<string>` hiders still match. Stay quiet when every reachable
+  `ExecuteScalarAsync` shape is an unusable hider. The await is
+  parenthesized when the call is used as a receiver. A this/implicit-this
+  call inside `ExecuteScalarAsync` is reported without a rewrite, as is
+  `base.ExecuteScalar()` (the default TAP implementation virtually
+  calls `ExecuteScalar()` on this). A local, parameter, or field that
+  is assigned or initialized from `this`/`base` is treated the same
+  way, including a cast of `this`, so `DbCommand other = this;
+  other.ExecuteScalar()` cannot become a recursive
+  `await other.ExecuteScalarAsync`. An instance field or property on
+  the enclosing type is treated the same way (`_self` assigned in a
+  constructor, `Self => this`). A this-alias captured by a nested
+  local function or lambda is treated the same way. A value use of a
+  covariant TAP hider (`Task<string>` vs `object ExecuteScalar`) is
+  reported without a rewrite so an outer overload cannot retarget.
+  An unrelated command still rewrites.
+
 ## [1.52.3] - 2026-08-19
 
 ### Added
