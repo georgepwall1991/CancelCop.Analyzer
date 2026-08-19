@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (48 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (49 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.51.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.51.0
+Install-Package CancelCop.Analyzer -Version 1.52.0
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -162,6 +162,7 @@ dotnet build samples/CancelCop.Sample
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ❌ |
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ❌ |
 | **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ❌ |
+| **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ❌ |
 
 ## Quick Examples
 
@@ -1058,6 +1059,27 @@ await command.ExecuteScalarAsync(cancellationToken);
 > `ExecuteScalarAsync` has accepted a `CancellationToken` since .NET
 > Framework 4.5.
 
+### CC049: Blocking `SmtpClient.Send` in Async Code
+
+```csharp
+// ❌ Warning CC049 - parks a pool thread on an SMTP handshake
+public async Task RunAsync(SmtpClient client, MailMessage message, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    client.Send(message);
+}
+
+// ✅ Fixed
+await client.SendMailAsync(message, cancellationToken);
+```
+
+> CC004 covers HttpClient. ADO.NET rules cover database waits. `SmtpClient.Send`
+> is a separate type, which none of the previous rules reported. The TAP
+> counterpart is `SendMailAsync`, **not** the event-based `SendAsync`. Token-taking
+> `SendMailAsync` is .NET 5+; .NET Framework has the tokenless form. `Send` is
+> not virtual; `new` hiders that match the framework shape still report.
+> Analyzer-only in this release; a fixer is a follow-up.
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
@@ -1158,7 +1180,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **48 rules** spanning token presence, propagation, positioning, loop checks,
+CancelCop now ships **49 rules** spanning token presence, propagation, positioning, loop checks,
 async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →
