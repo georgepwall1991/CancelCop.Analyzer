@@ -158,10 +158,7 @@ public static class CancellationTokenHelpers
 
         // Find the nearest in-scope CancellationToken — a parameter, or a framework property
         // (HttpContext.RequestAborted / ServerCallContext.CancellationToken).
-        var token = FindEnclosingCancellationToken(
-            invocation,
-            context.SemanticModel
-        );
+        var token = FindEnclosingCancellationToken(invocation, context.SemanticModel);
         if (token == null)
             return;
 
@@ -821,7 +818,9 @@ public static class CancellationTokenHelpers
     /// <summary>
     /// Rewrites <paramref name="invocation"/> to call <paramref name="newName"/> instead, appending
     /// <paramref name="tokenName"/> as an argument when one is supplied: the shape a rule rewrites a
-    /// blocking call into. Returns <c>null</c> for a receiver form it cannot rewrite.
+    /// blocking call into. When <paramref name="tokenArgumentName"/> is set, the token is appended
+    /// as a named argument so it can follow an already-named original argument. Returns <c>null</c>
+    /// for a receiver form it cannot rewrite.
     /// </summary>
     /// <remarks>
     /// The name is replaced on the existing member access rather than the expression being rebuilt,
@@ -834,7 +833,8 @@ public static class CancellationTokenHelpers
     public static InvocationExpressionSyntax? BuildRenamedInvocation(
         InvocationExpressionSyntax invocation,
         string newName,
-        string? tokenName
+        string? tokenName,
+        string? tokenArgumentName = null
     )
     {
         // `host?.Process.WaitForExit()` reaches here as an ordinary member access, but the whole
@@ -875,9 +875,15 @@ public static class CancellationTokenHelpers
         var argumentList = invocation.ArgumentList;
         if (tokenName != null)
         {
-            argumentList = argumentList.AddArguments(
-                SyntaxFactory.Argument(TokenExpression(tokenName))
-            );
+            var tokenArgument = SyntaxFactory.Argument(TokenExpression(tokenName));
+            if (tokenArgumentName != null)
+            {
+                tokenArgument = tokenArgument.WithNameColon(
+                    SyntaxFactory.NameColon(IdentifierNameFor(tokenArgumentName))
+                );
+            }
+
+            argumentList = argumentList.AddArguments(tokenArgument);
         }
 
         return invocation.WithExpression(target).WithArgumentList(argumentList);
@@ -968,14 +974,15 @@ public static class CancellationTokenHelpers
         // been disposed by the time this one's disposal awaits.
         var cutoff = declarationCutoff ?? position;
 
-        var body = node.Ancestors()
-            .FirstOrDefault(a =>
-                a
-                    is BaseMethodDeclarationSyntax
-                        or LocalFunctionStatementSyntax
-                        or AnonymousFunctionExpressionSyntax
-                        or AccessorDeclarationSyntax
-            )
+        var body =
+            node.Ancestors()
+                .FirstOrDefault(a =>
+                    a
+                        is BaseMethodDeclarationSyntax
+                            or LocalFunctionStatementSyntax
+                            or AnonymousFunctionExpressionSyntax
+                            or AccessorDeclarationSyntax
+                )
             // A top-level program has no declared body; its global statements are the synthesized
             // entry point, and locals declared there have the same lifetimes.
             ?? node.Ancestors().OfType<CompilationUnitSyntax>().FirstOrDefault();
@@ -985,7 +992,11 @@ public static class CancellationTokenHelpers
         // A `foreach` over a ref-like collection holds an enumerator that stays live for the whole
         // body, even though the collection identifier only appears in the header. Its lifetime is
         // implicit, so a use-site scan never sees it.
-        for (var current = node.Parent; current != null && current != body; current = current.Parent)
+        for (
+            var current = node.Parent;
+            current != null && current != body;
+            current = current.Parent
+        )
         {
             if (
                 current.Parent is CommonForEachStatementSyntax forEach
@@ -1131,7 +1142,11 @@ public static class CancellationTokenHelpers
             // Inside a loop, position is not execution order: a `for` condition or incrementor is
             // written before the body but runs again after it, so any reference within an enclosing
             // loop crosses the inserted await on the next iteration.
-            for (var current = node.Parent; current != null && current != body; current = current.Parent)
+            for (
+                var current = node.Parent;
+                current != null && current != body;
+                current = current.Parent
+            )
             {
                 if (
                     current
@@ -1174,7 +1189,6 @@ public static class CancellationTokenHelpers
             && semanticModel.GetTypeInfo(expression).Type?.IsRefLikeType == true;
     }
 
-
     /// <summary>
     /// The syntax node bounding a local's scope: the enclosing block, <c>for</c> statement, or
     /// switch section.
@@ -1186,10 +1200,11 @@ public static class CancellationTokenHelpers
                 // CompilationUnit, not GlobalStatement: in a top-level program every global
                 // statement shares one scope, so stopping at the individual statement would make
                 // each local look confined to its own declaration.
-                a is BlockSyntax
-                    or ForStatementSyntax
-                    or SwitchSectionSyntax
-                    or CompilationUnitSyntax
+                a
+                    is BlockSyntax
+                        or ForStatementSyntax
+                        or SwitchSectionSyntax
+                        or CompilationUnitSyntax
             );
 
     /// <summary>
@@ -1216,7 +1231,6 @@ public static class CancellationTokenHelpers
                     local
                 )
             );
-
 
     /// <summary>
     /// Property value used by every rule whose fix inserts an <c>await</c>, to record that the
@@ -1331,10 +1345,7 @@ public static class CancellationTokenHelpers
             _ => null,
         };
 
-        if (
-            receiver != null
-            && semanticModel.GetTypeInfo(receiver).Type?.IsRefLikeType == true
-        )
+        if (receiver != null && semanticModel.GetTypeInfo(receiver).Type?.IsRefLikeType == true)
             return true;
 
         return semanticModel.GetSymbolInfo(expression).Symbol switch
@@ -1418,10 +1429,7 @@ public static class CancellationTokenHelpers
         // them is handled separately, before this check runs.
         foreach (var section in reference.Ancestors().OfType<SwitchSectionSyntax>())
         {
-            if (
-                !section.Span.Contains(position)
-                && section.Parent?.Span.Contains(position) == true
-            )
+            if (!section.Span.Contains(position) && section.Parent?.Span.Contains(position) == true)
                 return true;
         }
 
