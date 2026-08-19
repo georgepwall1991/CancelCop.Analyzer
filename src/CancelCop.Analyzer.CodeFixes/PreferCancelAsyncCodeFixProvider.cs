@@ -15,7 +15,10 @@ namespace CancelCop.Analyzer;
 /// Code fix provider that rewrites a synchronous <c>cts.Cancel()</c> to
 /// <c>await cts.CancelAsync()</c>.
 /// </summary>
-[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(PreferCancelAsyncCodeFixProvider)), Shared]
+[
+    ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(PreferCancelAsyncCodeFixProvider)),
+    Shared
+]
 public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
 {
     private const string Title = "Use await CancelAsync()";
@@ -28,7 +31,9 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
 
     public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
-        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        var root = await context
+            .Document.GetSyntaxRootAsync(context.CancellationToken)
+            .ConfigureAwait(false);
         if (root == null)
             return;
 
@@ -38,23 +43,34 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         if (diagnostic.Properties.ContainsKey(PreferCancelAsyncAnalyzer.NoFixProperty))
             return;
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
-            .Parent?.AncestorsAndSelf().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+            .Parent?.AncestorsAndSelf()
+            .OfType<InvocationExpressionSyntax>()
+            .FirstOrDefault();
         if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return;
+        // `holder?.Cts.Cancel()` is an ordinary member access, but it is the WhenNotNull
+        // of `?.`. Replacing it with `await .Cts.CancelAsync()` yields
+        // `holder? await.Cts.CancelAsync()`, which does not parse.
+        if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
             return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
-                createChangedDocument: c => ReplaceAsync(context.Document, invocation, memberAccess, c),
-                equivalenceKey: Title),
-            diagnostic);
+                createChangedDocument: c =>
+                    ReplaceAsync(context.Document, invocation, memberAccess, c),
+                equivalenceKey: Title
+            ),
+            diagnostic
+        );
     }
 
     private static async Task<Document> ReplaceAsync(
         Document document,
         InvocationExpressionSyntax invocation,
         MemberAccessExpressionSyntax memberAccess,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
         if (root == null)
@@ -65,7 +81,9 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
                 memberAccess.Expression.WithoutTrivia(),
-                SyntaxFactory.IdentifierName("CancelAsync")));
+                SyntaxFactory.IdentifierName("CancelAsync")
+            )
+        );
 
         var awaitExpression = SyntaxFactory.AwaitExpression(cancelAsync).WithTriviaFrom(invocation);
 
