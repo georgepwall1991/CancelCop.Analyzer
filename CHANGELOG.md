@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.16] - 2026-08-19
+
+### Fixed
+
+- **CC028 fixer:** parenthesize `await …Async(...)` when the
+  original call is followed by `!`
+  (`ReadAllText(p)!.Trim()`). The local parentheses helper
+  missed that shape, so `!` and `.Trim()` bound to the `Task`.
+  The fixer now uses the shared `AwaitNeedsParentheses`
+  helper.
+
 ## [1.52.15] - 2026-08-19
 
 ### Fixed

@@ -130,23 +130,10 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         // the await must be parenthesized so it binds before the trailing member/element access:
         // `(await File.ReadAllTextAsync(p)).Trim()`, not `await File.ReadAllTextAsync(p).Trim()`.
         ExpressionSyntax replacement = SyntaxFactory.AwaitExpression(asyncInvocation);
-        if (NeedsParentheses(invocation))
+        if (CancellationTokenHelpers.AwaitNeedsParentheses(invocation))
             replacement = SyntaxFactory.ParenthesizedExpression(replacement);
 
         var newRoot = root.ReplaceNode(invocation, replacement.WithTriviaFrom(invocation));
         return document.WithSyntaxRoot(newRoot);
     }
-
-    /// <summary>
-    /// Returns <c>true</c> when the invocation is the receiver of a trailing access, so the inserted
-    /// <c>await</c> would otherwise bind to the whole postfix chain instead of just the async call.
-    /// </summary>
-    private static bool NeedsParentheses(InvocationExpressionSyntax invocation) =>
-        invocation.Parent switch
-        {
-            MemberAccessExpressionSyntax m => m.Expression == invocation,
-            ElementAccessExpressionSyntax e => e.Expression == invocation,
-            ConditionalAccessExpressionSyntax c => c.Expression == invocation,
-            _ => false,
-        };
 }

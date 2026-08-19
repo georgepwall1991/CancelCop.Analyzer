@@ -7,10 +7,17 @@ namespace CancelCop.Analyzer.Tests;
 
 public class BlockingFileIoCodeFixTests
 {
-    private static CSharpCodeFixTest<BlockingFileIoAnalyzer, BlockingFileIoCodeFixProvider, DefaultVerifier> CreateTest(
-        string testCode, string fixedCode, params DiagnosticResult[] expected)
+    private static CSharpCodeFixTest<
+        BlockingFileIoAnalyzer,
+        BlockingFileIoCodeFixProvider,
+        DefaultVerifier
+    > CreateTest(string testCode, string fixedCode, params DiagnosticResult[] expected)
     {
-        var test = new CSharpCodeFixTest<BlockingFileIoAnalyzer, BlockingFileIoCodeFixProvider, DefaultVerifier>
+        var test = new CSharpCodeFixTest<
+            BlockingFileIoAnalyzer,
+            BlockingFileIoCodeFixProvider,
+            DefaultVerifier
+        >
         {
             TestCode = testCode,
             FixedCode = fixedCode,
@@ -23,7 +30,8 @@ public class BlockingFileIoCodeFixTests
     [Fact]
     public async Task ReadAllText_WithToken_BecomesAwaitReadAllTextAsyncWithToken()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,7 +46,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,14 +63,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
     public async Task ReadAllText_ViaStaticImport_BecomesAwaitReadAllTextAsyncWithToken()
     {
-        var test = @"
+        var test =
+            @"
 using static System.IO.File;
 using System.Threading;
 using System.Threading.Tasks;
@@ -76,7 +87,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using static System.IO.File;
 using System.Threading;
 using System.Threading.Tasks;
@@ -92,14 +104,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
     public async Task WriteAllText_WithoutTokenInScope_BecomesAwaitWriteAllTextAsync()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -112,7 +126,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -126,7 +141,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("WriteAllText");
+            .WithLocation(0)
+            .WithArguments("WriteAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -135,7 +151,8 @@ public class TestClass
     {
         // A positional token after a named argument is a compile error (CS8323), so when the original
         // call uses a named argument the token must be added as `cancellationToken: token`.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -150,7 +167,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -166,14 +184,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
     public async Task StreamReaderReadToEnd_WithToken_BecomesAwaitReadToEndAsyncWithToken()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -188,7 +208,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -204,14 +225,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadToEnd");
+            .WithLocation(0)
+            .WithArguments("ReadToEnd");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
     public async Task StreamReaderReadLine_WithToken_BecomesAwaitReadLineAsyncWithToken()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -226,7 +249,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -242,14 +266,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadLine");
+            .WithLocation(0)
+            .WithArguments("ReadLine");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
     public async Task AppendAllText_WithToken_BecomesAwaitAppendAllTextAsyncWithToken()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -263,7 +289,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -278,7 +305,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("AppendAllText");
+            .WithLocation(0)
+            .WithArguments("AppendAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -287,7 +315,8 @@ public class TestClass
     {
         // The blocking call is the receiver of `.Trim()`, so the await must be parenthesized:
         // File.ReadAllText(p).Trim() -> (await File.ReadAllTextAsync(p, token)).Trim().
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -302,7 +331,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -318,7 +348,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -326,7 +357,8 @@ public class TestClass
     public async Task ResultUsedWithElementAccess_ParenthesizesAwait()
     {
         // File.ReadAllLines(p)[0] -> (await File.ReadAllLinesAsync(p, token))[0]
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -341,7 +373,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -357,7 +390,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllLines");
+            .WithLocation(0)
+            .WithArguments("ReadAllLines");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -365,7 +399,8 @@ public class TestClass
     public async Task ResultUsedWithConditionalAccess_ParenthesizesAwait()
     {
         // reader.ReadLine()?.Trim() -> (await reader.ReadLineAsync(token))?.Trim()
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -380,7 +415,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -396,7 +432,94 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadLine");
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ResultUsedAsReceiver_ThroughNullForgiving_ParenthesizesAwait()
+    {
+        // File.ReadAllText(p)!.Trim() -> (await File.ReadAllTextAsync(p, token))!.Trim()
+        // Without parens the `!` and `.Trim()` bind to the Task.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = File.{|#0:ReadAllText|}(p)!.Trim();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = (await File.ReadAllTextAsync(p, cancellationToken))!.Trim();
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NullForgivingOnResult_ParenthesizesAwait()
+    {
+        // File.ReadAllText(p)! -> (await File.ReadAllTextAsync(p, token))!
+        // so `!` applies to the string, not the Task.
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = File.{|#0:ReadAllText|}(p)!;
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<string> RunAsync(string p, CancellationToken cancellationToken)
+    {
+        var text = (await File.ReadAllTextAsync(p, cancellationToken))!;
+        await Task.Yield();
+        return text;
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -405,7 +528,8 @@ public class TestClass
     {
         // Fix All must rewrite across the generalized type map in one batch: a File helper and a
         // StreamReader read in the same method.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -421,7 +545,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -438,10 +563,16 @@ public class TestClass
 }";
 
         await CreateTest(
-            test,
-            fixedCode,
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("ReadAllText"),
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("ReadToEnd")).RunAsync();
+                test,
+                fixedCode,
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(0)
+                    .WithArguments("ReadAllText"),
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(1)
+                    .WithArguments("ReadToEnd")
+            )
+            .RunAsync();
     }
 
     [Fact]
@@ -449,7 +580,8 @@ public class TestClass
     {
         // Fix All must batch across all three curated System.IO types in one pass, including the
         // write-side StreamWriter added in 1.27.0 (whose WriteAsync(string) flows no token).
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -465,7 +597,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -482,17 +615,26 @@ public class TestClass
 }";
 
         await CreateTest(
-            test,
-            fixedCode,
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("ReadAllText"),
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("ReadToEnd"),
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(2).WithArguments("Write")).RunAsync();
+                test,
+                fixedCode,
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(0)
+                    .WithArguments("ReadAllText"),
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(1)
+                    .WithArguments("ReadToEnd"),
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(2)
+                    .WithArguments("Write")
+            )
+            .RunAsync();
     }
 
     [Fact]
     public async Task FixAll_TwoBlockingCalls_BothBecomeAsync()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -507,7 +649,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -523,17 +666,24 @@ public class TestClass
 }";
 
         await CreateTest(
-            test,
-            fixedCode,
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(0).WithArguments("ReadAllText"),
-            new DiagnosticResult("CC028", DiagnosticSeverity.Warning).WithLocation(1).WithArguments("WriteAllText")).RunAsync();
+                test,
+                fixedCode,
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(0)
+                    .WithArguments("ReadAllText"),
+                new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+                    .WithLocation(1)
+                    .WithArguments("WriteAllText")
+            )
+            .RunAsync();
     }
 
     [Fact]
     public async Task StreamWriterFlush_WithToken_BecomesAwaitFlushAsyncWithToken()
     {
         // FlushAsync has a CancellationToken overload, so the in-scope token is flowed.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -547,7 +697,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -562,7 +713,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("Flush");
+            .WithLocation(0)
+            .WithArguments("Flush");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -570,7 +722,8 @@ public class TestClass
     public async Task StreamWriterWriteLine_TokenInScope_BecomesAwaitWriteLineAsyncWithoutToken()
     {
         // WriteLineAsync(string) has no CancellationToken overload, so the fix flows no token.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -584,7 +737,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -599,7 +753,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("WriteLine");
+            .WithLocation(0)
+            .WithArguments("WriteLine");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
@@ -608,7 +763,8 @@ public class TestClass
     {
         // StreamWriter.WriteAsync(string) has no CancellationToken overload, so even with a token in
         // scope the fix must not add one — the analyzer's signature match reports takesToken = false.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -622,7 +778,8 @@ public class TestClass
     }
 }";
 
-        var fixedCode = @"
+        var fixedCode =
+            @"
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -637,7 +794,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("Write");
+            .WithLocation(0)
+            .WithArguments("Write");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
 }
