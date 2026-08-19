@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.3] - 2026-08-19
+
+### Added
+
+- **CC047 fixer** (`BlockingDbNonQueryCodeFixProvider`): rewrites a
+  blocking `DbCommand.ExecuteNonQuery()` to `await ExecuteNonQueryAsync`,
+  flowing an in-scope token when the rewritten call still binds to a
+  `Task<int>` TAP method. The parameterless form is used when no token
+  is in scope or the token-taking overload would not bind. Provider
+  overrides still match. Stay quiet when every reachable
+  `ExecuteNonQueryAsync` shape is an unusable hider. If only the
+  token-taking TAP form is reachable and no token is in scope, the
+  diagnostic is reported without a fix. The await is parenthesized when
+  the call is used as a receiver. A call from inside
+  `ExecuteNonQueryAsync` is reported without a rewrite so the public
+  TAP entry point cannot recurse on a this/implicit-this call. Other
+  receivers still rewrite.
+
 ## [1.52.2] - 2026-08-19
 
 ### Added

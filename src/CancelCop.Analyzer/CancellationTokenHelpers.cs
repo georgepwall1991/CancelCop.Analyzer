@@ -890,6 +890,32 @@ public static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns <c>true</c> when wrapping <paramref name="invocation"/> in <c>await</c> would
+    /// otherwise bind to a trailing member/element/conditional access, so the await must be
+    /// parenthesized: <c>(await x.FooAsync()).Bar</c>, not <c>await x.FooAsync().Bar</c>.
+    /// </summary>
+    public static bool AwaitNeedsParentheses(InvocationExpressionSyntax invocation)
+    {
+        SyntaxNode current = invocation;
+        while (
+            current.Parent is PostfixUnaryExpressionSyntax postfix
+            && postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression)
+            && postfix.Operand == current
+        )
+        {
+            current = postfix;
+        }
+
+        return current.Parent switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression == current,
+            ElementAccessExpressionSyntax elementAccess => elementAccess.Expression == current,
+            ConditionalAccessExpressionSyntax conditional => conditional.Expression == current,
+            _ => false,
+        };
+    }
+
+    /// <summary>
     /// Builds an expression for an in-scope token: a simple identifier (keyword-escaped) or a
     /// member access such as <c>context.RequestAborted</c>. Built with factory methods so elastic
     /// trivia is present and the formatter can indent inserted statements.
