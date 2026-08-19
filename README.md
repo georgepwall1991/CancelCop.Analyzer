@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.10">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.11">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.10
+Install-Package CancelCop.Analyzer -Version 1.52.11
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -155,7 +155,7 @@ dotnet build samples/CancelCop.Sample
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ✅ |
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ✅ |
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ✅ |
-| **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
+| **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ✅ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
@@ -937,9 +937,14 @@ await client.ConnectAsync(cancellationToken);
 > CC041 covers `NamedPipeServerStream.WaitForConnection`. The client connect
 > is a sibling type, which none of the previous rules reported. The `int` and
 > `TimeSpan` timeout overloads still park the thread and also report.
-> Analyzer-only in this release; a fixer is a follow-up. `ConnectAsync` is
-> modern .NET only — the rule stays quiet where that member is absent
-> (.NET Framework has no `ConnectAsync` at all).
+> The fixer rewrites a safe `Connect` to `await ConnectAsync`, keeping the
+> timeout argument and flowing an in-scope token when the rewritten call
+> still binds. There is no tokenless `ConnectAsync(TimeSpan)`, so that
+> overload is reported without a rewrite unless a token is in scope.
+> Null-conditional calls and positions where `await` cannot compile are
+> reported without a rewrite. `NamedPipeClientStream` is sealed.
+> `ConnectAsync` is modern .NET only — the rule stays quiet where that
+> member is absent (.NET Framework has no `ConnectAsync` at all).
 
 ### CC043: Blocking `Dns.GetHostAddresses` in Async Code
 

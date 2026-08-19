@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.11] - 2026-08-19
+
+### Added
+
+- **CC042 fixer** (`BlockingNamedPipeClientCodeFixProvider`): rewrites a
+  blocking `NamedPipeClientStream.Connect` (`()`, `int` timeout, or
+  `TimeSpan` timeout) to `await ConnectAsync`, flowing an in-scope
+  token when the rewritten call still binds. The tokenless form is
+  used for parameterless and `int` timeouts when no token is in
+  scope. There is no tokenless `ConnectAsync(TimeSpan)`, so that
+  overload is reported without a rewrite unless a token is in scope.
+  Null-conditional calls and positions where `await` cannot compile
+  are reported without a rewrite. `NamedPipeClientStream` is sealed.
+
 ## [1.52.10] - 2026-08-19
 
 ### Added
