@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.15] - 2026-08-19
+
+### Fixed
+
+- **CC026 fixer:** parenthesize `await WaitAsync(...)` when a
+  `bool`-returning `Wait` overload is a receiver
+  (`Wait(1000, ct).ToString()`) or is followed by `!`. Without
+  parentheses the await binds to `.ToString()` on the `Task`,
+  which does not compile. Parameterless `Wait()` and
+  `Wait(CancellationToken)` stay statement-only — both return
+  `void`. A Wait on the left spine of a `?.` WhenNotNull
+  (`holder?.Gate.Wait(1000)`, `.ToString()`, `== true`,
+  `as object`) is reported without a rewrite. A Wait used as
+  an argument inside an unrelated `?.` still rewrites.
+
 ## [1.52.14] - 2026-08-19
 
 ### Fixed
