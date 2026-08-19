@@ -96,10 +96,11 @@ public class BlockingDbCommandCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        var newRoot = root.ReplaceNode(
-            invocation,
-            SyntaxFactory.AwaitExpression(asyncInvocation).WithTriviaFrom(invocation)
-        );
+        ExpressionSyntax replacement = SyntaxFactory.AwaitExpression(asyncInvocation);
+        if (CancellationTokenHelpers.AwaitNeedsParentheses(invocation))
+            replacement = SyntaxFactory.ParenthesizedExpression(replacement);
+
+        var newRoot = root.ReplaceNode(invocation, replacement.WithTriviaFrom(invocation));
         return document.WithSyntaxRoot(newRoot);
     }
 }

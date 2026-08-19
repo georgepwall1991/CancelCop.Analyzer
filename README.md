@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.13">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.14">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.13
+Install-Package CancelCop.Analyzer -Version 1.52.14
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -1047,7 +1047,9 @@ await command.ExecuteReaderAsync(cancellationToken);
 > stays quiet. `ExecuteNonQuery` is CC047. `ExecuteScalar` is CC048.
 > The fixer rewrites a safe `ExecuteReader` to `await ExecuteReaderAsync`,
 > preserving a `CommandBehavior` argument and flowing an in-scope token.
-> Null-conditional calls and positions where `await` cannot compile are
+> When the original call is a receiver or is followed by `!`, the await
+> is parenthesized. Null-conditional calls and positions where `await`
+> cannot compile are
 > reported without a fix. Provider `new` TAP hiders still match —
 > `ExecuteReaderAsync()` / `ExecuteReaderAsync(CancellationToken)` are not
 > virtual. A `Task<int>` hider is not a reader API and stays quiet.
