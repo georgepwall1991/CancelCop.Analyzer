@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -28,7 +29,8 @@ namespace CancelCop.Analyzer;
 /// verified empirically. <c>DbCommand.ExecuteReader</c> is CC046.
 /// </para>
 /// <para>
-/// Analyzer-only in this slice: a mechanical rewrite is a follow-up.
+/// The fixer rewrites a safe <c>Open()</c> to <c>await OpenAsync</c>,
+/// flowing an in-scope token when the rewritten call still binds.
 /// </para>
 /// </remarks>
 /// <example>
@@ -46,6 +48,17 @@ public class BlockingDbConnectionAnalyzer : DiagnosticAnalyzer
     /// The diagnostic ID for this analyzer rule.
     /// </summary>
     public const string DiagnosticId = "CC045";
+
+    /// <summary>
+    /// Property key used to pass the in-scope token parameter name (if any) to the code fix provider.
+    /// </summary>
+    public const string TokenNameProperty = "TokenName";
+
+    /// <summary>
+    /// Property key set when the diagnostic is correct but no safe rewrite exists, so the code fix
+    /// must not offer one.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
 
     private static readonly LocalizableString Title =
         "Avoid blocking DbConnection.Open in async code";
@@ -121,14 +134,201 @@ public class BlockingDbConnectionAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        if (connectionType.GetMembers("OpenAsync").IsEmpty)
+        if (
+            !TryGetOpenAsync(connectionType, out var withToken, out var withoutToken)
+            || (withToken is null && withoutToken is null)
+        )
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
+        var properties = ImmutableDictionary<string, string?>.Empty;
+
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+            properties = properties.Add(NoFixProperty, "await-unsafe");
+
+        var tokenName = CancellationTokenHelpers
+            .FindEnclosingCancellationToken(invocation, context.SemanticModel)
+            ?.ExpressionText;
+
+        if (
+            tokenName != null
+            && (
+                withToken is null
+                || !ResolvesToTheFrameworkCounterpart(
+                    context,
+                    invocation,
+                    method,
+                    tokenName,
+                    withToken
+                )
+            )
+        )
+        {
+            tokenName = null;
+        }
+
+        var counterpart =
+            tokenName != null
+                ? withToken
+                : withoutToken
+                    ?? (
+                        withToken is not null && withToken.Parameters.All(p => p.IsOptional)
+                            ? withToken
+                            : null
+                    );
+
+        if (
+            counterpart is null
+            || !ResolvesToTheFrameworkCounterpart(
+                context,
+                invocation,
+                method,
+                tokenName,
+                counterpart
+            )
+        )
+            return;
+
+        if (tokenName != null)
+            properties = properties.Add(TokenNameProperty, tokenName);
+
         context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invokedName.GetLocation(), definition.Name)
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, definition.Name)
         );
+    }
+
+    private static bool ResolvesToTheFrameworkCounterpart(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol method,
+        string? tokenName,
+        IMethodSymbol asyncCounterpart
+    )
+    {
+        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+            invocation,
+            "OpenAsync",
+            tokenName
+        );
+
+        if (speculative != null)
+        {
+            var bound =
+                context
+                    .SemanticModel.GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        speculative,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+            return IsSameOrOverrideOf(bound, asyncCounterpart);
+        }
+
+        return ReachesCounterpart(
+            ReceiverTypeOf(context, invocation) ?? method.ReceiverType,
+            tokenName is null ? 0 : 1,
+            asyncCounterpart
+        );
+    }
+
+    private static ITypeSymbol? ReceiverTypeOf(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
+    {
+        var receiver = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            MemberBindingExpressionSyntax => invocation
+                .Ancestors()
+                .OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault()
+                ?.Expression,
+            _ => null,
+        };
+
+        return receiver is null
+            ? null
+            : context.SemanticModel.GetTypeInfo(receiver, context.CancellationToken).Type;
+    }
+
+    private static bool IsSameOrOverrideOf(IMethodSymbol? bound, IMethodSymbol expected)
+    {
+        for (var current = bound; current is not null; current = current.OverriddenMethod)
+        {
+            if (
+                SymbolEqualityComparer.Default.Equals(
+                    current.OriginalDefinition,
+                    expected.OriginalDefinition
+                )
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ReachesCounterpart(
+        ITypeSymbol? receiverType,
+        int arity,
+        IMethodSymbol asyncCounterpart
+    )
+    {
+        for (var current = receiverType; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers("OpenAsync").OfType<IMethodSymbol>())
+            {
+                var required = member.Parameters.Count(p => !p.IsOptional);
+                if (arity < required || arity > member.Parameters.Length)
+                    continue;
+
+                if (IsSameOrOverrideOf(member, asyncCounterpart))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetOpenAsync(
+        INamedTypeSymbol connectionType,
+        out IMethodSymbol? withToken,
+        out IMethodSymbol? withoutToken
+    )
+    {
+        withToken = null;
+        withoutToken = null;
+
+        foreach (var member in connectionType.GetMembers("OpenAsync"))
+        {
+            if (
+                member
+                is not IMethodSymbol
+                {
+                    IsStatic: false,
+                    DeclaredAccessibility: Accessibility.Public,
+                    ReturnType.Name: "Task",
+                } candidate
+            )
+                continue;
+
+            if (
+                candidate.ReturnType.ContainingNamespace?.ToDisplayString()
+                != "System.Threading.Tasks"
+            )
+                continue;
+
+            if (
+                candidate.Parameters.Length == 1
+                && CancellationTokenHelpers.IsCancellationToken(candidate.Parameters[0].Type)
+            )
+                withToken = candidate;
+            else if (candidate.Parameters.Length == 0)
+                withoutToken = candidate;
+        }
+
+        return withToken is not null || withoutToken is not null;
     }
 }

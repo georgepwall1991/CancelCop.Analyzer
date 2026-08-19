@@ -31,7 +31,7 @@ public class CC045_BlockingDbConnection
         await Task.Yield();
     }
 
-    // FIXED — yields the thread; OpenAsync has taken a token since .NET 4.5
+    // FIXED (CC045 fixer) — yields the thread; OpenAsync has taken a token since .NET 4.5
     public async Task OpenGood(DbConnection connection, CancellationToken cancellationToken)
     {
         await connection.OpenAsync(cancellationToken);

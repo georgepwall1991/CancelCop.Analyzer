@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.1] - 2026-08-19
+
+### Added
+
+- **CC045 fixer** (`BlockingDbConnectionCodeFixProvider`): rewrites a
+  blocking `DbConnection.Open()` to `await OpenAsync`, flowing an in-scope
+  token when the rewritten call still binds to the framework method. The
+  parameterless `OpenAsync()` form is used when no token is in scope or
+  the token-taking overload would not bind. Null-conditional calls and
+  positions where `await` cannot compile (lock, ref-like lifetime) are
+  reported without a fix. Provider overrides of `OpenAsync` still match.
+
 ## [1.52.0] - 2026-08-19
 
 ### Added
