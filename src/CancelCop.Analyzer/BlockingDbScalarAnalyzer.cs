@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -32,7 +34,11 @@ namespace CancelCop.Analyzer;
 /// diagnostics from every shipped rule — verified empirically.
 /// </para>
 /// <para>
-/// Analyzer-only in this slice: a mechanical rewrite is a follow-up.
+/// The fixer rewrites a safe <c>ExecuteScalar()</c> to
+/// <c>await ExecuteScalarAsync</c>, flowing an in-scope token when the
+/// rewritten call still binds to a <c>Task&lt;T&gt;</c> TAP method.
+/// A this/base call or a receiver that aliases this inside
+/// <c>ExecuteScalarAsync</c> is reported without a rewrite.
 /// </para>
 /// </remarks>
 /// <example>
@@ -50,6 +56,17 @@ public class BlockingDbScalarAnalyzer : DiagnosticAnalyzer
     /// The diagnostic ID for this analyzer rule.
     /// </summary>
     public const string DiagnosticId = "CC048";
+
+    /// <summary>
+    /// Property key used to pass the in-scope token parameter name (if any) to the code fix provider.
+    /// </summary>
+    public const string TokenNameProperty = "TokenName";
+
+    /// <summary>
+    /// Property key set when the diagnostic is correct but no safe rewrite exists, so the code fix
+    /// must not offer one.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
 
     private static readonly LocalizableString Title =
         "Avoid blocking DbCommand.ExecuteScalar in async code";
@@ -118,22 +135,305 @@ public class BlockingDbScalarAnalyzer : DiagnosticAnalyzer
         if (!IsFrameworkExecuteScalar(method, commandType))
             return;
 
-        if (commandType.GetMembers("ExecuteScalarAsync").IsEmpty)
+        if (
+            !TryGetExecuteScalarAsync(commandType, out var withToken, out var withoutToken)
+            || (withToken is null && withoutToken is null)
+        )
             return;
 
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation(), method.Name));
+        var properties = ImmutableDictionary<string, string?>.Empty;
+
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+            properties = properties.Add(NoFixProperty, "await-unsafe");
+
+        if (
+            !properties.ContainsKey(NoFixProperty)
+            && IsInsideExecuteScalarAsync(context, invocation, commandType)
+        )
+            properties = properties.Add(NoFixProperty, "self-async");
+
+        var tokenName = CancellationTokenHelpers
+            .FindEnclosingCancellationToken(invocation, context.SemanticModel)
+            ?.ExpressionText;
+
+        if (
+            tokenName != null
+            && (withToken is null || !ResolvesToUsableCounterpart(context, invocation, tokenName))
+        )
+        {
+            tokenName = null;
+        }
+
+        var counterpart =
+            tokenName != null
+                ? withToken
+                : withoutToken
+                    ?? (
+                        withToken is not null && withToken.Parameters.All(p => p.IsOptional)
+                            ? withToken
+                            : null
+                    );
+
+        if (counterpart is not null && ResolvesToUsableCounterpart(context, invocation, tokenName))
+        {
+            if (tokenName != null)
+                properties = properties.Add(TokenNameProperty, tokenName);
+
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invokedName.GetLocation(), properties, method.Name)
+            );
+            return;
+        }
+
+        if (
+            withToken is null
+            || !ReachesCounterpart(
+                ReceiverTypeOf(context, invocation) ?? method.ReceiverType,
+                1,
+                context
+            )
+        )
+            return;
+
+        if (!properties.ContainsKey(NoFixProperty))
+            properties = properties.Add(NoFixProperty, "token-required");
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, method.Name)
+        );
+    }
+
+    private static bool IsInsideExecuteScalarAsync(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        INamedTypeSymbol commandType
+    )
+    {
+        var enclosing =
+            context.SemanticModel.GetEnclosingSymbol(
+                invocation.SpanStart,
+                context.CancellationToken
+            ) as IMethodSymbol;
+
+        while (
+            enclosing is { MethodKind: MethodKind.LocalFunction or MethodKind.AnonymousFunction }
+        )
+            enclosing = enclosing.ContainingSymbol as IMethodSymbol;
+
+        if (
+            enclosing is not { Name: "ExecuteScalarAsync" }
+            || !IsOrInherits(enclosing.ContainingType, commandType)
+            || !IsUsableAsyncCounterpart(enclosing)
+        )
+            return false;
+
+        return invocation.Expression switch
+        {
+            IdentifierNameSyntax => true,
+            MemberAccessExpressionSyntax member => ReceiverMayAliasThis(context, member.Expression),
+            _ => false,
+        };
     }
 
     /// <summary>
-    /// Match the framework <c>ExecuteScalar()</c> shape: instance, arity 0,
-    /// non-<c>void</c> return, no parameters, declared on <c>DbCommand</c>
-    /// or a subclass. Overrides, <c>new object</c> hiders, and more-derived
-    /// returns report; <c>void</c> hiders, <c>Task</c>/<c>ValueTask</c>
-    /// hiders, custom helpers, and generics stay quiet.
+    /// True when rewriting this receiver to <c>ExecuteScalarAsync</c> could
+    /// re-enter the enclosing override. <c>this</c>, <c>base</c>, a cast of
+    /// either, a local/parameter assigned from them, and an instance
+    /// field/property of the enclosing type all count. A different command
+    /// (factory result, unrelated parameter) does not.
     /// </summary>
+    private static bool ReceiverMayAliasThis(
+        SyntaxNodeAnalysisContext context,
+        ExpressionSyntax receiver
+    ) =>
+        ExpressionMayAliasThis(
+            context,
+            receiver,
+            new HashSet<ISymbol>(SymbolEqualityComparer.Default)
+        );
+
+    private static bool ExpressionMayAliasThis(
+        SyntaxNodeAnalysisContext context,
+        ExpressionSyntax expression,
+        HashSet<ISymbol> seen
+    )
+    {
+        expression = UnwrapIdentity(expression);
+
+        switch (expression)
+        {
+            case ThisExpressionSyntax:
+            case BaseExpressionSyntax:
+                return true;
+            case ConditionalExpressionSyntax conditional:
+                return ExpressionMayAliasThis(context, conditional.WhenTrue, seen)
+                    || ExpressionMayAliasThis(context, conditional.WhenFalse, seen);
+            case MemberAccessExpressionSyntax member
+                when UnwrapIdentity(member.Expression)
+                    is ThisExpressionSyntax
+                        or BaseExpressionSyntax:
+                expression = member.Name;
+                break;
+        }
+
+        if (expression is not SimpleNameSyntax)
+            return false;
+
+        var symbol = context
+            .SemanticModel.GetSymbolInfo(expression, context.CancellationToken)
+            .Symbol;
+
+        // A field or property on this may have been assigned this in a
+        // constructor or another member. Stay quiet rather than rewrite
+        // `_self.ExecuteScalar()` into a recursive TAP call.
+        if (IsInstanceMemberOfEnclosingType(context, symbol, expression))
+            return true;
+
+        if (symbol is not (ILocalSymbol or IParameterSymbol))
+            return false;
+
+        return SymbolIsAssignedFromThis(context, symbol, expression, seen);
+    }
+
+    private static bool IsInstanceMemberOfEnclosingType(
+        SyntaxNodeAnalysisContext context,
+        ISymbol? symbol,
+        SyntaxNode location
+    )
+    {
+        if (symbol is not (IFieldSymbol { IsStatic: false } or IPropertySymbol { IsStatic: false }))
+            return false;
+
+        var enclosing =
+            context.ContainingSymbol as INamedTypeSymbol
+            ?? (context.ContainingSymbol as IMethodSymbol)?.ContainingType
+            ?? (
+                context
+                    .SemanticModel.GetEnclosingSymbol(location.SpanStart, context.CancellationToken)
+                    ?.ContainingType
+            );
+
+        if (enclosing is null)
+            return false;
+
+        for (var current = enclosing; current is not null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, symbol.ContainingType))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool SymbolIsAssignedFromThis(
+        SyntaxNodeAnalysisContext context,
+        ISymbol symbol,
+        SyntaxNode location,
+        HashSet<ISymbol> seen
+    )
+    {
+        if (!seen.Add(symbol))
+            return false;
+
+        // Scan the enclosing method, not the nearest local function /
+        // lambda. An alias declared in ExecuteScalarAsync and captured
+        // by Inner() still re-enters the override if rewritten.
+        var body = EnclosingMethodBody(location);
+        if (body is null)
+            return false;
+
+        foreach (var declarator in body.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+        {
+            if (
+                !SymbolEqualityComparer.Default.Equals(
+                    context.SemanticModel.GetDeclaredSymbol(declarator, context.CancellationToken),
+                    symbol
+                )
+            )
+                continue;
+
+            if (
+                declarator.Initializer?.Value is { } init
+                && ExpressionMayAliasThis(context, init, seen)
+            )
+                return true;
+        }
+
+        // Any assignment from this in the enclosing method, including
+        // later or unreachable ones. Flow-sensitive "not this at this
+        // statement" would miss aliases; a fixer prefers stay-quiet.
+        foreach (var assignment in body.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+        {
+            if (!IsAssignmentTo(context, assignment.Left, symbol))
+                continue;
+
+            if (ExpressionMayAliasThis(context, assignment.Right, seen))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsAssignmentTo(
+        SyntaxNodeAnalysisContext context,
+        ExpressionSyntax left,
+        ISymbol symbol
+    )
+    {
+        var assigned = context
+            .SemanticModel.GetSymbolInfo(UnwrapIdentity(left), context.CancellationToken)
+            .Symbol;
+        return SymbolEqualityComparer.Default.Equals(assigned, symbol);
+    }
+
+    private static ExpressionSyntax UnwrapIdentity(ExpressionSyntax expression)
+    {
+        while (true)
+        {
+            switch (expression)
+            {
+                case ParenthesizedExpressionSyntax paren:
+                    expression = paren.Expression;
+                    continue;
+                case CastExpressionSyntax cast:
+                    expression = cast.Expression;
+                    continue;
+                case PostfixUnaryExpressionSyntax
+                {
+                    RawKind: (int)SyntaxKind.SuppressNullableWarningExpression
+                } bang:
+                    expression = bang.Operand;
+                    continue;
+                case BinaryExpressionSyntax { RawKind: (int)SyntaxKind.AsExpression } asExpr:
+                    expression = asExpr.Left;
+                    continue;
+                default:
+                    return expression;
+            }
+        }
+    }
+
+    private static SyntaxNode? EnclosingMethodBody(SyntaxNode node)
+    {
+        for (var current = node.Parent; current is not null; current = current.Parent)
+        {
+            switch (current)
+            {
+                case MethodDeclarationSyntax { Body: { } body }:
+                    return body;
+                case MethodDeclarationSyntax { ExpressionBody: { } expr }:
+                    return expr;
+                case AccessorDeclarationSyntax { Body: { } body }:
+                    return body;
+            }
+        }
+
+        return null;
+    }
+
     private static bool IsFrameworkExecuteScalar(IMethodSymbol method, INamedTypeSymbol commandType)
     {
         if (method.IsStatic || method.Arity != 0)
@@ -168,6 +468,290 @@ public class BlockingDbScalarAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    private static bool ResolvesToUsableCounterpart(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        string? tokenName
+    )
+    {
+        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+            invocation,
+            "ExecuteScalarAsync",
+            tokenName
+        );
+
+        if (speculative != null)
+        {
+            var bound =
+                context
+                    .SemanticModel.GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        speculative,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+            return bound is not null
+                && IsUsableAsyncCounterpart(bound)
+                && AwaitedResultFitsUseSite(context, invocation, bound);
+        }
+
+        return ReachesCounterpart(
+            ReceiverTypeOf(context, invocation),
+            tokenName is null ? 0 : 1,
+            context
+        );
+    }
+
+    private static ITypeSymbol? ReceiverTypeOf(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
+    {
+        var receiver = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression,
+            MemberBindingExpressionSyntax => invocation
+                .Ancestors()
+                .OfType<ConditionalAccessExpressionSyntax>()
+                .FirstOrDefault()
+                ?.Expression,
+            _ => null,
+        };
+
+        return receiver is null
+            ? null
+            : context.SemanticModel.GetTypeInfo(receiver, context.CancellationToken).Type;
+    }
+
+    /// <summary>
+    /// Accept a TAP <c>ExecuteScalarAsync</c>: <c>Task&lt;T&gt;</c> /
+    /// <c>ValueTask&lt;T&gt;</c> where <c>T</c> is a reference type
+    /// (framework <c>object</c> or a covariant <c>string</c> hider),
+    /// with either no parameters or a single <c>CancellationToken</c>.
+    /// </summary>
+    private static bool IsUsableAsyncCounterpart(IMethodSymbol? bound)
+    {
+        if (
+            bound
+            is not {
+                IsStatic: false,
+                Name: "ExecuteScalarAsync",
+                ReturnType: INamedTypeSymbol
+                {
+                    IsGenericType: true,
+                    Name: "Task" or "ValueTask",
+                    TypeArguments.Length: 1,
+                } task,
+            }
+        )
+            return false;
+
+        if (task.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
+            return false;
+
+        if (!task.TypeArguments[0].IsReferenceType)
+            return false;
+
+        if (bound.Parameters.Length == 0)
+            return true;
+
+        return bound.Parameters.Length == 1
+            && CancellationTokenHelpers.IsCancellationToken(bound.Parameters[0].Type);
+    }
+
+    private static bool AwaitedResultFitsUseSite(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol bound
+    )
+    {
+        if (invocation.Parent is ExpressionStatementSyntax)
+            return true;
+
+        if (bound.ReturnType is not INamedTypeSymbol { TypeArguments.Length: 1 } task)
+            return false;
+
+        var typeInfo = context.SemanticModel.GetTypeInfo(invocation, context.CancellationToken);
+
+        // Speculative bind can see the framework Task<object> TAP while
+        // a more-derived Task<string> hider is what the rewrite actually
+        // calls. Walk reachable TAP members so a narrower T cannot
+        // retarget an outer overload.
+        if (
+            typeInfo.Type is { } original
+            && ReachableTapResultDiffers(
+                ReceiverTypeOf(context, invocation) ?? bound.ReceiverType,
+                original,
+                bound,
+                context
+            )
+        )
+            return false;
+
+        var converted = typeInfo.ConvertedType;
+        if (converted is null)
+            return true;
+
+        var conversion = context.SemanticModel.Compilation.ClassifyConversion(
+            task.TypeArguments[0],
+            converted
+        );
+        return conversion.IsIdentity || conversion.IsImplicit;
+    }
+
+    private static bool ReachableTapResultDiffers(
+        ITypeSymbol? receiverType,
+        ITypeSymbol originalResult,
+        IMethodSymbol emitted,
+        SyntaxNodeAnalysisContext context
+    )
+    {
+        foreach (var member in ReachableTapMembers(receiverType, context))
+        {
+            if (!SameSignature(member, emitted))
+                continue;
+
+            if (
+                member.ReturnType is INamedTypeSymbol { TypeArguments.Length: 1 } tap
+                && !SymbolEqualityComparer.Default.Equals(tap.TypeArguments[0], originalResult)
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<IMethodSymbol> ReachableTapMembers(
+        ITypeSymbol? receiverType,
+        SyntaxNodeAnalysisContext context
+    )
+    {
+        var enclosing =
+            context.ContainingSymbol
+            ?? context.SemanticModel.GetEnclosingSymbol(
+                context.Node.SpanStart,
+                context.CancellationToken
+            );
+        var compilation = context.SemanticModel.Compilation;
+        ISymbol within =
+            enclosing as INamedTypeSymbol
+            ?? enclosing?.ContainingType
+            ?? (ISymbol)compilation.Assembly;
+        var seen = new List<IMethodSymbol>();
+
+        for (var current = receiverType; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers("ExecuteScalarAsync").OfType<IMethodSymbol>())
+            {
+                if (within is not null && !compilation.IsSymbolAccessibleWithin(member, within))
+                    continue;
+
+                if (seen.Any(s => SameSignature(s, member)))
+                    continue;
+
+                seen.Add(member);
+
+                if (IsUsableAsyncCounterpart(member))
+                    yield return member;
+            }
+        }
+    }
+
+    private static bool ReachesCounterpart(
+        ITypeSymbol? receiverType,
+        int arity,
+        SyntaxNodeAnalysisContext context
+    )
+    {
+        var enclosing =
+            context.ContainingSymbol
+            ?? context.SemanticModel.GetEnclosingSymbol(
+                context.Node.SpanStart,
+                context.CancellationToken
+            );
+        var compilation = context.SemanticModel.Compilation;
+        ISymbol within =
+            enclosing as INamedTypeSymbol
+            ?? enclosing?.ContainingType
+            ?? (ISymbol)compilation.Assembly;
+        var seen = new List<IMethodSymbol>();
+
+        for (var current = receiverType; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers("ExecuteScalarAsync").OfType<IMethodSymbol>())
+            {
+                if (within is not null && !compilation.IsSymbolAccessibleWithin(member, within))
+                    continue;
+
+                if (seen.Any(s => SameSignature(s, member)))
+                    continue;
+
+                seen.Add(member);
+
+                var required = member.Parameters.Count(p => !p.IsOptional);
+                if (arity < required || arity > member.Parameters.Length)
+                    continue;
+
+                if (IsUsableAsyncCounterpart(member))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SameSignature(IMethodSymbol left, IMethodSymbol right)
+    {
+        if (left.Parameters.Length != right.Parameters.Length)
+            return false;
+
+        for (var i = 0; i < left.Parameters.Length; i++)
+        {
+            if (left.Parameters[i].RefKind != right.Parameters[i].RefKind)
+                return false;
+
+            if (
+                !SymbolEqualityComparer.Default.Equals(
+                    left.Parameters[i].Type,
+                    right.Parameters[i].Type
+                )
+            )
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetExecuteScalarAsync(
+        INamedTypeSymbol commandType,
+        out IMethodSymbol? withToken,
+        out IMethodSymbol? withoutToken
+    )
+    {
+        withToken = null;
+        withoutToken = null;
+
+        foreach (var member in commandType.GetMembers("ExecuteScalarAsync"))
+        {
+            if (!IsUsableAsyncCounterpart(member as IMethodSymbol))
+                continue;
+
+            var candidate = (IMethodSymbol)member;
+            if (candidate.DeclaredAccessibility != Accessibility.Public)
+                continue;
+
+            if (
+                candidate.Parameters.Length == 1
+                && CancellationTokenHelpers.IsCancellationToken(candidate.Parameters[0].Type)
+            )
+                withToken = candidate;
+            else if (candidate.Parameters.Length == 0)
+                withoutToken = candidate;
+        }
+
+        return withToken is not null || withoutToken is not null;
     }
 
     private static bool IsOrInherits(INamedTypeSymbol? type, INamedTypeSymbol expected)

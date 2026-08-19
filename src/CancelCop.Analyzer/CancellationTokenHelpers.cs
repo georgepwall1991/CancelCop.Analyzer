@@ -896,6 +896,15 @@ public static class CancellationTokenHelpers
     /// </summary>
     public static bool AwaitNeedsParentheses(InvocationExpressionSyntax invocation)
     {
+        // `x()!` becomes `await x()!` unless parenthesized: the `!` would apply
+        // to the Task, not the awaited result.
+        if (
+            invocation.Parent is PostfixUnaryExpressionSyntax bang
+            && bang.IsKind(SyntaxKind.SuppressNullableWarningExpression)
+            && bang.Operand == invocation
+        )
+            return true;
+
         SyntaxNode current = invocation;
         while (
             current.Parent is PostfixUnaryExpressionSyntax postfix
