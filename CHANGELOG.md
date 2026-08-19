@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.5] - 2026-08-19
+
+### Added
+
+- **CC049 fixer** (`BlockingSmtpClientCodeFixProvider`): rewrites a
+  blocking `SmtpClient.Send` (`MailMessage` or four strings) to
+  `await SendMailAsync`, flowing an in-scope token when the rewritten
+  call still binds. The tokenless form is used when no token is in
+  scope. A named original argument keeps the token named too. Not the
+  event-based `SendAsync`. Null-conditional calls,
+  positions where `await` cannot compile, and a this/base/this-alias
+  call inside `SendMailAsync` are reported without a rewrite. Stay
+  quiet when every reachable same-shape `SendMailAsync` is an
+  unusable hider.
+
 ## [1.52.4] - 2026-08-19
 
 ### Added
