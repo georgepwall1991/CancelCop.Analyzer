@@ -55,6 +55,11 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         if (invocation == null || invokedName == null)
             return;
 
+        // `holder?.Reader.ReadLine()` is an ordinary member access, but the
+        // invocation is the WhenNotNull of `?.`. Wrapping it in await does not parse.
+        if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
+            return;
+
         var tokenName = diagnostic.Properties.TryGetValue(
             BlockingFileIoAnalyzer.TokenNameProperty,
             out var name

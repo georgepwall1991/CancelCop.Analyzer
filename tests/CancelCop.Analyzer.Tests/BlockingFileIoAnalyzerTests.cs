@@ -8,7 +8,9 @@ namespace CancelCop.Analyzer.Tests;
 public class BlockingFileIoAnalyzerTests
 {
     private static CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier> CreateTest(
-        string testCode, params DiagnosticResult[] expected)
+        string testCode,
+        params DiagnosticResult[] expected
+    )
     {
         var test = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
         {
@@ -22,7 +24,8 @@ public class BlockingFileIoAnalyzerTests
     [Fact]
     public async Task ReadAllText_InAsyncMethod_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -37,14 +40,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, expected).RunAsync();
     }
 
     [Fact]
     public async Task ReadAllText_ViaStaticImport_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using static System.IO.File;
 using System.Threading.Tasks;
 
@@ -59,14 +64,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, expected).RunAsync();
     }
 
     [Fact]
     public async Task WriteAllText_InAsyncLambda_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -85,7 +92,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("WriteAllText");
+            .WithLocation(0)
+            .WithArguments("WriteAllText");
         await CreateTest(test, expected).RunAsync();
     }
 
@@ -94,7 +102,8 @@ public class TestClass
     {
         // The async-context gate covers nested async functions, so a blocking File call inside an
         // async local function is flagged.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -114,7 +123,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadAllText");
+            .WithLocation(0)
+            .WithArguments("ReadAllText");
         await CreateTest(test, expected).RunAsync();
     }
 
@@ -122,7 +132,8 @@ public class TestClass
     public async Task ReadAllText_InSyncMethod_ShouldNotReportDiagnostic()
     {
         // The blocking-in-async family only fires inside async code.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 
 public class TestClass
@@ -139,7 +150,8 @@ public class TestClass
     [Fact]
     public async Task AsyncCounterpart_ShouldNotReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -158,7 +170,8 @@ public class TestClass
     public async Task NonListedFileMethod_ShouldNotReportDiagnostic()
     {
         // File.Exists is non-blocking metadata access with no async counterpart; not flagged.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -177,7 +190,8 @@ public class TestClass
     [Fact]
     public async Task StreamReaderReadToEnd_InAsyncMethod_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -192,14 +206,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadToEnd");
+            .WithLocation(0)
+            .WithArguments("ReadToEnd");
         await CreateTest(test, expected).RunAsync();
     }
 
     [Fact]
     public async Task StreamReaderConditionalReadLine_InAsyncMethod_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -213,14 +229,46 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("ReadLine");
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalAccess_InAsyncMethod_ShouldReportWithoutCrashing()
+    {
+        // `holder?.Reader.ReadLine()` is a member access whose left is `.Reader`.
+        // Speculative bind of a reconstructed async call used to throw AD0001.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public StreamReader Reader { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder)
+    {
+        _ = holder?.Reader.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
         await CreateTest(test, expected).RunAsync();
     }
 
     [Fact]
     public async Task ConditionalCallsWithoutSupportedAsyncCounterpart_ShouldNotReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -241,7 +289,8 @@ public class TestClass
     [Fact]
     public async Task StreamReaderReadLine_InSyncMethod_ShouldNotReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 
 public class TestClass
@@ -259,7 +308,8 @@ public class TestClass
     public async Task StreamReaderNonCuratedMethod_ShouldNotReportDiagnostic()
     {
         // Peek() is not in the curated set (and has no async counterpart), so it stays clean.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -279,7 +329,8 @@ public class TestClass
     public async Task LookalikeStreamReaderType_ShouldNotReportDiagnostic()
     {
         // A user-defined StreamReader outside System.IO must not be flagged.
-        var test = @"
+        var test =
+            @"
 using System.Threading.Tasks;
 
 namespace MyIo
@@ -306,7 +357,8 @@ public class TestClass
     [Fact]
     public async Task StreamWriterWrite_InAsyncMethod_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -320,14 +372,16 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("Write");
+            .WithLocation(0)
+            .WithArguments("Write");
         await CreateTest(test, expected).RunAsync();
     }
 
     [Fact]
     public async Task StreamWriterFlush_InAsyncMethod_ShouldReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -341,7 +395,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("Flush");
+            .WithLocation(0)
+            .WithArguments("Flush");
         await CreateTest(test, expected).RunAsync();
     }
 
@@ -350,7 +405,8 @@ public class TestClass
     {
         // StreamWriter overrides WriteLine(string) (so the call's ContainingType is StreamWriter, not
         // TextWriter) and offers a signature-compatible WriteLineAsync(string), so it is flagged.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -364,7 +420,8 @@ public class TestClass
 }";
 
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
-            .WithLocation(0).WithArguments("WriteLine");
+            .WithLocation(0)
+            .WithArguments("WriteLine");
         await CreateTest(test, expected).RunAsync();
     }
 
@@ -374,7 +431,8 @@ public class TestClass
         // StringWriter is an in-memory TextWriter in System.IO — its async methods complete
         // synchronously, so there is no benefit to switching. It is deliberately NOT in the curated
         // map, so a StringWriter.Write/WriteLine must stay quiet even inside async code.
-        var test = @"
+        var test =
+            @"
 using System.IO;
 using System.Threading.Tasks;
 
@@ -394,7 +452,8 @@ public class TestClass
     [Fact]
     public async Task StreamWriterWrite_InSyncMethod_ShouldNotReportDiagnostic()
     {
-        var test = @"
+        var test =
+            @"
 using System.IO;
 
 public class TestClass
@@ -415,7 +474,8 @@ public class TestClass
         // WriteAsync(ReadOnlyMemory<char>, CancellationToken) — a different first-parameter type. A
         // name-only "WriteAsync" lookup would wrongly flag this and the fixer would emit a non-compiling
         // 'await writer.WriteAsync(span)'. The v1.27.0 parameter-signature match must keep it quiet.
-        var test = @"
+        var test =
+            @"
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -436,7 +496,8 @@ public class TestClass
     public async Task LookalikeFileType_ShouldNotReportDiagnostic()
     {
         // A user-defined 'File' type is not System.IO.File, so it must stay clean.
-        var test = @"
+        var test =
+            @"
 using System.Threading.Tasks;
 
 public static class File

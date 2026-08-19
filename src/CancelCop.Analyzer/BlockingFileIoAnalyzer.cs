@@ -230,15 +230,15 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         // CS1739. The call is still genuinely blocking, so the diagnostic stands — only the fix is
         // withheld.
         var namesWouldBeRemapped = !NamedArgumentsMatch(invocation, method, asyncCounterpart!);
-        if (namesWouldBeRemapped)
+        var onConditionalAccessSpine = CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(
+            invocation
+        );
+        if (onConditionalAccessSpine)
+            properties = properties.Add(NoFixProperty, "conditional-access");
+        else if (namesWouldBeRemapped)
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
-        else if (
-            CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation)
-        )
-            properties = properties.Add(
-                NoFixProperty,
-                CancellationTokenHelpers.AwaitUnsafeReason
-            );
+        else if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+            properties = properties.Add(NoFixProperty, CancellationTokenHelpers.AwaitUnsafeReason);
 
         // Final authority: ask Roslyn to bind the call. The search above approximates overload
         // resolution well enough to *choose* a counterpart and decide whether a token can flow, but
@@ -563,25 +563,6 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         bool bindPositionally
     )
     {
-        ExpressionSyntax target;
-        switch (invocation.Expression)
-        {
-            case MemberAccessExpressionSyntax memberAccess:
-                target = SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression,
-                    memberAccess.Expression.WithoutTrivia(),
-                    SyntaxFactory.IdentifierName(asyncName)
-                );
-                break;
-            case IdentifierNameSyntax:
-                target = SyntaxFactory.IdentifierName(asyncName);
-                break;
-            default:
-                // Null-conditional access; the fixer does not rewrite these, so there is nothing to
-                // verify.
-                return true;
-        }
-
         var argumentList = invocation.ArgumentList.WithoutTrivia();
 
         // When the argument *names* are the reason no fix is offered, binding them would fail for
@@ -631,11 +612,21 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
             argumentList = argumentList.AddArguments(tokenArgument);
         }
 
-        var speculative = SyntaxFactory.InvocationExpression(target, argumentList);
+        if (
+            !TryBuildSpeculativeAsyncCall(
+                invocation,
+                asyncName,
+                argumentList,
+                out var speculative,
+                out var speculateAt
+            )
+        )
+            return true;
+
         var bound =
             context
                 .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
+                    speculateAt,
                     speculative,
                     SpeculativeBindingOption.BindAsExpression
                 )
@@ -649,6 +640,87 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
+    /// Builds the expression speculative bind should see. Ordinary calls are a detached
+    /// <c>receiver.NameAsync(...)</c>. A call on a <c>?.</c> spine keeps the enclosing
+    /// conditional access so the compiler does not NRE on a bare <c>MemberBinding</c>.
+    /// </summary>
+    /// <returns>
+    /// <c>false</c> when there is no expression to bind (the fixer will not rewrite it
+    /// either); the caller should skip validation.
+    /// </returns>
+    private static bool TryBuildSpeculativeAsyncCall(
+        InvocationExpressionSyntax invocation,
+        string asyncName,
+        ArgumentListSyntax argumentList,
+        out ExpressionSyntax speculative,
+        out int speculateAt
+    )
+    {
+        var asyncIdentifier = SyntaxFactory.IdentifierName(asyncName);
+
+        if (
+            CancellationTokenHelpers.TryGetWhenNotNullConditionalAccess(invocation, out var cond)
+            && cond != null
+        )
+        {
+            ExpressionSyntax? renamedTarget = invocation.Expression switch
+            {
+                MemberAccessExpressionSyntax memberAccess => memberAccess.WithName(asyncIdentifier),
+                MemberBindingExpressionSyntax memberBinding => memberBinding.WithName(
+                    asyncIdentifier
+                ),
+                IdentifierNameSyntax => asyncIdentifier,
+                _ => null,
+            };
+            if (renamedTarget is null)
+            {
+                speculative = invocation;
+                speculateAt = invocation.SpanStart;
+                return false;
+            }
+
+            var renamed = invocation.WithExpression(renamedTarget).WithArgumentList(argumentList);
+            // Keep the invocation parented under the original `?.` so speculative
+            // bind can find the ConditionalAccess. Passing a detached
+            // MemberBinding left-hand side throws inside the compiler.
+            var rewritten = cond.ReplaceNode(invocation, renamed);
+            speculative =
+                rewritten.WhenNotNull as InvocationExpressionSyntax
+                ?? (ExpressionSyntax?)
+                    rewritten
+                        .DescendantNodes()
+                        .OfType<InvocationExpressionSyntax>()
+                        .FirstOrDefault()
+                ?? rewritten;
+            speculateAt = invocation.SpanStart;
+            return true;
+        }
+
+        ExpressionSyntax target;
+        switch (invocation.Expression)
+        {
+            case MemberAccessExpressionSyntax memberAccess:
+                target = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    memberAccess.Expression.WithoutTrivia(),
+                    asyncIdentifier
+                );
+                break;
+            case IdentifierNameSyntax:
+                target = asyncIdentifier;
+                break;
+            default:
+                speculative = invocation;
+                speculateAt = invocation.SpanStart;
+                return false;
+        }
+
+        speculative = SyntaxFactory.InvocationExpression(target, argumentList);
+        speculateAt = invocation.SpanStart;
+        return true;
+    }
+
+    /// <summary>
     /// Returns <c>true</c> when awaiting <paramref name="candidate"/> yields the same type the
     /// blocking call produced, so the rewrite can stand in for it.
     /// </summary>
@@ -659,10 +731,9 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// </remarks>
     private static bool AwaitedResultMatches(IMethodSymbol sync, IMethodSymbol candidate)
     {
-        var results =
-            candidate.ReturnType is INamedTypeSymbol named
-                ? named.TypeArguments
-                : ImmutableArray<ITypeSymbol>.Empty;
+        var results = candidate.ReturnType is INamedTypeSymbol named
+            ? named.TypeArguments
+            : ImmutableArray<ITypeSymbol>.Empty;
 
         // Task / ValueTask — awaiting produces nothing, which suits a void-returning blocking call.
         if (results.Length == 0)

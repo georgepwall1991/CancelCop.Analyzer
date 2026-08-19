@@ -254,7 +254,9 @@ public class TestClass
             @"
 using System.IO;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -291,7 +293,9 @@ public class TestClass
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -315,7 +319,9 @@ public class TestClass
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -416,7 +422,9 @@ public class TestClass
             @"
 using System.IO;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -453,7 +461,9 @@ public class TestClass
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -491,7 +501,9 @@ public class TestClass
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -515,7 +527,9 @@ public class TestClass
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-" + StreamStub + @"
+"
+            + StreamStub
+            + @"
 
 public class CustomStream : TestStreamBase
 {
@@ -868,6 +882,49 @@ public class TestClass
             read = stream.Read(buffer, 0, buffer.Length);
         }
 
+        await Task.Yield();
+        return read;
+    }
+}";
+
+        var t = new CSharpAnalyzerTest<BlockingFileIoAnalyzer, DefaultVerifier>
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
+    public async Task UnusableCounterpartOnChainedConditionalAccess_ShouldNotReportDiagnostic()
+    {
+        // Same hider as UnusableCounterpartInsideLock, reached through holder?.Stream.Read.
+        // Skipping speculative bind on the ?. spine must not let this false-positive through.
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+"
+            + StreamStub
+            + @"
+
+public class CustomStream : TestStreamBase
+{
+    public override int Read(byte[] buffer, int offset, int count) => 0;
+    public override void Write(byte[] buffer, int offset, int count) { }
+    public int ReadAsync(object buffer, int offset, int count) => 0;
+}
+
+public class Holder
+{
+    public CustomStream Stream { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task<int> RunAsync(Holder? holder, byte[] buffer)
+    {
+        var read = holder?.Stream.Read(buffer, 0, buffer.Length) ?? 0;
         await Task.Yield();
         return read;
     }
