@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.2">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.3">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.2
+Install-Package CancelCop.Analyzer -Version 1.52.3
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -160,7 +160,7 @@ dotnet build samples/CancelCop.Sample
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ✅ |
-| **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ❌ |
+| **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ✅ |
 | **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ❌ |
 | **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ❌ |
 
@@ -1036,7 +1036,11 @@ await command.ExecuteNonQueryAsync(cancellationToken);
 > which none of the previous rules reported. Overrides and `new` hiders
 > that match the framework shape still report. Custom helpers, generic
 > helpers, and `IDbCommand` stay quiet. `ExecuteScalar` is CC048.
-> Analyzer-only in this release; a fixer is a follow-up.
+> The fixer rewrites a safe `ExecuteNonQuery()` to
+> `await ExecuteNonQueryAsync`, flowing an in-scope token. Null-conditional
+> calls and positions where `await` cannot compile are reported without a
+> fix. `ExecuteNonQueryAsync` has accepted a `CancellationToken` since .NET
+> Framework 4.5.
 > `ExecuteNonQueryAsync` has accepted a `CancellationToken` since .NET
 > Framework 4.5.
 
