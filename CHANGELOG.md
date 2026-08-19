@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.13] - 2026-08-19
+
+### Added
+
+- **CC044 fixer** (`BlockingDnsGetHostEntryCodeFixProvider`): rewrites a
+  blocking `Dns.GetHostEntry` (string, string + `AddressFamily`, or
+  `IPAddress`) to `await GetHostEntryAsync`. An in-scope token is
+  flowed when the rewritten call still binds to `System.Net.Dns`.
+  The `IPAddress` TAP is tokenless, so that rewrite never invents a
+  token. The `AddressFamily` TAP has an optional token, so a
+  tokenless rewrite still compiles. Identifier-form `using static`
+  rewrites that would bind a same-named helper are withheld.
+  Positions where `await` cannot compile are reported without a
+  rewrite. A numeric IP still reports — reverse DNS, not a parse.
+
 ## [1.52.12] - 2026-08-19
 
 ### Added

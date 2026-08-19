@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.12">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.13">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.12
+Install-Package CancelCop.Analyzer -Version 1.52.13
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -157,7 +157,7 @@ dotnet build samples/CancelCop.Sample
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ✅ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ✅ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ✅ |
-| **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
+| **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ✅ |
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ✅ |
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ✅ |
@@ -993,8 +993,14 @@ await Dns.GetHostEntryAsync(host, cancellationToken);
 > none of the previous rules reported. A numeric IP still reports — unlike
 > GetHostAddresses, GetHostEntry does reverse DNS for that address. The
 > `AddressFamily` and `IPAddress` overloads and `using static` also report.
-> Analyzer-only in this release; a fixer is a follow-up. The token-taking
-> string `GetHostEntryAsync` overload is modern .NET only; the `IPAddress`
+> The fixer rewrites a safe `GetHostEntry` to `await GetHostEntryAsync`,
+> flowing an in-scope token when the rewritten call still binds to
+> `System.Net.Dns`. The `IPAddress` TAP is tokenless, so that rewrite
+> never invents a token. The `AddressFamily` TAP has an optional token.
+> A `using static` identifier rewrite is withheld when a same-named
+> helper would capture the bind. Positions where `await` cannot compile
+> are reported without a rewrite. The token-taking string
+> `GetHostEntryAsync` overload is modern .NET only; the `IPAddress`
 > async form is tokenless.
 
 ### CC045: Blocking `DbConnection.Open` in Async Code
