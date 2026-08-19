@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.0">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.1">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.0
+Install-Package CancelCop.Analyzer -Version 1.52.1
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -158,7 +158,7 @@ dotnet build samples/CancelCop.Sample
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
-| **CC045** | Blocking `DbConnection.Open` in async code | Warning | ❌ |
+| **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ❌ |
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ❌ |
 | **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ❌ |
@@ -982,9 +982,10 @@ await connection.OpenAsync(cancellationToken);
 
 > CC003 covers EF Core queries. ADO.NET `Open` is a separate type, which none
 > of the previous rules reported. Concrete providers match through the
-> override chain. `DbCommand.ExecuteReader` is CC046. Analyzer-only
-> in this release; a fixer is a follow-up. `OpenAsync` has accepted a
-> `CancellationToken` since .NET Framework 4.5.
+> override chain. `DbCommand.ExecuteReader` is CC046. The fixer rewrites a
+> safe `Open()` to `await OpenAsync`, flowing an in-scope token. Null-conditional
+> calls and positions where `await` cannot compile are reported without a fix.
+> `OpenAsync` has accepted a `CancellationToken` since .NET Framework 4.5.
 
 ### CC046: Blocking `DbCommand.ExecuteReader` in Async Code
 
