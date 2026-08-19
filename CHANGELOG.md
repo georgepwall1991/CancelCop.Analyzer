@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.20] - 2026-08-19
+
+### Fixed
+
+- **CC022 fixer:** `holder?.Cts.Cancel()` is reported without a
+  rewrite. Replacing `Cancel()` with `await .Cts.CancelAsync()`
+  produced `holder? await.Cts.CancelAsync()`, which does not
+  parse. Direct `cts?.Cancel()` stays without a rewrite.
+  `Cancel()` nested inside an async lambda argument of an
+  unrelated `?.` still rewrites.
+
 ## [1.52.19] - 2026-08-19
 
 ### Fixed

@@ -50,9 +50,12 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string NoFixProperty = "NoFix";
 
-    private static readonly LocalizableString Title = "Prefer CancelAsync over Cancel in async code";
-    private static readonly LocalizableString MessageFormat = "Use 'await CancelAsync()' instead of 'Cancel()' in async code";
-    private static readonly LocalizableString Description = "CancellationTokenSource.Cancel() runs callbacks synchronously; in async code prefer await CancelAsync().";
+    private static readonly LocalizableString Title =
+        "Prefer CancelAsync over Cancel in async code";
+    private static readonly LocalizableString MessageFormat =
+        "Use 'await CancelAsync()' instead of 'Cancel()' in async code";
+    private static readonly LocalizableString Description =
+        "CancellationTokenSource.Cancel() runs callbacks synchronously; in async code prefer await CancelAsync().";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -63,9 +66,11 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: Description,
-        helpLinkUri: DiagnosticHelp.LinkUri);
+        helpLinkUri: DiagnosticHelp.LinkUri
+    );
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -89,14 +94,19 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
         if (invokedName.Identifier.Text != "Cancel")
             return;
 
-        if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
+        if (
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is not IMethodSymbol method
+        )
             return;
 
         // Only the parameterless Cancel() has a CancelAsync() counterpart.
         if (method.Name != "Cancel" || method.Parameters.Length != 0)
             return;
-        if (method.ContainingType?.Name != "CancellationTokenSource" ||
-            method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading")
+        if (
+            method.ContainingType?.Name != "CancellationTokenSource"
+            || method.ContainingType.ContainingNamespace?.ToDisplayString() != "System.Threading"
+        )
             return;
         if (!HasCancelAsyncCounterpart(method.ContainingType))
             return;
@@ -106,35 +116,38 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
             return;
 
         // The construct is just as problematic either way, but where an inserted await would not
-        // compile — a lock body, an exception filter, an unsafe context, most query clauses, or
-        // across a ref-like lifetime — the diagnostic is reported without a fix.
-        var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
-            context.SemanticModel,
-            invocation
-        )
-            ? ImmutableDictionary<string, string?>.Empty.Add(
-                NoFixProperty,
-                CancellationTokenHelpers.AwaitUnsafeReason
-            )
-            : ImmutableDictionary<string, string?>.Empty;
+        // compile — a lock body, an exception filter, an unsafe context, most query clauses,
+        // across a ref-like lifetime, or on the WhenNotNull spine of `?.` (`holder?.Cts.Cancel()`
+        // would become `holder? await.Cts.CancelAsync()`) — the diagnostic is reported without a fix.
+        var properties = ImmutableDictionary<string, string?>.Empty;
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+        {
+            properties = properties.Add(NoFixProperty, CancellationTokenHelpers.AwaitUnsafeReason);
+        }
+        else if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
+        {
+            properties = properties.Add(NoFixProperty, "conditional-access");
+        }
 
-        context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invokedName.GetLocation(), properties)
-        );
+        context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation(), properties));
     }
 
     private static bool HasCancelAsyncCounterpart(INamedTypeSymbol cancellationTokenSourceType)
     {
         foreach (var member in cancellationTokenSourceType.GetMembers("CancelAsync"))
         {
-            if (member is IMethodSymbol
-                {
-                    IsStatic: false,
-                    DeclaredAccessibility: Accessibility.Public,
-                    Parameters.Length: 0,
-                    ReturnType.Name: "Task",
-                } method &&
-                method.ReturnType.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks")
+            if (
+                member
+                    is IMethodSymbol
+                    {
+                        IsStatic: false,
+                        DeclaredAccessibility: Accessibility.Public,
+                        Parameters.Length: 0,
+                        ReturnType.Name: "Task",
+                    } method
+                && method.ReturnType.ContainingNamespace?.ToDisplayString()
+                    == "System.Threading.Tasks"
+            )
             {
                 return true;
             }
