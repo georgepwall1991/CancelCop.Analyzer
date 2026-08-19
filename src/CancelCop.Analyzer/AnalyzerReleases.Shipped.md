@@ -1,3 +1,11 @@
+## Release 1.52.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC049 | Usage | Warning | Avoid blocking SmtpClient.Send in async code
+
 ## Release 1.51.0
 
 ### New Rules

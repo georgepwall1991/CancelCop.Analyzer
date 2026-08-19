@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.0] - 2026-08-19
+
+### Added
+
+- **CC049** (`BlockingSmtpClientAnalyzer`): flags blocking
+  `SmtpClient.Send` in async code (`MailMessage` and the four-string
+  overload). Send parks a pool thread on an SMTP handshake.
+  `SendMailAsync` yields; token-taking overloads are .NET 5+ (.NET
+  Framework has the tokenless form). The TAP counterpart is
+  `SendMailAsync`, not the event-based `SendAsync`. `Send` is not
+  virtual; `new` hiders match by inheritance plus the framework shape.
+  Custom helpers, generic helpers, statics, and `ref`/`in`/`out`
+  helpers stay quiet. Analyzer-only
+  in this slice. Look-alikes and `SendAsync` stay quiet.
+
 ## [1.51.0] - 2026-08-19
 
 ### Added
