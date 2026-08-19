@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.12] - 2026-08-19
+
+### Added
+
+- **CC043 fixer** (`BlockingDnsCodeFixProvider`): rewrites a blocking
+  `Dns.GetHostAddresses` (string, or string + `AddressFamily`) to
+  `await GetHostAddressesAsync`, flowing an in-scope token when the
+  rewritten call still binds. The string TAP has a tokenless form;
+  the `AddressFamily` TAP has an optional token, so a tokenless
+  rewrite still compiles. `using static` calls are rewritten in
+  place. Null-conditional calls and positions where `await` cannot
+  compile are reported without a rewrite. An identifier-form
+  `using static` rewrite is withheld when bind would land on a
+  same-named helper. `Dns` is a static type. Compile-time constant
+  IP literals stay quiet (parse, not a query).
+
 ## [1.52.11] - 2026-08-19
 
 ### Added

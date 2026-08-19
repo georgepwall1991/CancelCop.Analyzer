@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.11">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.12">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.11
+Install-Package CancelCop.Analyzer -Version 1.52.12
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -156,7 +156,7 @@ dotnet build samples/CancelCop.Sample
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ✅ |
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ✅ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ✅ |
-| **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
+| **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ✅ |
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
 | **CC045** | Blocking `DbConnection.Open` in async code | Warning | ✅ |
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ✅ |
@@ -965,10 +965,15 @@ await Dns.GetHostAddressesAsync(host, cancellationToken);
 > it (no token overload of the invoked method). The `AddressFamily` overload
 > and `using static System.Net.Dns` also report. A compile-time constant IP
 > (`"127.0.0.1"`, `"::1"`, `const string`) is a parse, not a query, and stays
-> quiet; `"localhost"` and non-const locals still report. Analyzer-only in
-> this release; a fixer is a follow-up. The token-taking
-> `GetHostAddressesAsync` overload is modern .NET only — .NET Framework has
-> the tokenless form.
+> quiet; `"localhost"` and non-const locals still report. The fixer rewrites
+> a safe `GetHostAddresses` to `await GetHostAddressesAsync`, flowing an
+> in-scope token when the rewritten call still binds. The `AddressFamily`
+> TAP has an optional token, so a tokenless rewrite still compiles.
+> Positions where `await` cannot compile are reported without a rewrite.
+> A `using static` identifier rewrite is withheld when a same-named
+> helper would capture the bind. `Dns` is a static type. The token-taking
+> `GetHostAddressesAsync` overload
+> is modern .NET only — .NET Framework has the tokenless form.
 
 ### CC044: Blocking `Dns.GetHostEntry` in Async Code
 
