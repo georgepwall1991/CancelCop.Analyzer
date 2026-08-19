@@ -265,6 +265,38 @@ public class Work
     }
 
     [Fact]
+    public async Task Send_RefMailMessageHelper_ShouldNotReportDiagnostic()
+    {
+        var test =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class HiddenClient : SmtpClient
+{
+    public void Send(ref MailMessage message) { }
+}
+
+public class Work
+{
+    public async Task RunAsync(HiddenClient client, MailMessage message, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        client.Send(ref message);
+        await Task.Yield();
+    }
+}";
+
+        var t = new AllAnalyzersTest
+        {
+            TestCode = test,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+        };
+        await t.RunAsync();
+    }
+
+    [Fact]
     public async Task Send_GenericHelperOnSubclass_ShouldNotReportDiagnostic()
     {
         var test =

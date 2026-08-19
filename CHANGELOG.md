@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Framework has the tokenless form). The TAP counterpart is
   `SendMailAsync`, not the event-based `SendAsync`. `Send` is not
   virtual; `new` hiders match by inheritance plus the framework shape.
-  Custom helpers, generic helpers, and statics stay quiet. Analyzer-only
+  Custom helpers, generic helpers, statics, and `ref`/`in`/`out`
+  helpers stay quiet. Analyzer-only
   in this slice. Look-alikes and `SendAsync` stay quiet.
 
 ## [1.51.0] - 2026-08-19

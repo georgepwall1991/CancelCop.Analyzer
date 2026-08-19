@@ -151,6 +151,9 @@ public class BlockingSmtpClientAnalyzer : DiagnosticAnalyzer
         if (method.ReturnType.SpecialType != SpecialType.System_Void)
             return false;
 
+        if (method.Parameters.Any(p => p.RefKind != RefKind.None))
+            return false;
+
         if (method.Parameters.Length == 1)
         {
             return messageType is not null

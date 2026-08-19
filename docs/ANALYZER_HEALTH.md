@@ -207,7 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.0: 1238 tests, green locally. **new rule CC049** — blocking
+- v1.52.0: 1239 tests, green locally. **new rule CC049** — blocking
   `SmtpClient.Send` in async code (`MailMessage` and four-string).
   Empirically 0 diagnostics from every shipped rule. TAP counterpart is
   `SendMailAsync`, not event-based `SendAsync`. Token-taking
