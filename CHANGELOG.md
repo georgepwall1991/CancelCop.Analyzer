@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.7] - 2026-08-19
+
+### Added
+
+- **CC038 fixer** (`BlockingTcpListenerCodeFixProvider`): rewrites a
+  blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` to
+  `await AcceptTcpClientAsync` / `await AcceptSocketAsync`, flowing an
+  in-scope token when the rewritten call still binds. The tokenless
+  form is used when no token is in scope. Null-conditional calls,
+  positions where `await` cannot compile, and a this/base/this-alias
+  call inside the matching `Accept*Async` are reported without a
+  rewrite. Stay quiet when every reachable same-shape `Accept*Async`
+  is an unusable hider. An optional-int TAP leftover does not steal
+  a usable inherited counterpart.
+
 ## [1.52.6] - 2026-08-19
 
 ### Added

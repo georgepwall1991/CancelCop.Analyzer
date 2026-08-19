@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.6">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.7">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.6
+Install-Package CancelCop.Analyzer -Version 1.52.7
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -151,7 +151,7 @@ dotnet build samples/CancelCop.Sample
 | **CC035** | Empty `catch (OperationCanceledException)` silently discards the cancellation | Info | ❌ |
 | **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ✅ |
-| **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ❌ |
+| **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ✅ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ❌ |
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
@@ -834,8 +834,12 @@ await listener.AcceptTcpClientAsync(cancellationToken);
 > `if (listener.Pending())` / `while (Pending())` / `while (flag && Pending())`
 > guard, the inverted poll (`if (!Pending()) continue;` then accept), and
 > `listener.Server.Blocking = false` stay quiet; `if (!listener.Pending()) Accept`
-> is the blocking path and still reports. Analyzer-only in this release; a fixer
-> is a follow-up. The token-taking `Accept*Async` overloads are modern .NET only —
+> is the blocking path and still reports. The fixer rewrites a safe accept to
+> `await AcceptTcpClientAsync` / `await AcceptSocketAsync`, flowing an in-scope
+> token when the rewritten call binds. Null-conditional calls, positions where
+> `await` cannot compile, and a this/base/this-alias call inside the matching
+> `Accept*Async` are reported without a rewrite. Unusable TAP hiders stay quiet.
+> The token-taking `Accept*Async` overloads are modern .NET only —
 > `netstandard2.0` / .NET Framework have the tokenless form.
 
 ### CC039: Blocking `UdpClient.Receive` in Async Code
