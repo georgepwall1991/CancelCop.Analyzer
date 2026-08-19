@@ -877,4 +877,76 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
     }
+
+    [Fact]
+    public async Task ResultUsedAsReceiver_ParenthesizesAwait()
+    {
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
+    {
+        command.{|#0:ExecuteReader|}().Dispose();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
+    {
+        (await command.ExecuteReaderAsync(cancellationToken)).Dispose();
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task ResultUsedAsReceiver_ThroughNullForgiving_ParenthesizesAwait()
+    {
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
+    {
+        command.{|#0:ExecuteReader|}()!.Dispose();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand command, CancellationToken cancellationToken)
+    {
+        (await command.ExecuteReaderAsync(cancellationToken))!.Dispose();
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

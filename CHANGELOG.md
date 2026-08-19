@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.14] - 2026-08-19
+
+### Fixed
+
+- **CC046 fixer:** parenthesize `await ExecuteReaderAsync(...)` when
+  the original call is a receiver (`ExecuteReader().Dispose()`) or
+  is followed by `!`. Without parentheses the await binds to
+  `.Dispose()` on the `Task`, which does not compile.
+
 ## [1.52.13] - 2026-08-19
 
 ### Added
