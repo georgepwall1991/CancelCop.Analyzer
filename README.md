@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.4">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.5">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.4
+Install-Package CancelCop.Analyzer -Version 1.52.5
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -162,7 +162,7 @@ dotnet build samples/CancelCop.Sample
 | **CC046** | Blocking `DbCommand.ExecuteReader` in async code | Warning | ✅ |
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ✅ |
 | **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ✅ |
-| **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ❌ |
+| **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ✅ |
 
 ## Quick Examples
 
@@ -1092,7 +1092,10 @@ await client.SendMailAsync(message, cancellationToken);
 > counterpart is `SendMailAsync`, **not** the event-based `SendAsync`. Token-taking
 > `SendMailAsync` is .NET 5+; .NET Framework has the tokenless form. `Send` is
 > not virtual; `new` hiders that match the framework shape still report.
-> Analyzer-only in this release; a fixer is a follow-up.
+> The fixer rewrites a safe `Send` to `await SendMailAsync`, flowing an
+> in-scope token. Null-conditional calls, positions where `await` cannot
+> compile, and a this/base/this-alias call inside `SendMailAsync` are
+> reported without a fix.
 
 ## Configuration
 
