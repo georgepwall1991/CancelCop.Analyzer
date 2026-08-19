@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.8] - 2026-08-19
+
+### Added
+
+- **CC039 fixer** (`BlockingUdpClientCodeFixProvider`): rewrites a
+  discarded `UdpClient.Receive(ref endpoint)` statement to
+  `var received = await ReceiveAsync(...)` plus
+  `endpoint = received.RemoteEndPoint`, flowing an in-scope token
+  when the rewritten call still binds. The TAP returns
+  `UdpReceiveResult` and does not take the `ref` endpoint, so a
+  value-use of the `byte[]` is reported without a rewrite. A
+  braceless `if`/`while` body is reported without a rewrite because
+  the replacement is two statements. Null-conditional calls, positions where `await`
+  cannot compile, and a this/base/this-alias call inside `ReceiveAsync`
+  are reported without a rewrite. Stay quiet when every reachable
+  `ReceiveAsync` is an unusable hider.
+
 ## [1.52.7] - 2026-08-19
 
 ### Added

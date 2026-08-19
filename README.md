@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.7">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.8">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.7
+Install-Package CancelCop.Analyzer -Version 1.52.8
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -152,7 +152,7 @@ dotnet build samples/CancelCop.Sample
 | **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ✅ |
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ✅ |
-| **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ❌ |
+| **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ✅ |
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ❌ |
 | **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
@@ -863,7 +863,14 @@ await client.ReceiveAsync(cancellationToken);
 > `while (Available > 0)`, the inverted poll (`if (Available == 0) continue;`
 > then receive), and `client.Client.Blocking = false` stay quiet;
 > `if (Available == 0) Receive` is the blocking path and still reports.
-> Analyzer-only in this release; a fixer is a follow-up. The token-taking
+> The fixer rewrites a discarded `Receive(ref endpoint)` statement to
+> `var received = await ReceiveAsync(...)` and assigns
+> `endpoint = received.RemoteEndPoint`. `ReceiveAsync` returns
+> `UdpReceiveResult` and does not take the `ref` endpoint, so a
+> value-use of the `byte[]` is reported without a rewrite. A braceless
+> `if`/`while` body, null-conditional calls, await-illegal positions,
+> and a this/base/this-alias call inside `ReceiveAsync` are reported
+> without a rewrite. Unusable TAP hiders stay quiet. The token-taking
 > `ReceiveAsync` overload is modern .NET only — `netstandard2.0` / .NET
 > Framework have the tokenless form.
 
