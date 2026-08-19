@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.10] - 2026-08-19
+
+### Added
+
+- **CC041 fixer** (`BlockingNamedPipeCodeFixProvider`): rewrites a
+  blocking `NamedPipeServerStream.WaitForConnection()` to
+  `await WaitForConnectionAsync`, flowing an in-scope token when the
+  rewritten call still binds. The tokenless form is used when no
+  token is in scope. Null-conditional calls and positions where
+  `await` cannot compile are reported without a rewrite.
+  `NamedPipeServerStream` is sealed, so a this-alias recursion
+  rewrite cannot compile on a real subclass.
+
 ## [1.52.9] - 2026-08-19
 
 ### Added

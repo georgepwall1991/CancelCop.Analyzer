@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.9">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.10">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.9
+Install-Package CancelCop.Analyzer -Version 1.52.10
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -154,7 +154,7 @@ dotnet build samples/CancelCop.Sample
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ✅ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ✅ |
 | **CC040** | Blocking `HttpListener.GetContext` in async code | Warning | ✅ |
-| **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ❌ |
+| **CC041** | Blocking `NamedPipeServerStream.WaitForConnection` in async code | Warning | ✅ |
 | **CC042** | Blocking `NamedPipeClientStream.Connect` in async code | Warning | ❌ |
 | **CC043** | Blocking `Dns.GetHostAddresses` in async code | Warning | ❌ |
 | **CC044** | Blocking `Dns.GetHostEntry` in async code | Warning | ❌ |
@@ -912,7 +912,11 @@ await server.WaitForConnectionAsync(cancellationToken);
 > CC028 covers File/Stream `Read`/`Write`/`CopyTo`/`Flush`. CC036–CC040 cover
 > Socket / TcpClient / TcpListener / UdpClient / HttpListener. The named-pipe
 > server is a sixth type, which none of the previous rules reported.
-> Analyzer-only in this release; a fixer is a follow-up. The token-taking
+> The fixer rewrites a safe `WaitForConnection()` to
+> `await WaitForConnectionAsync`, flowing an in-scope token when the
+> rewritten call still binds. Null-conditional calls and positions
+> where `await` cannot compile are reported without a rewrite.
+> `NamedPipeServerStream` is sealed. The token-taking
 > `WaitForConnectionAsync` overload is modern .NET only — .NET Framework has
 > the tokenless form.
 
