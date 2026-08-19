@@ -1,3 +1,11 @@
+## Release 1.51.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC048 | Usage | Warning | Avoid blocking DbCommand.ExecuteScalar in async code
+
 ## Release 1.50.0
 
 ### New Rules

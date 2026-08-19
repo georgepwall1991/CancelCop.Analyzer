@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-08-19
+
+### Added
+
+- **CC048** (`BlockingDbScalarAnalyzer`): flags blocking
+  `DbCommand.ExecuteScalar` in async code. ExecuteScalar parks a pool
+  thread on a single-value query. `ExecuteScalarAsync` yields and has
+  accepted a `CancellationToken` since .NET Framework 4.5. The method is
+  abstract, so overrides match; `new` hiders still match by inheritance
+  plus the framework shape (instance, arity 0, non-`void` return, no
+  parameters), including a more-derived return such as `string`. Custom
+  helpers, generic helpers, statics, `void` hiders, and `Task`/`ValueTask`
+  hiders stay quiet. CC046
+  is ExecuteReader; CC047 is ExecuteNonQuery — verified empirically.
+  Analyzer-only in this slice. Look-alikes, `IDbCommand`, and
+  `ExecuteScalarAsync` stay quiet.
+
 ## [1.50.0] - 2026-08-19
 
 ### Added

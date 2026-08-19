@@ -10,7 +10,7 @@
 //
 // WHY THIS IS NOT CC003 / CC045 / CC046:
 // CC003 is EF Core. CC045 is DbConnection.Open. CC046 is ExecuteReader.
-// ExecuteScalar is a sibling, deferred.
+// ExecuteScalar is CC048.
 // =============================================================================
 
 using System.Data.Common;

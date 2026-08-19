@@ -30,7 +30,7 @@ namespace CancelCop.Analyzer;
 /// query methods. CC045 is <c>DbConnection.Open</c>. ADO.NET
 /// <c>ExecuteReader</c> produced zero diagnostics from every shipped rule —
 /// verified empirically. <c>ExecuteNonQuery</c> is CC047.
-/// <c>ExecuteScalar</c> is a sibling, deferred.
+/// <c>ExecuteScalar</c> is CC048.
 /// </para>
 /// <para>
 /// Analyzer-only in this slice: a mechanical rewrite is a follow-up.
