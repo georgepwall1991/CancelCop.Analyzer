@@ -912,30 +912,30 @@ public static class CancellationTokenHelpers
     }
 
     /// <summary>
-    /// True when <paramref name="invocation"/> sits on the left spine of a
+    /// True when <paramref name="node"/> sits on the left spine of a
     /// conditional-access <c>WhenNotNull</c>, so wrapping it in <c>await</c> would
-    /// produce <c>holder?await .Reader...</c>. An argument nested inside that
-    /// branch is not on the spine.
+    /// produce <c>holder?await .Reader...</c> or <c>host?(await .Work)</c>. An
+    /// argument nested inside that branch is not on the spine.
     /// </summary>
     /// <remarks>
     /// Speculatively binding a reconstructed member access for this shape throws
     /// inside the compiler (<c>FindConditionalAccessNodeForBinding</c>) because
     /// the left of the access is a <c>MemberBinding</c> with no enclosing <c>?.</c>.
     /// </remarks>
-    public static bool IsWhenNotNullOfConditionalAccess(InvocationExpressionSyntax invocation) =>
-        TryGetWhenNotNullConditionalAccess(invocation, out _);
+    public static bool IsWhenNotNullOfConditionalAccess(SyntaxNode node) =>
+        TryGetWhenNotNullConditionalAccess(node, out _);
 
     /// <summary>
     /// The nearest <c>?.</c> whose <c>WhenNotNull</c> spine contains
-    /// <paramref name="invocation"/>, or <c>false</c> when the call is only nested
+    /// <paramref name="node"/>, or <c>false</c> when the node is only nested
     /// as an argument inside someone else's <c>?.</c>.
     /// </summary>
     public static bool TryGetWhenNotNullConditionalAccess(
-        InvocationExpressionSyntax invocation,
+        SyntaxNode node,
         out ConditionalAccessExpressionSyntax? conditionalAccess
     )
     {
-        SyntaxNode current = invocation;
+        SyntaxNode current = node;
         while (current.Parent != null)
         {
             switch (current.Parent)
@@ -944,7 +944,11 @@ public static class CancellationTokenHelpers
                     when conditional.WhenNotNull == current:
                     conditionalAccess = conditional;
                     return true;
-                case MemberAccessExpressionSyntax member when member.Expression == current:
+                case MemberAccessExpressionSyntax member
+                    when member.Expression == current || member.Name == current:
+                case MemberBindingExpressionSyntax memberBinding when memberBinding.Name == current:
+                case ElementBindingExpressionSyntax elementBinding
+                    when elementBinding.ArgumentList == current:
                 case InvocationExpressionSyntax call when call.Expression == current:
                 case ElementAccessExpressionSyntax element when element.Expression == current:
                 case ConditionalAccessExpressionSyntax nested when nested.Expression == current:

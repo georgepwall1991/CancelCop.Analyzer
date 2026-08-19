@@ -54,8 +54,10 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
     public const string NoFixProperty = "NoFix";
 
     private static readonly LocalizableString Title = "Avoid blocking on async code";
-    private static readonly LocalizableString MessageFormat = "Blocking on a task with '{0}' can deadlock; await the task instead";
-    private static readonly LocalizableString Description = "Synchronously blocking on a task (.Result/.Wait()/.GetAwaiter().GetResult()) inside async code can deadlock and discards cancellation; await the task instead.";
+    private static readonly LocalizableString MessageFormat =
+        "Blocking on a task with '{0}' can deadlock; await the task instead";
+    private static readonly LocalizableString Description =
+        "Synchronously blocking on a task (.Result/.Wait()/.GetAwaiter().GetResult()) inside async code can deadlock and discards cancellation; await the task instead.";
     private const string Category = "Usage";
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -66,16 +68,21 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Description,
-        helpLinkUri: DiagnosticHelp.LinkUri);
+        helpLinkUri: DiagnosticHelp.LinkUri
+    );
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        ImmutableArray.Create(Rule);
 
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
 
-        context.RegisterSyntaxNodeAction(AnalyzeMemberAccess, SyntaxKind.SimpleMemberAccessExpression);
+        context.RegisterSyntaxNodeAction(
+            AnalyzeMemberAccess,
+            SyntaxKind.SimpleMemberAccessExpression
+        );
         context.RegisterSyntaxNodeAction(AnalyzeMemberBinding, SyntaxKind.MemberBindingExpression);
         context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
     }
@@ -87,7 +94,10 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             return;
 
         // `task.Result` where the property is a Task<T>/ValueTask<T> result accessor.
-        if (context.SemanticModel.GetSymbolInfo(memberAccess, context.CancellationToken).Symbol is not IPropertySymbol property)
+        if (
+            context.SemanticModel.GetSymbolInfo(memberAccess, context.CancellationToken).Symbol
+            is not IPropertySymbol property
+        )
             return;
         if (!IsTaskLike(property.ContainingType))
             return;
@@ -101,7 +111,10 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (memberBinding.Name.Identifier.Text != "Result")
             return;
 
-        if (context.SemanticModel.GetSymbolInfo(memberBinding, context.CancellationToken).Symbol is not IPropertySymbol property)
+        if (
+            context.SemanticModel.GetSymbolInfo(memberBinding, context.CancellationToken).Symbol
+            is not IPropertySymbol property
+        )
             return;
         if (!IsTaskLike(property.ContainingType))
             return;
@@ -122,7 +135,10 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (memberName is null)
             return;
 
-        if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
+        if (
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+            is not IMethodSymbol method
+        )
             return;
 
         // Potentially blocking task.Wait() overloads. A constant zero-millisecond timeout is an
@@ -138,7 +154,10 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
 
         // Task.WaitAll(...) / Task.WaitAny(...) — static blocking joins unless their timeout is
         // a guaranteed-zero immediate probe.
-        if ((method.Name == "WaitAll" || method.Name == "WaitAny") && IsTaskLike(method.ContainingType))
+        if (
+            (method.Name == "WaitAll" || method.Name == "WaitAny")
+            && IsTaskLike(method.ContainingType)
+        )
         {
             if (HasZeroTimeout(invocation, context.SemanticModel, context.CancellationToken))
                 return;
@@ -157,18 +176,24 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
     private static bool HasZeroTimeout(
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel,
-        System.Threading.CancellationToken cancellationToken)
+        System.Threading.CancellationToken cancellationToken
+    )
     {
-        if (semanticModel.GetOperation(invocation, cancellationToken) is not IInvocationOperation operation)
+        if (
+            semanticModel.GetOperation(invocation, cancellationToken)
+            is not IInvocationOperation operation
+        )
             return false;
 
         var timeSpanType = semanticModel.Compilation.GetTypeByMetadataName("System.TimeSpan");
 
         foreach (var argument in operation.Arguments)
         {
-            if (argument.Parameter?.Name == "millisecondsTimeout" &&
-                argument.Value.ConstantValue is { HasValue: true, Value: int value } &&
-                value == 0)
+            if (
+                argument.Parameter?.Name == "millisecondsTimeout"
+                && argument.Value.ConstantValue is { HasValue: true, Value: int value }
+                && value == 0
+            )
             {
                 return true;
             }
@@ -180,17 +205,20 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
             if (argumentValue is IDefaultValueOperation)
                 return true;
 
-            if (argumentValue is IFieldReferenceOperation
-                {
-                    Field: { IsStatic: true, Name: "Zero" } field,
-                } && SymbolEqualityComparer.Default.Equals(field.ContainingType, timeSpanType))
+            if (
+                argumentValue
+                    is IFieldReferenceOperation { Field: { IsStatic: true, Name: "Zero" } field }
+                && SymbolEqualityComparer.Default.Equals(field.ContainingType, timeSpanType)
+            )
             {
                 return true;
             }
 
-            if (argumentValue is IObjectCreationOperation creation &&
-                creation.Arguments.Length == 0 &&
-                SymbolEqualityComparer.Default.Equals(creation.Type, timeSpanType))
+            if (
+                argumentValue is IObjectCreationOperation creation
+                && creation.Arguments.Length == 0
+                && SymbolEqualityComparer.Default.Equals(creation.Type, timeSpanType)
+            )
             {
                 return true;
             }
@@ -217,7 +245,11 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static void Report(SyntaxNodeAnalysisContext context, SyntaxNode location, string display)
+    private static void Report(
+        SyntaxNodeAnalysisContext context,
+        SyntaxNode location,
+        string display
+    )
     {
         if (!CancellationTokenHelpers.IsInAsyncFunction(context.Node))
             return;
@@ -225,15 +257,11 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         // The construct is just as problematic either way, but where an inserted await would not
         // compile — a lock body, an exception filter, an unsafe context, most query clauses, or
         // across a ref-like lifetime — the diagnostic is reported without a fix.
-        var properties = CancellationTokenHelpers.AwaitInsertionIsUnsafe(
-            context.SemanticModel,
-            location
-        )
-            ? ImmutableDictionary<string, string?>.Empty.Add(
-                NoFixProperty,
-                CancellationTokenHelpers.AwaitUnsafeReason
-            )
-            : ImmutableDictionary<string, string?>.Empty;
+        var properties = ImmutableDictionary<string, string?>.Empty;
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, location))
+            properties = properties.Add(NoFixProperty, CancellationTokenHelpers.AwaitUnsafeReason);
+        else if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(location))
+            properties = properties.Add(NoFixProperty, "conditional-access");
 
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, location.GetLocation(), properties, display)
@@ -260,7 +288,10 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (type.ContainingNamespace?.ToDisplayString() != "System.Runtime.CompilerServices")
             return false;
 
-        return type.Name is "TaskAwaiter" or "ValueTaskAwaiter" or
-            "ConfiguredTaskAwaiter" or "ConfiguredValueTaskAwaiter";
+        return type.Name
+            is "TaskAwaiter"
+                or "ValueTaskAwaiter"
+                or "ConfiguredTaskAwaiter"
+                or "ConfiguredValueTaskAwaiter";
     }
 }

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.19] - 2026-08-19
+
+### Fixed
+
+- **CC015 fixer:** `host?.Work.Result` is reported without a
+  rewrite. Replacing `.Result` with `(await .Work)` produced
+  `host?(await .Work)`, which does not parse. `.Result` used
+  as an argument inside an unrelated `?.` still rewrites.
+
 ## [1.52.18] - 2026-08-19
 
 ### Fixed
