@@ -837,25 +837,12 @@ public static class CancellationTokenHelpers
         string? tokenArgumentName = null
     )
     {
-        // `host?.Process.WaitForExit()` reaches here as an ordinary member access, but the whole
-        // invocation is the WhenNotNull branch of a conditional access. Wrapping just that branch in
-        // an await yields `host?await.Process...`, which is not valid syntax — the await has to go
-        // outside the `?.`, which is a restructuring rather than a rewrite.
-        for (var current = invocation.Parent; current != null; current = current.Parent)
-        {
-            if (current is ConditionalAccessExpressionSyntax)
-                return null;
-            // A nested function is its own expression context: a lambda that merely happens to be an
-            // argument inside someone else's `?.` chain is rewritten normally.
-            if (
-                current
-                is StatementSyntax
-                    or MemberDeclarationSyntax
-                    or AnonymousFunctionExpressionSyntax
-                    or LocalFunctionStatementSyntax
-            )
-                break;
-        }
+        // `host?.Process.WaitForExit()` is the WhenNotNull of `?.`; wrapping just that
+        // branch in await yields `host?await.Process...`, which is not valid syntax.
+        // An argument nested inside an unrelated `host?.Use(...)` is not on that spine
+        // and still rewrites.
+        if (IsWhenNotNullOfConditionalAccess(invocation))
+            return null;
 
         var target = invocation.Expression switch
         {
