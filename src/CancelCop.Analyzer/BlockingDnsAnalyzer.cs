@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.CodeAnalysis;
@@ -30,10 +32,16 @@ namespace CancelCop.Analyzer;
 /// cannot see it: there is no token overload of the invoked method.
 /// </para>
 /// <para>
-/// Analyzer-only in this slice: a mechanical rewrite is a follow-up. Report first,
-/// rewrite later. <c>GetHostEntry</c> is a sibling, deferred. A compile-time
-/// constant string that <c>IPAddress.TryParse</c> accepts is a parse, not a
-/// query, and stays quiet.
+/// The fixer rewrites a safe <c>GetHostAddresses</c> to
+/// <c>await GetHostAddressesAsync</c>, flowing an in-scope token when
+/// the rewritten call still binds. The <c>AddressFamily</c> TAP has an
+/// optional token, so a tokenless rewrite still compiles.
+/// An identifier-form <c>using static</c> rewrite is withheld when
+/// speculative bind would land on a same-named helper rather than
+/// <c>System.Net.Dns</c>. <c>Dns</c> is a static type.
+/// <c>GetHostEntry</c> is CC044. A
+/// compile-time constant string that <c>IPAddress.TryParse</c> accepts
+/// is a parse, not a query, and stays quiet.
 /// </para>
 /// </remarks>
 /// <example>
@@ -51,6 +59,22 @@ public class BlockingDnsAnalyzer : DiagnosticAnalyzer
     /// The diagnostic ID for this analyzer rule.
     /// </summary>
     public const string DiagnosticId = "CC043";
+
+    /// <summary>
+    /// Property key used to pass the in-scope token parameter name (if any) to the code fix provider.
+    /// </summary>
+    public const string TokenNameProperty = "TokenName";
+
+    /// <summary>
+    /// Property key set when the diagnostic is correct but no safe rewrite exists.
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
+    /// <summary>
+    /// Property key for the TAP token parameter name when the original call
+    /// already uses named arguments.
+    /// </summary>
+    public const string TokenArgumentNameProperty = "TokenArgumentName";
 
     private static readonly LocalizableString Title =
         "Avoid blocking Dns.GetHostAddresses in async code";
@@ -133,9 +157,228 @@ public class BlockingDnsAnalyzer : DiagnosticAnalyzer
         if (IsProvablyIpLiteral(invocation, context))
             return;
 
+        var properties = ImmutableDictionary<string, string?>.Empty;
+
+        if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
+            properties = properties.Add(NoFixProperty, "await-unsafe");
+
+        var tokenName = CancellationTokenHelpers
+            .FindEnclosingCancellationToken(invocation, context.SemanticModel)
+            ?.ExpressionText;
+
+        var tokenArgumentName =
+            tokenName != null && invocation.ArgumentList.Arguments.Any(a => a.NameColon != null)
+                ? FindTokenParameterName(dnsType, definition, context)
+                : null;
+
+        if (
+            tokenName != null
+            && !ResolvesToUsableCounterpart(
+                context,
+                invocation,
+                dnsType,
+                definition,
+                tokenName,
+                tokenArgumentName
+            )
+        )
+        {
+            tokenName = null;
+            tokenArgumentName = null;
+        }
+
+        if (
+            ResolvesToUsableCounterpart(
+                context,
+                invocation,
+                dnsType,
+                definition,
+                tokenName,
+                tokenArgumentName
+            )
+        )
+        {
+            if (tokenName != null)
+                properties = properties.Add(TokenNameProperty, tokenName);
+
+            if (tokenArgumentName != null)
+                properties = properties.Add(TokenArgumentNameProperty, tokenArgumentName);
+
+            context.ReportDiagnostic(
+                Diagnostic.Create(Rule, invokedName.GetLocation(), properties, definition.Name)
+            );
+            return;
+        }
+
+        if (!ReachesCounterpart(dnsType, definition, context))
+            return;
+
+        if (!properties.ContainsKey(NoFixProperty))
+            properties = properties.Add(NoFixProperty, "no-safe-rewrite");
+
         context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invokedName.GetLocation(), definition.Name)
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, definition.Name)
         );
+    }
+
+    private static string? FindTokenParameterName(
+        INamedTypeSymbol dnsType,
+        IMethodSymbol getHostAddresses,
+        SyntaxNodeAnalysisContext context
+    )
+    {
+        foreach (var member in ReachableGetHostAddressesAsync(dnsType, context))
+        {
+            if (!MatchesGetHostAddressesShape(member, getHostAddresses))
+                continue;
+
+            if (member.Parameters.IsEmpty)
+                continue;
+
+            var last = member.Parameters[member.Parameters.Length - 1];
+            if (CancellationTokenHelpers.IsCancellationToken(last.Type))
+                return last.Name;
+        }
+
+        return "cancellationToken";
+    }
+
+    private static bool ResolvesToUsableCounterpart(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        INamedTypeSymbol dnsType,
+        IMethodSymbol getHostAddresses,
+        string? tokenName,
+        string? tokenArgumentName
+    )
+    {
+        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+            invocation,
+            "GetHostAddressesAsync",
+            tokenName,
+            tokenArgumentName
+        );
+        if (speculative is null)
+            return false;
+
+        var bound =
+            context
+                .SemanticModel.GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    speculative,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+        return bound is not null
+            && IsUsableAsyncCounterpart(bound, dnsType)
+            && MatchesGetHostAddressesShape(bound, getHostAddresses);
+    }
+
+    private static bool ReachesCounterpart(
+        INamedTypeSymbol dnsType,
+        IMethodSymbol getHostAddresses,
+        SyntaxNodeAnalysisContext context
+    )
+    {
+        foreach (var member in ReachableGetHostAddressesAsync(dnsType, context))
+        {
+            if (
+                IsUsableAsyncCounterpart(member, dnsType)
+                && MatchesGetHostAddressesShape(member, getHostAddresses)
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<IMethodSymbol> ReachableGetHostAddressesAsync(
+        INamedTypeSymbol dnsType,
+        SyntaxNodeAnalysisContext context
+    )
+    {
+        var enclosing =
+            context.ContainingSymbol
+            ?? context.SemanticModel.GetEnclosingSymbol(
+                context.Node.SpanStart,
+                context.CancellationToken
+            );
+        var compilation = context.SemanticModel.Compilation;
+        ISymbol within =
+            enclosing as INamedTypeSymbol
+            ?? enclosing?.ContainingType
+            ?? (ISymbol)compilation.Assembly;
+
+        foreach (var member in dnsType.GetMembers("GetHostAddressesAsync").OfType<IMethodSymbol>())
+        {
+            if (within is not null && !compilation.IsSymbolAccessibleWithin(member, within))
+                continue;
+
+            yield return member;
+        }
+    }
+
+    private static bool IsUsableAsyncCounterpart(IMethodSymbol? bound, INamedTypeSymbol dnsType)
+    {
+        if (bound is not { IsStatic: true, Name: "GetHostAddressesAsync" })
+            return false;
+
+        if (!SymbolEqualityComparer.Default.Equals(bound.ContainingType, dnsType))
+            return false;
+
+        if (!IsTaskLike(bound.ReturnType))
+            return false;
+
+        if (bound.Parameters.IsEmpty)
+            return false;
+
+        var last = bound.Parameters[bound.Parameters.Length - 1];
+        if (CancellationTokenHelpers.IsCancellationToken(last.Type))
+            return true;
+
+        // Tokenless string TAP: GetHostAddressesAsync(string). There is no
+        // tokenless GetHostAddressesAsync(string, AddressFamily).
+        return bound.Parameters.Length == 1
+            && bound.Parameters[0].Type.SpecialType == SpecialType.System_String;
+    }
+
+    private static bool MatchesGetHostAddressesShape(IMethodSymbol tap, IMethodSymbol sync)
+    {
+        var tapArgs = tap
+            .Parameters.Where(p => !CancellationTokenHelpers.IsCancellationToken(p.Type))
+            .ToArray();
+        if (tapArgs.Length != sync.Parameters.Length)
+            return false;
+
+        for (var i = 0; i < tapArgs.Length; i++)
+        {
+            if (tapArgs[i].RefKind != sync.Parameters[i].RefKind)
+                return false;
+
+            if (!SymbolEqualityComparer.Default.Equals(tapArgs[i].Type, sync.Parameters[i].Type))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsTaskLike(ITypeSymbol type)
+    {
+        for (
+            var current = type as INamedTypeSymbol;
+            current is not null;
+            current = current.BaseType
+        )
+        {
+            var definition = current.OriginalDefinition;
+            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
+                continue;
+
+            if (definition.Name is "Task" or "ValueTask")
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
