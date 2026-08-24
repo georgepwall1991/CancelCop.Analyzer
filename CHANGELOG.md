@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.21] - 2026-08-24
+
+### Changed
+
+- **CC022 fixer:** null-conditional `Cancel()` statements now rewrite
+  instead of being withheld. `cts?.Cancel()` becomes
+  `if (cts is not null) { await cts.CancelAsync(); }`, and chained
+  spines like `holder?.Cts.Cancel()` get the operation spliced back
+  into the awaited call (`await holder.Cts.CancelAsync()`). Still
+  withheld when a nested `?.` would survive the hoist
+  (`holder?.Cts?.Cancel()`) or the receiver is not safely
+  re-evaluatable (`Create()?.Cancel()`).
+
 ## [1.52.20] - 2026-08-19
 
 ### Fixed

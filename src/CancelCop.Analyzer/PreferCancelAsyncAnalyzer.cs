@@ -50,6 +50,13 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string NoFixProperty = "NoFix";
 
+    /// <summary>
+    /// Value stored under <see cref="NoFixProperty"/> when the call sits on the spine of a
+    /// null-conditional access. A statement-level rewrite can still be possible (the fixer
+    /// hoists `x?.M()` statements to an `is not null` check); other reasons are final.
+    /// </summary>
+    public const string ConditionalAccessReason = "conditional-access";
+
     private static readonly LocalizableString Title =
         "Prefer CancelAsync over Cancel in async code";
     private static readonly LocalizableString MessageFormat =
@@ -126,7 +133,7 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
         }
         else if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
         {
-            properties = properties.Add(NoFixProperty, "conditional-access");
+            properties = properties.Add(NoFixProperty, ConditionalAccessReason);
         }
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invokedName.GetLocation(), properties));

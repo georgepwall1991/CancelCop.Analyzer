@@ -105,11 +105,11 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    public async Task ChainedConditionalAccess_IsHoistedToIfNotNullAwait()
     {
-        // `holder?.Cts.Cancel()` is an ordinary member access, but it is the WhenNotNull
-        // of `?.`. Replacing it with `await .Cts.CancelAsync()` yields
-        // `holder? await.Cts.CancelAsync()`, which does not parse.
+        // `holder?.Cts.Cancel()` cannot take an in-place rewrite (`holder? await.Cts.CancelAsync()`
+        // does not parse), but as a statement it can be hoisted to a null check with the
+        // operation spliced back into the awaited chain.
         var test =
             @"
 #nullable enable
@@ -130,12 +130,35 @@ public class TestClass
     }
 }";
 
+        var fixedCode =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public CancellationTokenSource Cts { get; } = new CancellationTokenSource();
+}
+
+public class TestClass
+{
+    public async Task StopAsync(Holder? holder)
+    {
+        if (holder is not null)
+        {
+            await holder.Cts.CancelAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
         var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
-        await CreateTest(test, test, expected).RunAsync();
+        await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
-    public async Task DirectConditionalCancel_ReportsWithoutOfferingAFix()
+    public async Task DirectConditionalCancel_IsHoistedToIfNotNullAwait()
     {
         var test =
             @"
@@ -152,8 +175,128 @@ public class TestClass
     }
 }";
 
+        var fixedCode =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts)
+    {
+        if (cts is not null)
+        {
+            await cts.CancelAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalCancelWithComplexReceiver_ReportsWithoutOfferingAFix()
+    {
+        // Hoisting would evaluate the receiver twice; an invocation receiver may have side
+        // effects, so the diagnostic stands without a rewrite.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync()
+    {
+        CreateCts()?.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+
+    private static CancellationTokenSource? CreateCts() => new();
+}";
+
         var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
         await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NestedConditionalSpine_ReportsWithoutOfferingAFix()
+    {
+        // `a?.b?.Cancel()` — hoisting only the outer condition would leave `await a.b?.CancelAsync()`,
+        // which throws NRE when b is null instead of silently skipping. Withheld.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public CancellationTokenSource? Cts { get; set; }
+}
+
+public class TestClass
+{
+    public async Task StopAsync(Holder? holder)
+    {
+        holder?.Cts?.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task FixAll_MixedDirectAndConditional_BothFixed()
+    {
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, CancellationTokenSource other)
+    {
+        cts?.{|#0:Cancel|}();
+        other.{|#1:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, CancellationTokenSource other)
+    {
+        if (cts is not null)
+        {
+            await cts.CancelAsync();
+        }
+        await other.CancelAsync();
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(
+                test,
+                fixedCode,
+                new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0),
+                new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(1)
+            )
+            .RunAsync();
     }
 
     [Fact]
