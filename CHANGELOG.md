@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.21] - 2026-08-24
+
+### Changed
+
+- **CC022 fixer:** null-conditional `Cancel()` statements now rewrite
+  instead of being withheld. `cts?.Cancel()` becomes
+  `if (cts is not null) { await cts.CancelAsync(); }`, and chained
+  spines like `holder?.Cts.Cancel()` get the operation spliced back
+  into the awaited call (`await holder.Cts.CancelAsync()`).
+  Still withheld when the rewrite would change behavior or not
+  compile: a nested `?.` surviving the hoist
+  (`holder?.Cts?.Cancel()`), receivers that are not locals,
+  parameters, or `this` (`Engine?.Cancel()`, `Create()?.Cancel()`
+  — they would be evaluated twice), nullable-struct receivers,
+  element-access or `!` spines (`holder?.Sources[0].Cancel()`),
+  unbraced `if` bodies whose parent has an `else`, language
+  versions below C# 9 (`is not null` pattern), and calls whose
+  rewritten `CancelAsync()` does not speculatively rebind to the
+  framework's parameterless Task-returning method (a subclass may
+  hide it with a non-awaitable member) — for direct and
+  null-conditional calls alike.
+  Known semantic note: like any hand-written null check, the hoist
+  reads the receiver twice; code that concurrently reassigns the
+  receiver between the check and the call (only possible for
+  captured locals) keeps its pre-existing check-then-act race.
+
 ## [1.52.20] - 2026-08-19
 
 ### Fixed
