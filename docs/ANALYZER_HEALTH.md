@@ -207,7 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.21: 1463 tests, green locally. **CC022 fixer** —
+- v1.52.21: 1465 tests, green locally. **CC022 fixer** —
   null-conditional `Cancel()` statements hoist to an
   `is not null` check with the awaited call (`cts?.Cancel()` →
   `if (cts is not null) { await cts.CancelAsync(); }`,
@@ -215,7 +215,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   Withheld for surviving nested `?.`, non-local/parameter/this
   receivers (double evaluation), nullable-struct receivers,
   element-access/`!` spines, and dangling-else shapes.
-  8 new/updated fixer tests; codex review found the double
+  10 new/updated fixer tests; codex review found the double
   evaluation, splice-shape, nullable-struct, and dangling-else
   gaps this hardening closes.
 - v1.52.20: 1455 tests, green locally. **CC022 fixer** —

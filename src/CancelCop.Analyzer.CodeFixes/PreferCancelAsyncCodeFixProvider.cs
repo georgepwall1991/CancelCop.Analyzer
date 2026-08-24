@@ -58,10 +58,13 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         // On a direct `?.` spine the receiver is a member binding (`cts?.Cancel()`); chained
         // calls keep an ordinary member access whose leftmost node is the spliced operation
         // (`holder?.Cts.Cancel()`).
+        if (invocation == null)
+            return;
+        // On a direct `?.` spine the receiver is a member binding (`cts?.Cancel()`); chained
+        // calls keep an ordinary member access whose leftmost node is the spliced operation
+        // (`holder?.Cts.Cancel()`).
         if (invocation.Expression is not (MemberAccessExpressionSyntax or MemberBindingExpressionSyntax))
             return;
-        var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
-        // `holder?.Cts.Cancel()` is an ordinary member access, but it is the WhenNotNull
         // of `?.`. Replacing it with `await .Cts.CancelAsync()` yields
         // `holder? await.Cts.CancelAsync()`, which does not parse. As a statement, though,
         // the whole null-conditional call hoists to an `is not null` check (below).
@@ -106,6 +109,8 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             }
             return;
         }
+
+        var memberAccess = (MemberAccessExpressionSyntax)invocation.Expression;
  
          context.RegisterCodeFix(
              CodeAction.Create(
@@ -139,14 +144,7 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
                 candidate.Parent is ExpressionStatementSyntax enclosing
                 && enclosing.Expression == candidate
                 && IsSimpleNullCheckReceiver(candidate.Expression, semanticModel)
-
-                // `if (flag) cts?.Cancel(); else …` — replacing the unbraced body with another
-                // if-statement would re-bind the outer `else` to the new check.
-                && !(
-                    enclosing.Parent is IfStatementSyntax outerIf
-                    && outerIf.Statement == enclosing
-                    && outerIf.Else != null
-                )
+                && !IntroducesDanglingElse(enclosing)
             )
             {
                 statement = enclosing;
@@ -157,6 +155,27 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
 
         statement = null!;
         conditionalAccess = null;
+        return false;
+    }
+
+    /// <summary>
+    /// True when replacing this statement with an if-statement would let an enclosing `else`
+    /// re-bind to the new check: the statement sits (directly or through other unbraced
+    /// embedded bodies — `while`, `for`, `using`, `lock`, …) as the unbraced body of an `if`
+    /// that has an `else`.
+    /// </summary>
+    private static bool IntroducesDanglingElse(ExpressionStatementSyntax statement)
+    {
+        for (var node = (SyntaxNode)statement; node.Parent != null; node = node.Parent)
+        {
+            if (
+                node.Parent is IfStatementSyntax parentIf
+                && parentIf.Statement == node
+                && parentIf.Else != null
+            )
+                return true;
+        }
+
         return false;
     }
 

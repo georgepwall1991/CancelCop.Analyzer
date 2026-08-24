@@ -495,7 +495,80 @@ public class TestClass
     }
 }";
 
+
         var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
         await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalCancelInNestedUnbracedIfBodyWithElse_ReportsWithoutOfferingAFix()
+    {
+        // `if (flag) while (loop) cts?.Cancel(); else …` — the statement is an unbraced body
+        // behind an if-with-else through an intervening embedded statement; the generated inner
+        // if would capture the outer else on reparse.
+        var test =
+            @"
+#nullable enable
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, bool flag, bool loop)
+    {
+        if (flag)
+            while (loop)
+                cts?.{|#0:Cancel|}();
+        else
+            Console.WriteLine(""fallback"");
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalHoist_PreservesSurroundingComments()
+    {
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts)
+    {
+        // stop callbacks first
+        cts?.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts)
+    {
+        // stop callbacks first
+        if (cts is not null)
+        {
+            await cts.CancelAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
     }
 }
