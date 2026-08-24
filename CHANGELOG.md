@@ -22,7 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameters, or `this` (`Engine?.Cancel()`, `Create()?.Cancel()`
   — they would be evaluated twice), nullable-struct receivers,
   element-access or `!` spines (`holder?.Sources[0].Cancel()`),
-  and unbraced `if` bodies whose parent has an `else`.
+  unbraced `if` bodies whose parent has an `else`, language
+  versions below C# 9 (`is not null` pattern), and types whose
+  `CancelAsync()` is hidden by a non-framework member.
 
 ## [1.52.20] - 2026-08-19
 

@@ -162,12 +162,14 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
     /// True when replacing this statement with an if-statement would let an enclosing `else`
     /// re-bind to the new check: the statement sits (directly or through other unbraced
     /// embedded bodies — `while`, `for`, `using`, `lock`, …) as the unbraced body of an `if`
-    /// that has an `else`.
+    /// that has an `else`. A braced body scopes else-binding again, so the walk stops there.
     /// </summary>
     private static bool IntroducesDanglingElse(ExpressionStatementSyntax statement)
     {
         for (var node = (SyntaxNode)statement; node.Parent != null; node = node.Parent)
         {
+            if (node is BlockSyntax)
+                return false;
             if (
                 node.Parent is IfStatementSyntax parentIf
                 && parentIf.Statement == node
@@ -220,6 +222,12 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         out ExpressionSyntax hoistedCall
     )
     {
+        // `is not null` is a C# 9 pattern; older language versions would get a non-compiling fix.
+        if (semanticModel.Compilation is not CSharpCompilation compilation)
+            return Withhold(out hoistedCall);
+        if (compilation.LanguageVersion < LanguageVersion.CSharp9)
+            return Withhold(out hoistedCall);
+
         // A nullable-struct receiver (`nullableStruct?.Field.Cancel()`) would not compile after
         // the hoist — outside `?.`, the compiler inserts no `.Value`.
         if (
@@ -230,9 +238,11 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
                 .SpecialType == SpecialType.System_Nullable_T
         )
         {
-            hoistedCall = null!;
-            return false;
+            return Withhold(out hoistedCall);
         }
+
+        var cancelMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+
 
         var nameNode = invocation.Expression switch
         {
@@ -241,20 +251,15 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             _ => null,
         };
         if (nameNode == null)
-        {
-            hoistedCall = null!;
-            return false;
-        }
+            return Withhold(out hoistedCall);
 
         var renamed = conditionalAccess.WhenNotNull.ReplaceNode(
             nameNode,
             SyntaxFactory.IdentifierName("CancelAsync").WithTriviaFrom(nameNode)
         );
         if (renamed == null)
-        {
-            hoistedCall = null!;
-            return false;
-        }
+            return Withhold(out hoistedCall);
+
 
         // The splice only knows receiver-less member bindings; anything else leftmost on the
         // spine (an element binding, a null-forgiving operator) would produce invalid syntax.
@@ -271,13 +276,38 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         }
 
         if (ContainsNullConditionalAccess(spliced))
+            return Withhold(out hoistedCall);
+
+        // Speculatively rebind the hoisted call: a subclass may hide CancelAsync with a member
+        // that is not the framework's awaitable method, and the rewrite must not invent it.
+        var rebound = semanticModel
+            .GetSpeculativeSymbolInfo(
+                conditionalAccess.SpanStart,
+                spliced,
+                SpeculativeBindingOption.BindAsExpression
+            )
+            .Symbol as IMethodSymbol;
+        if (
+            rebound == null
+            || rebound.Name != "CancelAsync"
+            || rebound.Parameters.Length != 0
+            || rebound.ReturnType.Name != "Task"
+            || rebound.ReturnType.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks"
+            || cancelMethod == null
+            || !rebound.ContainingType.Equals(cancelMethod.OriginalDefinition.ContainingType)
+        )
         {
-            hoistedCall = null!;
-            return false;
+            return Withhold(out hoistedCall);
         }
 
         hoistedCall = spliced;
         return true;
+    }
+
+    private static bool Withhold(out ExpressionSyntax hoistedCall)
+    {
+        hoistedCall = null!;
+        return false;
     }
 
     private static async Task<Document> HoistToIfNotNullAsync(

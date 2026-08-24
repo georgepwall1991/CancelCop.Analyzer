@@ -571,4 +571,89 @@ public class TestClass
         var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+    [Fact]
+    public async Task ConditionalCancelInBracedIfBodyWithElse_IsHoistedInsideBraces()
+    {
+        // Braces scope else-binding again, so the hoist is safe inside a braced body.
+        var test =
+            @"
+#nullable enable
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, bool flag)
+    {
+        if (flag)
+        {
+            cts?.{|#0:Cancel|}();
+        }
+        else
+        {
+            Console.WriteLine(""fallback"");
+        }
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+#nullable enable
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, bool flag)
+    {
+        if (flag)
+        {
+            if (cts is not null)
+            {
+                await cts.CancelAsync();
+            }
+        }
+        else
+        {
+            Console.WriteLine(""fallback"");
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task HiddenCancelAsync_ReportsWithoutOfferingAFix()
+    {
+        // `new void CancelAsync()` hides the framework's awaitable method; awaiting it would
+        // not compile (void) and the fixer must not invent the call.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class HidingCts : CancellationTokenSource
+{
+    public new void CancelAsync() { }
+}
+
+public class TestClass
+{
+    public async Task StopAsync(HidingCts? cts)
+    {
+        cts?.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
 }
