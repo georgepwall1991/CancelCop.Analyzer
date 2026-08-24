@@ -111,17 +111,39 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         }
 
         var memberAccess = (MemberAccessExpressionSyntax)invocation.Expression;
- 
-         context.RegisterCodeFix(
-             CodeAction.Create(
-                 title: Title,
-                 createChangedDocument: c =>
-                     ReplaceAsync(context.Document, invocation, memberAccess, c),
-                 equivalenceKey: Title
+
+        // The same hidden-member hazard applies to the in-place rewrite: only register when
+        // the renamed call speculatively rebinds to the framework's awaitable CancelAsync().
+        var cancelMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+        var candidateCall = SyntaxFactory.InvocationExpression(
+            SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                memberAccess.Expression.WithoutTrivia(),
+                SyntaxFactory.Token(SyntaxKind.DotToken),
+                SyntaxFactory.IdentifierName("CancelAsync")
+            ),
+            invocation.ArgumentList
+        );
+        if (
+            !SpeculativeRebindIsFrameworkCancelAsync(
+                semanticModel,
+                invocation.SpanStart,
+                candidateCall,
+                cancelMethod
+            )
+        )
+            return;
+
+        context.RegisterCodeFix(
+            CodeAction.Create(
+                title: Title,
+                createChangedDocument: c =>
+                    ReplaceAsync(context.Document, invocation, memberAccess, c),
+                equivalenceKey: Title
             ),
             diagnostic
         );
-     }
+    }
 
     /// <summary>
     /// Walks up from the invocation to its enclosing expression statement. Returns true when that
@@ -280,21 +302,13 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
 
         // Speculatively rebind the hoisted call: a subclass may hide CancelAsync with a member
         // that is not the framework's awaitable method, and the rewrite must not invent it.
-        var rebound = semanticModel
-            .GetSpeculativeSymbolInfo(
+        if (
+            !SpeculativeRebindIsFrameworkCancelAsync(
+                semanticModel,
                 conditionalAccess.SpanStart,
                 spliced,
-                SpeculativeBindingOption.BindAsExpression
+                cancelMethod
             )
-            .Symbol as IMethodSymbol;
-        if (
-            rebound == null
-            || rebound.Name != "CancelAsync"
-            || rebound.Parameters.Length != 0
-            || rebound.ReturnType.Name != "Task"
-            || rebound.ReturnType.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks"
-            || cancelMethod == null
-            || !rebound.ContainingType.Equals(cancelMethod.OriginalDefinition.ContainingType)
         )
         {
             return Withhold(out hoistedCall);
@@ -303,6 +317,33 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         hoistedCall = spliced;
         return true;
     }
+
+    /// <summary>
+    /// Speculatively binds the rewritten call and requires it to resolve to a parameterless,
+    /// Task-returning <c>CancelAsync()</c> declared by the same type as the original
+    /// <c>Cancel()</c> — so a subclass hiding <c>CancelAsync</c> with an unrelated member
+    /// withholds the rewrite instead of producing non-compiling code.
+    /// </summary>
+    private static bool SpeculativeRebindIsFrameworkCancelAsync(
+        SemanticModel semanticModel,
+        int position,
+        ExpressionSyntax call,
+        IMethodSymbol? cancelMethod
+    )
+    {
+        var rebound = semanticModel
+            .GetSpeculativeSymbolInfo(position, call, SpeculativeBindingOption.BindAsExpression)
+            .Symbol as IMethodSymbol;
+        return rebound != null
+            && rebound.Name == "CancelAsync"
+            && rebound.Parameters.Length == 0
+            && rebound.ReturnType.Name == "Task"
+            && rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                == "System.Threading.Tasks"
+            && cancelMethod != null
+            && rebound.ContainingType.Equals(cancelMethod.OriginalDefinition.ContainingType);
+    }
+
 
     private static bool Withhold(out ExpressionSyntax hoistedCall)
     {

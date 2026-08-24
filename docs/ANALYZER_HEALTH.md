@@ -207,7 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.21: 1467 tests, green locally. **CC022 fixer** —
+- v1.52.21: 1468 tests, green locally. **CC022 fixer** —
   null-conditional `Cancel()` statements hoist to an
   `is not null` check with the awaited call (`cts?.Cancel()` →
   `if (cts is not null) { await cts.CancelAsync(); }`,

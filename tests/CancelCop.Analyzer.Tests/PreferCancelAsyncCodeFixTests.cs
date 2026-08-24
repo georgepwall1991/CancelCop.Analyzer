@@ -656,4 +656,32 @@ public class TestClass
         var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
         await CreateTest(test, test, expected).RunAsync();
     }
+    [Fact]
+    public async Task DirectHiddenCancelAsync_ReportsWithoutOfferingAFix()
+    {
+        // Same hazard as the conditional path: `new void CancelAsync()` is not awaitable, so
+        // the in-place rewrite of a direct call must also be withheld.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class HidingCts : CancellationTokenSource
+{
+    public new void CancelAsync() { }
+}
+
+public class TestClass
+{
+    public async Task StopAsync(HidingCts cts)
+    {
+        cts.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
 }
