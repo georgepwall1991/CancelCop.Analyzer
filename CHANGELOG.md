@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   framework's parameterless Task-returning method (a subclass may
   hide it with a non-awaitable member) — for direct and
   null-conditional calls alike.
+  Known semantic note: like any hand-written null check, the hoist
+  reads the receiver twice; code that concurrently reassigns the
+  receiver between the check and the call (only possible for
+  captured locals) keeps its pre-existing check-then-act race.
 
 ## [1.52.20] - 2026-08-19
 
