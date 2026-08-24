@@ -214,10 +214,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   including chained spines like `holder?.Cts.Cancel()`).
   Withheld for surviving nested `?.`, non-local/parameter/this
   receivers (double evaluation), nullable-struct receivers,
-  element-access/`!` spines, and dangling-else shapes.
-  12 new/updated fixer tests; codex review found the double
-  evaluation, splice-shape, nullable-struct, and dangling-else
-  gaps this hardening closes.
+  element-access/`!` spines, dangling-else shapes (including
+  through embedded-statement chains), language versions below
+  C# 9, and hidden `CancelAsync()` members — verified by a
+  speculative rebind on both direct and conditional paths.
+  13 new/updated fixer tests; codex review found the double
+  evaluation, splice-shape, nullable-struct, dangling-else,
+  language-version, and hidden-member gaps this hardening closes.
 - v1.52.20: 1455 tests, green locally. **CC022 fixer** —
   `holder?.Cts.Cancel()` reports without a rewrite (would
   become `holder? await.Cts.CancelAsync()`). Direct
