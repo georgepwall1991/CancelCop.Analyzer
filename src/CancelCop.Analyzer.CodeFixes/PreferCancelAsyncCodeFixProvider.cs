@@ -37,6 +37,12 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
         var isConditionalAccess =
             diagnostic.Properties.TryGetValue(PreferCancelAsyncAnalyzer.NoFixProperty, out var reason)
@@ -70,10 +76,16 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             if (
                 TryGetHoistableNullConditionalStatement(
                     invocation,
+                    semanticModel,
                     out var statement,
                     out var conditionalAccess
                 )
-                && TryBuildHoistedCall(conditionalAccess, invocation, out var hoistedCall)
+                && TryBuildHoistedCall(
+                    semanticModel,
+                    conditionalAccess,
+                    invocation,
+                    out var hoistedCall
+                )
             )
             {
                 context.RegisterCodeFix(
@@ -101,30 +113,40 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
                  createChangedDocument: c =>
                      ReplaceAsync(context.Document, invocation, memberAccess, c),
                  equivalenceKey: Title
-             ),
-             diagnostic
-         );
+            ),
+            diagnostic
+        );
      }
 
     /// <summary>
     /// Walks up from the invocation to its enclosing expression statement. Returns true when that
     /// statement's expression is exactly a null-conditional access whose operation is safe to
-    /// re-evaluate — a plain <c>this</c>/identifier member chain — which makes the
+    /// re-evaluate and whose surroundings survive the rewrite — which makes the
     /// <c>x?.M()</c> → <c>if (x is not null) { … x.M() … }</c> hoist semantics-preserving.
     /// </summary>
     private static bool TryGetHoistableNullConditionalStatement(
         SyntaxNode node,
+        SemanticModel semanticModel,
         out ExpressionStatementSyntax statement,
         out ConditionalAccessExpressionSyntax? conditionalAccess
     )
     {
         for (var current = node.Parent; current != null; current = current.Parent)
         {
+            if (current is not ConditionalAccessExpressionSyntax candidate)
+                continue;
             if (
-                current is ConditionalAccessExpressionSyntax candidate
-                && candidate.Parent is ExpressionStatementSyntax enclosing
+                candidate.Parent is ExpressionStatementSyntax enclosing
                 && enclosing.Expression == candidate
-                && IsSimpleNullCheckReceiver(candidate.Expression)
+                && IsSimpleNullCheckReceiver(candidate.Expression, semanticModel)
+
+                // `if (flag) cts?.Cancel(); else …` — replacing the unbraced body with another
+                // if-statement would re-bind the outer `else` to the new check.
+                && !(
+                    enclosing.Parent is IfStatementSyntax outerIf
+                    && outerIf.Statement == enclosing
+                    && outerIf.Else != null
+                )
             )
             {
                 statement = enclosing;
@@ -140,19 +162,28 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
 
     /// <summary>
     /// The hoist evaluates the receiver twice (once in the condition, once in the awaited call),
-    /// so only side-effect-free re-evaluatable receivers qualify.
+    /// so only symbols whose repeated read cannot run code or change identity qualify: a local,
+    /// a parameter, or <c>this</c>. A bare identifier can still bind to a property inside its
+    /// own class, so the check is semantic, not syntactic.
     /// </summary>
-    private static bool IsSimpleNullCheckReceiver(ExpressionSyntax expression) =>
-        expression switch
+    private static bool IsSimpleNullCheckReceiver(
+        ExpressionSyntax expression,
+        SemanticModel semanticModel
+    )
+    {
+        var unwrapped = expression;
+        while (unwrapped is ParenthesizedExpressionSyntax parenthesized)
+            unwrapped = parenthesized.Expression;
+
+        return unwrapped switch
         {
             ThisExpressionSyntax => true,
-            IdentifierNameSyntax => true,
-            MemberAccessExpressionSyntax member => IsSimpleNullCheckReceiver(member.Expression),
-            ParenthesizedExpressionSyntax parenthesized => IsSimpleNullCheckReceiver(
-                parenthesized.Expression
-            ),
+            IdentifierNameSyntax identifier => semanticModel.GetSymbolInfo(identifier).Symbol
+                is IParameterSymbol
+                or ILocalSymbol,
             _ => false,
         };
+    }
 
     /// <summary>
     /// Builds the awaited call for the hoisted rewrite, or returns false when the shape must
@@ -164,11 +195,26 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
     /// is ever registered.
     /// </summary>
     private static bool TryBuildHoistedCall(
+        SemanticModel semanticModel,
         ConditionalAccessExpressionSyntax conditionalAccess,
         InvocationExpressionSyntax invocation,
         out ExpressionSyntax hoistedCall
     )
     {
+        // A nullable-struct receiver (`nullableStruct?.Field.Cancel()`) would not compile after
+        // the hoist — outside `?.`, the compiler inserts no `.Value`.
+        if (
+            semanticModel
+                .GetTypeInfo(conditionalAccess.Expression)
+                .Type?
+                .OriginalDefinition
+                .SpecialType == SpecialType.System_Nullable_T
+        )
+        {
+            hoistedCall = null!;
+            return false;
+        }
+
         var nameNode = invocation.Expression switch
         {
             MemberBindingExpressionSyntax binding => (SyntaxNode)binding.Name,
@@ -191,7 +237,20 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             return false;
         }
 
-        var spliced = SpliceOperation(renamed, conditionalAccess.Expression.WithoutTrivia());
+        // The splice only knows receiver-less member bindings; anything else leftmost on the
+        // spine (an element binding, a null-forgiving operator) would produce invalid syntax.
+        if (
+            !TrySpliceOperation(
+                renamed,
+                conditionalAccess.Expression.WithoutTrivia(),
+                out var spliced
+            )
+        )
+        {
+            hoistedCall = null!;
+            return false;
+        }
+
         if (ContainsNullConditionalAccess(spliced))
         {
             hoistedCall = null!;
@@ -264,28 +323,54 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
     /// <summary>
     /// Rebuilds the leading receiver-less member binding of a <c>?. </c> spine as an ordinary
     /// member access over the hoisted operation, walking the leftmost chain
-    /// (<c>.Cts.Cancel()</c> over operation <c>x</c> becomes <c>x.Cts.Cancel()</c>).
+    /// (<c>.Cts.Cancel()</c> over operation <c>x</c> becomes <c>x.Cts.Cancel()</c>). Returns
+    /// false when the leftmost node is not a member binding — an element binding or a
+    /// null-forgiving operator there would produce uncompilable syntax.
     /// </summary>
-    private static ExpressionSyntax SpliceOperation(ExpressionSyntax expression, ExpressionSyntax operation) =>
-        expression switch
+    private static bool TrySpliceOperation(
+        ExpressionSyntax expression,
+        ExpressionSyntax operation,
+        out ExpressionSyntax result
+    )
+    {
+        switch (expression)
         {
-            MemberBindingExpressionSyntax binding => SyntaxFactory.MemberAccessExpression(
-                SyntaxKind.SimpleMemberAccessExpression,
-                operation,
-                SyntaxFactory.Token(SyntaxKind.DotToken),
-                binding.Name
-            ),
-            MemberAccessExpressionSyntax member => member.WithExpression(
-                SpliceOperation(member.Expression, operation)
-            ),
-            InvocationExpressionSyntax inv => inv.WithExpression(
-                SpliceOperation(inv.Expression, operation)
-            ),
-            ParenthesizedExpressionSyntax parenthesized => parenthesized.WithExpression(
-                SpliceOperation(parenthesized.Expression, operation)
-            ),
-            _ => expression,
-        };
+            case MemberBindingExpressionSyntax binding:
+                result = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    operation,
+                    SyntaxFactory.Token(SyntaxKind.DotToken),
+                    binding.Name
+                );
+                return true;
+            case MemberAccessExpressionSyntax member:
+                if (TrySpliceOperation(member.Expression, operation, out var innerMember))
+                {
+                    result = member.WithExpression(innerMember);
+                    return true;
+                }
+                break;
+            case InvocationExpressionSyntax invocation:
+                if (TrySpliceOperation(invocation.Expression, operation, out var innerCall))
+                {
+                    result = invocation.WithExpression(innerCall);
+                    return true;
+                }
+                break;
+            case ParenthesizedExpressionSyntax parenthesized:
+                if (
+                    TrySpliceOperation(parenthesized.Expression, operation, out var innerParen)
+                )
+                {
+                    result = parenthesized.WithExpression(innerParen);
+                    return true;
+                }
+                break;
+        }
+
+        result = null!;
+        return false;
+    }
 
     private static bool ContainsNullConditionalAccess(SyntaxNode node) =>
         node is ConditionalAccessExpressionSyntax

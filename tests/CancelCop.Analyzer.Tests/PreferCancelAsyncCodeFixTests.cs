@@ -358,4 +358,144 @@ public class TestClass
         var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task PropertyReceiverConditionalCancel_ReportsWithoutOfferingAFix()
+    {
+        // The hoist evaluates the receiver twice; a property getter could run twice or return
+        // another instance, so only plain identifiers and `this` qualify.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public CancellationTokenSource? Engine { get; set; }
+
+    public async Task StopAsync()
+    {
+        Engine?.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ElementAccessSpine_ReportsWithoutOfferingAFix()
+    {
+        // The splice only handles receiver-less member bindings; an element binding on the
+        // spine would produce uncompilable syntax after the hoist.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public CancellationTokenSource[] Sources { get; } = new CancellationTokenSource[1];
+}
+
+public class TestClass
+{
+    public async Task StopAsync(Holder? holder)
+    {
+        holder?.Sources[0].{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NullForgivingSpine_ReportsWithoutOfferingAFix()
+    {
+        // `!` on the spine would be left dangling without a receiver after the hoist.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public CancellationTokenSource? Cts { get; set; }
+}
+
+public class TestClass
+{
+    public async Task StopAsync(Holder? holder)
+    {
+        holder?.Cts!.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NullableStructReceiver_ReportsWithoutOfferingAFix()
+    {
+        // Outside `?.` the compiler inserts no `.Value`, so a nullable-struct receiver would
+        // not compile after the hoist.
+        var test =
+            @"
+#nullable enable
+using System.Threading;
+using System.Threading.Tasks;
+
+public struct Box
+{
+    public CancellationTokenSource Cts;
+}
+
+public class TestClass
+{
+    public async Task StopAsync(Box? box)
+    {
+        box?.Cts.{|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalCancelAsUnbracedIfBodyWithElse_ReportsWithoutOfferingAFix()
+    {
+        // Replacing the unbraced body with another if-statement would re-bind the outer
+        // `else` to the new check — a behavior change, so no rewrite.
+        var test =
+            @"
+#nullable enable
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task StopAsync(CancellationTokenSource? cts, bool flag)
+    {
+        if (flag)
+            cts?.{|#0:Cancel|}();
+        else
+            Console.WriteLine(""fallback"");
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
 }
