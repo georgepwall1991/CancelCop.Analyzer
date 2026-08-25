@@ -1,3 +1,11 @@
+## Release 1.52.40
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC052 | Usage | Warning | Avoid blocking WebRequest.GetResponse in async code
+
 ## Release 1.52.39
 
 ### New Rules
