@@ -304,10 +304,11 @@ public class Client : SslStream
     }
 
     [Fact]
-    public async Task AuthenticateAsClient_InnerShadowingLocal_StillFixes()
+    public async Task AuthenticateAsClient_InnerShadowingLocal_WithheldInsideAuthenticateAsClientAsync()
     {
-        // An inner local that merely shares the name `self` is a different symbol than
-        // the outer this-alias: symbol resolution keeps the fix available.
+        // Inside an AuthenticateAsClientAsync-shaped member only provably fresh
+        // receivers get a fix; a local receiver could alias `this`, so the rewrite is
+        // withheld even though this particular local shadows the outer alias.
         var test =
             @"
 using System.IO;
@@ -357,7 +358,7 @@ public class Client : SslStream
     }
 }";
 
-        await CreateTest(test, fixedCode, Expected()).RunAsync();
+        await CreateTest(test, test, Expected()).RunAsync();
     }
 
     [Fact]
@@ -420,11 +421,11 @@ public class Client : SslStream
     }
 
     [Fact]
-    public async Task AuthenticateAsClient_ConditionalNonAliasReceiver_StillFixes()
+    public async Task AuthenticateAsClient_ConditionalParameterReceiver_WithheldInsideAuthenticateAsClientAsync()
     {
-        // A plain parameter receiver is NOT `this`: even inside an
-        // AuthenticateAsClientAsync-named member the hoisted call dispatches to the
-        // framework method, so the fix is safe and is still offered.
+        // A parameter receiver could alias `this`; inside an
+        // AuthenticateAsClientAsync-shaped member the rewrite is conservatively
+        // withheld so it can never dispatch back into the enclosing member.
         var test =
             @"
 using System.IO;
@@ -466,6 +467,6 @@ public class Client : SslStream
     }
 }";
 
-        await CreateTest(test, fixedCode, Expected()).RunAsync();
+        await CreateTest(test, test, Expected()).RunAsync();
     }
 }

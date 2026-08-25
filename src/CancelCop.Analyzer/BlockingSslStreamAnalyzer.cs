@@ -267,7 +267,7 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         // provably `this` (`this`, `base`, or a local assigned from this) inside an
         // AuthenticateAsClientAsync member retargets the enclosing call itself and
         // recurses when the fix virtually dispatches. Withhold those.
-        if (!ReceiverMayBeThis(context, invocation))
+        if (!ReceiverCouldDispatchToEnclosing(invocation))
             return false;
 
         var enclosing =
@@ -289,8 +289,7 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             && IsTaskLike(enclosing.ReturnType);
     }
 
-    private static bool ReceiverMayBeThis(
-        SyntaxNodeAnalysisContext context,
+    private static bool ReceiverCouldDispatchToEnclosing(
         InvocationExpressionSyntax invocation
     )
     {
@@ -298,10 +297,12 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         if (invocation.Expression is IdentifierNameSyntax)
             return true;
 
-        // A `?.` spine surfaces as a member binding; the receiver to classify is the
-        // conditional access's operation (`self?.AuthenticateAsClient(...)`).
+        ExpressionSyntax? receiver;
         if (invocation.Expression is MemberBindingExpressionSyntax)
         {
+            // A `?.` spine surfaces as a member binding; the receiver is the
+            // conditional access's operation (`self?.AuthenticateAsClient(...)`).
+            receiver = null;
             for (
                 var current = invocation.Parent;
                 current is not null;
@@ -312,115 +313,33 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
                     current is ConditionalAccessExpressionSyntax conditional
                     && ReferenceEquals(invocation, conditional.WhenNotNull)
                 )
-                    return ReceiverMayBeThisOnExpression(
-                        context,
-                        conditional.Expression
-                    );
+                {
+                    receiver = conditional.Expression;
+                    break;
+                }
             }
 
-            return false;
-        }
-
-        return ReceiverMayBeThisOnExpression(context, invocation.Expression);
-    }
-
-    private static bool ReceiverMayBeThisOnExpression(
-        SyntaxNodeAnalysisContext context,
-        ExpressionSyntax expression
-    )
-    {
-        switch (expression)
-        {
-            case ThisExpressionSyntax or BaseExpressionSyntax:
-                return true;
-            // An identifier here is a named local or parameter, NOT implicit this —
-            // only one provably assigned from `this` counts.
-            case IdentifierNameSyntax alias:
-                return LocalIsAssignedFromThis(context, alias);
-            case MemberAccessExpressionSyntax memberAccess:
-                return ReceiverMayBeThisOnExpression(context, memberAccess.Expression);
-            default:
+            if (receiver is null)
                 return false;
         }
-    }
-
-    private static bool LocalIsAssignedFromThis(
-        SyntaxNodeAnalysisContext context,
-        IdentifierNameSyntax identifier
-    )
-    {
-        var semanticModel = context.SemanticModel;
-        var receiverSymbol =
-            semanticModel.GetSymbolInfo(identifier, context.CancellationToken).Symbol;
-        if (receiverSymbol is not (ILocalSymbol or IParameterSymbol))
+        else if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+        {
+            receiver = memberAccess.Expression;
+        }
+        else
+        {
             return false;
-
-        // The assignment may sit anywhere in the same function body, including under
-        // control flow (`if (useThis) self = this;`), so scan the whole enclosing
-        // function. Symbols are compared, never names: an unrelated lambda parameter
-        // that happens to share the name is not an alias.
-        foreach (
-            var node in EnclosingFunctionBody(identifier)?.DescendantNodes()
-                ?? Enumerable.Empty<SyntaxNode>()
-        )
-        {
-            switch (node)
-            {
-                case VariableDeclaratorSyntax
-                    {
-                        Initializer.Value: ThisExpressionSyntax,
-                    } declarator
-                when declarator.Identifier.Text == identifier.Identifier.Text:
-                    if (
-                        SymbolEqualityComparer.Default.Equals(
-                            semanticModel.GetDeclaredSymbol(declarator),
-                            receiverSymbol
-                        )
-                    )
-                        return true;
-                    break;
-                case AssignmentExpressionSyntax
-                    {
-                        Right: ThisExpressionSyntax,
-                        Left: IdentifierNameSyntax assigned,
-                    }
-                when assigned.Identifier.Text == identifier.Identifier.Text:
-                    if (
-                        SymbolEqualityComparer.Default.Equals(
-                            semanticModel.GetSymbolInfo(assigned).Symbol,
-                            receiverSymbol
-                        )
-                    )
-                        return true;
-                    break;
-            }
         }
 
-        return false;
-    }
+        while (receiver is ParenthesizedExpressionSyntax parenthesized)
+            receiver = parenthesized.Expression;
 
-    private static BlockSyntax? EnclosingFunctionBody(SyntaxNode node)
-    {
-        for (
-            var current = node;
-            current is not null;
-            current = current.Parent
-        )
-        {
-            switch (current)
-            {
-                case MethodDeclarationSyntax method:
-                    return method.Body;
-                case ConstructorDeclarationSyntax constructor:
-                    return constructor.Body;
-                case AnonymousFunctionExpressionSyntax anonymous:
-                    return anonymous.Body as BlockSyntax;
-                case LocalFunctionStatementSyntax localFunction:
-                    return localFunction.Body;
-            }
-        }
-
-        return null;
+        // Only receivers that are PROVABLY fresh instances (`new SslStream(...)`,
+        // a factory call) cannot dispatch to `this`. Anything else — this, base,
+        // locals, parameters, fields, properties — could alias the enclosing
+        // instance and recurse after the rewrite, so it is withheld.
+        return receiver
+            is not (ObjectCreationExpressionSyntax or InvocationExpressionSyntax);
     }
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
     {
