@@ -185,21 +185,21 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
             SpeculativeBindingOption.BindAsExpression
         );
 
-        var candidates =
-            info.Symbol is IMethodSymbol resolved
-                ? new[] { resolved }
-                : info.CandidateSymbols.OfType<IMethodSymbol>().ToArray();
+        // Candidates do not prove the call binds: an invalid argument (e.g. a kept `hostname:`
+        // name) must withhold the rewrite, so only an exactly-resolved symbol qualifies.
+        if (info.Symbol is not IMethodSymbol resolved)
+            return false;
 
         // ConnectAsync overloads may return Task or ValueTask.
-        return candidates.Any(m =>
-            m.Name == "ConnectAsync"
-            && !m.IsStatic
-            && (m.ReturnType.Name == "Task" || m.ReturnType.Name == "ValueTask")
-            && m.ReturnType.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks"
-            && m.ContainingType?.ToDisplayString() == "System.Net.Sockets.TcpClient"
-            && m.Parameters.Length == call.ArgumentList.Arguments.Count
+        return resolved.Name == "ConnectAsync"
+            && !resolved.IsStatic
+            && (resolved.ReturnType.Name == "Task" || resolved.ReturnType.Name == "ValueTask")
+            && resolved.ReturnType.ContainingNamespace?.ToDisplayString()
+                == "System.Threading.Tasks"
+            && resolved.ContainingType?.ToDisplayString() == "System.Net.Sockets.TcpClient"
+            && resolved.Parameters.Length == call.ArgumentList.Arguments.Count
             && connectMethod != null
-            && m.Parameters.Take(connectMethod.Parameters.Length)
+            && resolved.Parameters.Take(connectMethod.Parameters.Length)
                 .Select((p, i) => (p, i))
                 .All(x =>
                     x.p.Type.Equals(connectMethod.Parameters[x.i].Type)
@@ -207,8 +207,7 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
                         x.p.Name,
                         connectMethod.Parameters[x.i].Name,
                         StringComparison.Ordinal
-                    ))
-        );
+                    ));
     }
 
     private static ArgumentSyntax TokenArgument(string tokenName, string? tokenArgumentName)
