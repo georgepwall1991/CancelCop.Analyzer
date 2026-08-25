@@ -133,7 +133,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExecuteNonQuery_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task ExecuteNonQuery_NullConditional_HoistsToIfNotNullExecuteNonQueryAsync()
     {
         var source =
             @"
@@ -150,7 +150,74 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalExecuteNonQuery_HoistsWithSplicedCommand()
+    {
+        var source =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        host?.Command.{|#0:ExecuteNonQuery|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        if (host is not null)
+        {
+            await host.Command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]

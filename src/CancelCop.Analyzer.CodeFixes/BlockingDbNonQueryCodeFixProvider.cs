@@ -37,6 +37,12 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
         if (diagnostic.Properties.ContainsKey(BlockingDbNonQueryAnalyzer.NoFixProperty))
@@ -56,6 +62,86 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
         )
             ? name
             : null;
+
+        // A whole null-conditional statement (`command?.ExecuteNonQuery();`) hoists to
+        // `if (command is not null) { await command.ExecuteNonQueryAsync(ct); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "ExecuteNonQuery",
+                "ExecuteNonQueryAsync",
+                out hoistStatement,
+                out conditionalAccess,
+                out hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            if (hoistToken != null)
+            {
+                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(
+                        SyntaxFactory.Argument(
+                            CancellationTokenHelpers.TokenExpression(hoistToken)
+                        )
+                    )
+                );
+            }
+
+            // Speculatively rebind: only framework DbCommand ExecuteNonQueryAsync overloads
+            // qualify; hidden unrelated members withhold the fix.
+            var nonQueryMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var rebound = semanticModel
+                .GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    hoistedInvocation,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+            if (
+                rebound == null
+                || rebound.IsStatic
+                || rebound.Name != "ExecuteNonQueryAsync"
+                || rebound.ReturnType.Name != "Task"
+                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                    != "System.Threading.Tasks"
+                || nonQueryMethod == null
+                || !rebound.ContainingType.Equals(nonQueryMethod.OriginalDefinition.ContainingType)
+            )
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,

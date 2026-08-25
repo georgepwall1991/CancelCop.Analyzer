@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.32] - 2026-08-25
+
+### Changed
+
+- **CC047 fixer:** null-conditional `ExecuteNonQuery()` statements
+  now rewrite instead of being withheld (`command?.ExecuteNonQuery();`
+  becomes `if (command is not null)
+  { await command.ExecuteNonQueryAsync(cancellationToken); }`,
+  chained spines splice the command into the awaited call).
+  A speculative rebind requires the framework Task-returning
+  `ExecuteNonQueryAsync` on System.Data.Common.DbCommand.
+
 ## [1.52.31] - 2026-08-25
 
 ### Changed
