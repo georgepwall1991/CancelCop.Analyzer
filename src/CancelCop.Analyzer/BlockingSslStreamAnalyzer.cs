@@ -339,17 +339,8 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             {
                 Type: IdentifierNameSyntax { Identifier.Text: "SslStream" },
             };
-
-        // Only `new` on the exact framework SslStream type is PROVABLY fresh: a
-        // derived construction (`new Client(...)`) may be the enclosing instance, and
-        // an invocation result may be a factory that returns `this`. Anything else —
-        // this, base, locals, parameters, fields, properties — is withheld.
-        return receiver
-            is ObjectCreationExpressionSyntax
-            {
-                Type: IdentifierNameSyntax { Identifier.Text: "SslStream" },
-            };
     }
+
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
     {
         while (type != null)

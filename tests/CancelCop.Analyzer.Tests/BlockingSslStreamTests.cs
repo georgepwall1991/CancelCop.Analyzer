@@ -174,4 +174,30 @@ public class TestStream : SslStream
             .WithArguments("AuthenticateAsClient");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task SslStreamAuthenticateAsClient_BareInsideAuthenticateAsClientAsync_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        {|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC051")
+            .WithLocation(0)
+            .WithArguments("AuthenticateAsClient");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }

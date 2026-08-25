@@ -523,4 +523,75 @@ public class Client : SslStream
 
         await CreateTest(test, test, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task AuthenticateAsClient_NewFrameworkReceiver_StillFixes()
+    {
+        // `new SslStream(...)` is provably fresh — it cannot be the enclosing
+        // instance — so the rewrite is safe even inside an
+        // AuthenticateAsClientAsync-shaped member.
+        var test =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Worker : SslStream
+{
+    public Worker()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        new SslStream(Stream.Null).{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Worker : SslStream
+{
+    public Worker()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        await new SslStream(Stream.Null).AuthenticateAsClientAsync(host);
+        return true;
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task AuthenticateAsClient_DerivedConstructionReceiver_Withheld()
+    {
+        // `new Worker(...)` may BE the enclosing instance — derived constructions are
+        // not provably fresh.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Worker : SslStream
+{
+    public Worker()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        new Worker().{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }
