@@ -38,9 +38,21 @@ public class BlockingDbCommandCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingDbCommandAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingDbCommandAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "no-safe-rewrite")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -65,6 +77,78 @@ public class BlockingDbCommandCodeFixProvider : CodeFixProvider
             ? argumentName
             : null;
 
+        // A whole null-conditional statement (`command?.ExecuteReader();`) hoists to
+        // `if (command is not null) { await command.ExecuteReaderAsync(ct); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "ExecuteReader",
+                "ExecuteReaderAsync",
+                out hoistStatement,
+                out conditionalAccess,
+                out hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // The analyzer drops the in-scope token when its in-place rewrite could not apply;
+            // the hoist can, so re-resolve the token here.
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            if (hoistToken != null)
+            {
+                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, tokenArgumentName))
+                );
+            }
+
+            // Speculatively rebind: only framework DbCommand ExecuteReaderAsync overloads
+            // qualify; hidden unrelated members withhold the fix.
+            var readerMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            if (
+                !RebindsToDbCommandExecuteReaderAsync(
+                    semanticModel,
+                    invocation.SpanStart,
+                    hoistedInvocation,
+                    readerMethod
+                )
+            )
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
+
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
             "ExecuteReaderAsync",
@@ -83,6 +167,66 @@ public class BlockingDbCommandCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Speculatively binds the generated call and requires it to resolve to a Task-returning
+    /// <c>ExecuteReaderAsync</c> declared by System.Data.Common.DbCommand (through overrides or
+    /// new-hiders matching the framework shape). Unrelated members withhold the rewrite.
+    /// </summary>
+    private static ArgumentSyntax TokenArgument(string tokenName, string? tokenArgumentName)
+    {
+        var tokenArgument = SyntaxFactory.Argument(
+            CancellationTokenHelpers.TokenExpression(tokenName)
+        );
+        if (tokenArgumentName != null)
+        {
+            tokenArgument = tokenArgument.WithNameColon(
+                SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(tokenArgumentName))
+            );
+        }
+
+        return tokenArgument;
+    }
+
+    private static bool RebindsToDbCommandExecuteReaderAsync(
+        SemanticModel semanticModel,
+        int position,
+        InvocationExpressionSyntax call,
+        IMethodSymbol? readerMethod
+    )
+    {
+        var rebound = semanticModel
+            .GetSpeculativeSymbolInfo(position, call, SpeculativeBindingOption.BindAsExpression)
+            .Symbol as IMethodSymbol;
+
+        if (
+            rebound == null
+            || rebound.IsStatic
+            || rebound.Name != "ExecuteReaderAsync"
+            || rebound.ReturnType.Name != "Task"
+            || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                != "System.Threading.Tasks"
+        )
+            return false;
+
+        // The awaited result must be a DbDataReader-shaped Task<T> (the framework signature).
+        if (
+            rebound.ReturnType is not INamedTypeSymbol namedTask
+            || namedTask.TypeArguments.Length != 1
+        )
+            return false;
+        for (
+            var reader = namedTask.TypeArguments[0];
+            reader is INamedTypeSymbol namedReader;
+            reader = namedReader.BaseType
+        )
+        {
+            if (namedReader.ToDisplayString() == "System.Data.Common.DbDataReader")
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(

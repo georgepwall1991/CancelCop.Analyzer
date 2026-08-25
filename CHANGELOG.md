@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.31] - 2026-08-25
+
+### Changed
+
+- **CC046 fixer:** null-conditional `ExecuteReader()` statements now
+  rewrite instead of being withheld (`command?.ExecuteReader();`
+  becomes `if (command is not null)
+  { await command.ExecuteReaderAsync(cancellationToken); }`,
+  chained spines splice the command into the awaited call).
+  A speculative rebind requires the framework Task-returning
+  `ExecuteReaderAsync` on System.Data.Common.DbCommand; hidden
+  unrelated members withhold the rewrite.
+
 ## [1.52.30] - 2026-08-25
 
 ### Changed
