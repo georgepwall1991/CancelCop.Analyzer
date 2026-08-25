@@ -38,6 +38,12 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
         // The diagnostic stands but the analyzer determined no compilable rewrite exists here.
@@ -59,10 +65,45 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
             ? name
             : null;
 
-        // Null for a null-conditional call (`process?.WaitForExit()`), where preserving the null
-        // semantics needs control flow rather than an expression rewrite — the same choice CC022,
-        // CC026, and CC028 make. Checked here so no code action is offered at all, rather than one
-        // that silently does nothing.
+        // A whole null-conditional statement (`process?.WaitForExit();`) hoists to
+        // `if (process is not null) { await process.WaitForExitAsync(ct); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`. The spine is detected syntactically.
+        if (
+            NullConditionalHoist.TryGetStatement(
+                semanticModel,
+                invocation,
+                out var hoistStatement,
+                out var conditionalAccess
+            )
+            && ReferenceEquals(invocation, conditionalAccess.WhenNotNull)
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && TryBuildHoistedInvocation(
+                semanticModel,
+                conditionalAccess,
+                invocation,
+                tokenName,
+                out var hoistedInvocation
+            )
+        )
+        {
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
             "WaitForExitAsync",
@@ -80,6 +121,101 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Builds the awaited <c>WaitForExitAsync</c> call for a null-conditional statement.
+    /// A chained spine arrives as a receiver-less member binding (`.Process.WaitForExit()`), so
+    /// the operation is spliced under it; a direct spine (`process?.WaitForExit()`) awaits the
+    /// operation itself. Only the framework's Task-returning `WaitForExitAsync` on
+    /// System.Diagnostics.Process qualifies — verified by speculative rebinding, so a subclass
+    /// hiding the member withholds the rewrite instead of producing non-compiling code.
+    /// </summary>
+    private static bool TryBuildHoistedInvocation(
+        SemanticModel semanticModel,
+        ConditionalAccessExpressionSyntax conditionalAccess,
+        InvocationExpressionSyntax invocation,
+        string? tokenName,
+        out InvocationExpressionSyntax? asyncInvocation
+    )
+    {
+        ExpressionSyntax splicedReceiver;
+        SimpleNameSyntax newName;
+        switch (invocation.Expression)
+        {
+            case MemberBindingExpressionSyntax
+                {
+                    Name.Identifier.Text: "WaitForExit"
+                } directBinding:
+                // Direct spine (`process?.WaitForExit()`): the awaited receiver is the
+                // spine operation itself.
+                splicedReceiver = conditionalAccess.Expression;
+                newName = SyntaxFactory.IdentifierName("WaitForExitAsync").WithTriviaFrom(
+                    directBinding.Name
+                );
+                break;
+            case MemberAccessExpressionSyntax chainedAccess
+                when NullConditionalHoist.TrySpliceOperation(
+                    chainedAccess.Expression,
+                    conditionalAccess.Expression.WithoutTrivia(),
+                    out var spliced
+                )
+                && !NullConditionalHoist.ContainsNullConditionalAccess(spliced):
+                // Chained spine (`holder?.Process.WaitForExit()`): splice the operation under
+                // the receiver-less chain.
+                splicedReceiver = spliced;
+                newName = SyntaxFactory.IdentifierName("WaitForExitAsync").WithTriviaFrom(
+                    chainedAccess.Name
+                );
+                break;
+            default:
+                asyncInvocation = null;
+                return false;
+        }
+
+        asyncInvocation = SyntaxFactory.InvocationExpression(
+            SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                splicedReceiver,
+                newName
+            ),
+            invocation.ArgumentList
+        );
+
+        var waitMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+        var rebound = semanticModel
+            .GetSpeculativeSymbolInfo(
+                invocation.SpanStart,
+                asyncInvocation,
+                SpeculativeBindingOption.BindAsExpression
+            )
+            .Symbol as IMethodSymbol;
+        if (
+            rebound == null
+            || rebound.Name != "WaitForExitAsync"
+            || rebound.ReturnType.Name != "Task"
+            || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                != "System.Threading.Tasks"
+            || waitMethod == null
+            || !rebound.ContainingType.Equals(waitMethod.OriginalDefinition.ContainingType)
+        )
+        {
+            asyncInvocation = null;
+            return false;
+        }
+
+        if (tokenName != null)
+        {
+            asyncInvocation = asyncInvocation.WithArgumentList(
+                asyncInvocation.ArgumentList.AddArguments(
+                    SyntaxFactory.Argument(
+                        CancellationTokenHelpers.TokenExpression(tokenName)
+                    )
+                )
+            );
+        }
+
+        return true;
     }
 
     private static async Task<Document> ReplaceAsync(
