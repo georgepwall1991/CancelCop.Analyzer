@@ -250,7 +250,13 @@ public class BlockingDbNonQueryAnalyzer : DiagnosticAnalyzer
             .Ancestors()
             .OfType<ConditionalAccessExpressionSyntax>()
             .FirstOrDefault();
-        return spine?.Expression is ThisExpressionSyntax;
+
+        // Unwrap parentheses: ((this))?.ExecuteNonQuery() is still recursive.
+        var operation = spine?.Expression;
+        while (operation is ParenthesizedExpressionSyntax parenthesized)
+            operation = parenthesized.Expression;
+
+        return operation is ThisExpressionSyntax;
 
     }
 

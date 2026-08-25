@@ -622,4 +622,126 @@ public class RecursiveCommand : MidCommand
 }";
 
     }
+
+    [Fact]
+    public async Task SelfRecursiveThisSpine_ReportsWithoutOfferingAFix()
+    {
+        var test =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class RecursiveCommand : DbCommand
+{
+    public override string CommandText { get; set; } = """";
+    public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; }
+    public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection DbConnection { get; set; } = null!;
+    protected override DbParameterCollection DbParameterCollection => null!;
+    protected override DbTransaction DbTransaction { get; set; } = null!;
+    public override void Cancel() { }
+    public override int ExecuteNonQuery() => 0;
+    public override object ExecuteScalar() => null!;
+    public override void Prepare() { }
+    protected override DbParameter CreateDbParameter() => null!;
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => null!;
+
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        this?.{|#0:ExecuteNonQuery|}();
+        return 1;
+    }
+}";
+
+        await CreateTest(test, test, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task ParenthesizedThisSpine_ReportsWithoutOfferingAFix()
+    {
+        var test =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class RecursiveCommand : DbCommand
+{
+    public override string CommandText { get; set; } = """";
+    public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; }
+    public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection DbConnection { get; set; } = null!;
+    protected override DbParameterCollection DbParameterCollection => null!;
+    protected override DbTransaction DbTransaction { get; set; } = null!;
+    public override void Cancel() { }
+    public override int ExecuteNonQuery() => 0;
+    public override object ExecuteScalar() => null!;
+    public override void Prepare() { }
+    protected override DbParameter CreateDbParameter() => null!;
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => null!;
+
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        ((this))?.{|#0:ExecuteNonQuery|}();
+        return 1;
+    }
+}";
+
+        await CreateTest(test, test, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task OtherReceiverSpineInsideExecuteNonQueryAsync_StillGetsTheFix()
+    {
+        // `other?.Command.ExecuteNonQuery()` is NOT recursive — the safe fix applies.
+        var source =
+            MidCommandScaffold
+            + @"
+public class OtherHolder
+{
+    public MidCommand Command { get; set; } = null!;
+}
+
+public class RecursiveCommand : MidCommand
+{
+    private OtherHolder? other;
+
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        other?.Command.{|#0:ExecuteNonQuery|}();
+        return 1;
+    }
+}";
+
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+public class OtherHolder
+{
+    public MidCommand Command { get; set; } = null!;
+}
+
+public class RecursiveCommand : MidCommand
+{
+    private OtherHolder? other;
+
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        if (other is not null)
+        {
+            await other.Command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        return 1;
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
+    }
 }

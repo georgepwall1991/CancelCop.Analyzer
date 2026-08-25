@@ -104,6 +104,7 @@ internal static class NullConditionalHoist
         )
             return false;
 
+
         SimpleNameSyntax newNameNode;
         ExpressionSyntax splicedReceiver;
         switch (invocation.Expression)
@@ -217,7 +218,8 @@ internal static class NullConditionalHoist
             ThisExpressionSyntax => true,
             IdentifierNameSyntax identifier => semanticModel.GetSymbolInfo(identifier).Symbol
                 is IParameterSymbol
-                or ILocalSymbol,
+                or ILocalSymbol
+                or IFieldSymbol,
             _ => false,
         };
     }

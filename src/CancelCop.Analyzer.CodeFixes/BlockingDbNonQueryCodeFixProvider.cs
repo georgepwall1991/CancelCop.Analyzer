@@ -45,8 +45,15 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
 
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingDbNonQueryAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingDbNonQueryAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "token-required")
             return;
+
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
             .Parent?.AncestorsAndSelf()
@@ -149,6 +156,10 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
             );
             return;
         }
+
+        if (hasNoFix)
+            return;
+
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
