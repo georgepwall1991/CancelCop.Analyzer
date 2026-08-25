@@ -116,11 +116,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   filter, unsafe context, disallowed query clause, or across a ref-like lifetime. CC013/CC015/CC022/
   CC025/CC026 had no such guard and could turn compiling code into a build error; CC028 had only the
   syntactic half. Any future await-inserting rule should call the same helper.
-- **Dedupe the add-token-to-declaration recipe.** The CC005C method-group fix and the CC001 fix
-  both build `CancellationToken cancellationToken = default` and insert it via
-  `InsertTokenParameter`; the method-group symbol resolution (symbol-or-single-candidate) is also
-  duplicated between `MinimalApiAnalyzer` and `MinimalApiCodeFixProvider`. Shared helpers would
-  keep analyzer and fixer matching in lockstep.
+- ~~**Dedupe the add-token-to-declaration recipe.**~~ Shipped in v1.52.43 — `InsertTokenParameter`
+  was already shared; the method-group symbol resolution (symbol-or-single-candidate) now resolves
+  through one shared helper used by both `MinimalApiAnalyzer` and `MinimalApiCodeFixProvider`.
 - ~~**`DbCommand.ExecuteScalar` still silent.**~~ Shipped as CC048 in v1.51.0.
 - ~~**`DbCommand.ExecuteNonQuery` still silent.**~~ Shipped as CC047 in v1.50.0.
 - ~~**`SslStream.AuthenticateAsClient` still silent.**~~ Shipped as CC051 in v1.52.39.
@@ -209,6 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.52.43: 1570 tests, green locally. **Refactor** — method-group handler resolution (symbol-or-single-candidate) moved into one shared `CancellationTokenHelpers.ResolveMethodGroupHandler` used by both the Minimal API analyzer and its code fix, closing the last lockstep gap from the backlog. Behavior-neutral; 42 Minimal API tests pin it.
 - v1.52.42: 1570 tests, green locally. **CC053 (new)** —
   flags blocking `Thread.Join` in async code (parameterless, `int`, and
   `TimeSpan` arities). Verified against the net9/net10 ref packs:

@@ -172,9 +172,8 @@ public class MinimalApiAnalyzer : DiagnosticAnalyzer
         // surface as a single candidate. A delegate-typed variable resolves to a local/field
         // symbol instead and is filtered out here. Multiple candidates mean an ambiguous group —
         // stay quiet rather than guess.
-        var handlerMethod = symbolInfo.Symbol as IMethodSymbol;
-        if (handlerMethod == null && symbolInfo.CandidateSymbols.Length == 1)
-            handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
+        var handlerMethod =
+            CancellationTokenHelpers.ResolveMethodGroupHandler(symbolInfo);
         if (handlerMethod == null)
             return;
 

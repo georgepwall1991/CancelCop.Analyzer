@@ -83,9 +83,8 @@ public class MinimalApiCodeFixProvider : CodeFixProvider
             return;
 
         var symbolInfo = semanticModel.GetSymbolInfo(handlerExpression, context.CancellationToken);
-        var handlerMethod = symbolInfo.Symbol as IMethodSymbol;
-        if (handlerMethod == null && symbolInfo.CandidateSymbols.Length == 1)
-            handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
+        var handlerMethod =
+            CancellationTokenHelpers.ResolveMethodGroupHandler(symbolInfo);
         if (handlerMethod == null)
             return;
 
