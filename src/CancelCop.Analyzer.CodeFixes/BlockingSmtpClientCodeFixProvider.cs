@@ -129,8 +129,11 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
                 // Resolve the counterpart's actual token parameter name from the receiver type
                 // (a derived hider may name it anything).
                 var tokenParameterName =
-                    ResolveCounterpartTokenParameterName(semanticModel, splicedReceiver)
-                    ?? "cancellationToken";
+                    ResolveCounterpartTokenParameterName(
+                        semanticModel,
+                        splicedReceiver,
+                        sendMethod
+                    ) ?? "cancellationToken";
                 return BuildRenamedInvocationWithToken(
                     invocation,
                     splicedReceiver,
@@ -311,40 +314,74 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
     }
 
     /// <summary>
-    /// Resolves the name of the trailing CancellationToken parameter on the receiver's public
-    /// Task-returning <c>SendMailAsync</c>, walking base types — used to append the token as a
-    /// named argument when positional appending cannot bind.
+    /// Resolves the name of the trailing CancellationToken parameter on the receiver's
+    /// <c>SendMailAsync</c> counterpart whose non-token parameters mirror the original
+    /// <c>Send</c> signature, walking base types — used to append the token as a named argument
+    /// when positional appending cannot bind. Unrelated overloads are skipped.
     /// </summary>
     private static string? ResolveCounterpartTokenParameterName(
         SemanticModel semanticModel,
-        ExpressionSyntax splicedReceiver
+        ExpressionSyntax splicedReceiver,
+        IMethodSymbol? sendMethod
     )
     {
+        if (sendMethod == null)
+            return null;
+
         var type = semanticModel.GetTypeInfo(splicedReceiver).Type;
         while (type != null)
         {
             foreach (var member in type.GetMembers("SendMailAsync"))
             {
                 if (
-                    member is IMethodSymbol
+                    member is not IMethodSymbol
                     {
                         IsStatic: false,
                         DeclaredAccessibility: Accessibility.Public,
+                        ReturnType.Name: "Task",
                         Parameters: { Length: > 0 } parameters
                     }
-                    && CancellationTokenHelpers.IsCancellationToken(
-                        parameters[parameters.Length - 1].Type
-                    )
                 )
-                {
-                    return parameters[parameters.Length - 1].Name;
-                }
+                    continue;
+                var last = parameters[parameters.Length - 1];
+                if (!CancellationTokenHelpers.IsCancellationToken(last.Type))
+                    continue;
+                if (!MatchesSendShape(parameters.RemoveAt(parameters.Length - 1), sendMethod.Parameters))
+                    continue;
+                return last.Name;
             }
 
             type = type.BaseType;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Non-token parameters of the counterpart must mirror the original Send signature:
+    /// same arity, RefKinds, and parameter types.
+    /// </summary>
+    private static bool MatchesSendShape(
+        ImmutableArray<IParameterSymbol> reboundParameters,
+        ImmutableArray<IParameterSymbol> sendParameters
+    )
+    {
+        if (reboundParameters.Length != sendParameters.Length)
+            return false;
+        for (var i = 0; i < reboundParameters.Length; i++)
+        {
+            if (reboundParameters[i].RefKind != sendParameters[i].RefKind)
+                return false;
+            if (
+                !SymbolEqualityComparer.Default.Equals(
+                    reboundParameters[i].Type,
+                    sendParameters[i].Type
+                )
+            )
+                return false;
+        }
+
+        return true;
     }
 
     private static async Task<Document> ReplaceAsync(

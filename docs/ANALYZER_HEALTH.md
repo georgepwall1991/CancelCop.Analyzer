@@ -207,7 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.25: 1480 tests, green locally. **CC049 fixer** —
+- v1.52.25: 1481 tests, green locally. **CC049 fixer** —
   null-conditional `Send(...)` statements hoist to an
   `is not null` check via the shared `NullConditionalHoist`
   (`client?.Send(message);` →
