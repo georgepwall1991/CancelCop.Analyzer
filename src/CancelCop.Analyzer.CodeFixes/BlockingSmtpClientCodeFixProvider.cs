@@ -97,49 +97,58 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
             )
         )
         {
-            var sendCall = SyntaxFactory.InvocationExpression(
-                SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression,
-                    splicedReceiver,
-                    SyntaxFactory.IdentifierName("SendMailAsync")
-                ),
-                invocation.ArgumentList
-            );
+            var sendMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
 
-            // The analyzer drops the in-scope token when its in-place rewrite could not apply;
-            // the hoist can, so re-resolve the token here.
+            InvocationExpressionSyntax? BuildCall(string? token) =>
+                token == null
+                    ? SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(
+                            SyntaxKind.SimpleMemberAccessExpression,
+                            splicedReceiver,
+                            SyntaxFactory.IdentifierName("SendMailAsync")
+                        ),
+                        invocation.ArgumentList
+                    )
+                    : BuildRenamedInvocationWithToken(
+                        invocation,
+                        splicedReceiver,
+                        "SendMailAsync",
+                        TokenArgument(token, tokenArgumentName)
+                    );
+
+            bool IsValid(InvocationExpressionSyntax call) =>
+                SpeculativeRebindIsUsableCounterpart(
+                    semanticModel,
+                    invocation.SpanStart,
+                    call,
+                    sendMethod
+                );
+
+            // Prefer the cancellable form; fall back to the tokenless one (e.g. .NET Framework's
+            // SendMailAsync has no CancellationToken overload). Both are validated by speculative
+            // rebinding so hidden non-awaitable members withhold the rewrite.
             var hoistToken =
                 tokenName
                 ?? CancellationTokenHelpers
                     .FindEnclosingCancellationToken(invocation, semanticModel)
                     ?.ExpressionText;
 
+            InvocationExpressionSyntax? sendCall = null;
             if (hoistToken != null)
             {
-                sendCall = sendCall.WithArgumentList(
-                    sendCall.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
-                );
+                var candidate = BuildCall(hoistToken);
+                if (IsValid(candidate))
+                    sendCall = candidate;
             }
 
-            // Speculatively rebind the generated call: a subclass hiding SendMailAsync with a
-            // non-awaitable member must withhold the rewrite instead of breaking the build.
-            var sendMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            var rebound = semanticModel
-                .GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    sendCall,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
-            if (
-                rebound == null
-                || rebound.Name != "SendMailAsync"
-                || rebound.ReturnType.Name != "Task"
-                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
-                    != "System.Threading.Tasks"
-                || sendMethod == null
-                || !rebound.ContainingType.Equals(sendMethod.OriginalDefinition.ContainingType)
-            )
+            if (sendCall == null)
+            {
+                var candidate = BuildCall(null);
+                if (candidate != null && IsValid(candidate))
+                    sendCall = candidate;
+            }
+
+            if (sendCall == null)
                 return;
 
             context.RegisterCodeFix(
@@ -197,6 +206,82 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         }
 
         return tokenArgument;
+    }
+
+    /// <summary>
+    /// Builds the renamed call over an explicit (spliced) receiver, appending a pre-built token
+    /// argument when supplied.
+    /// </summary>
+    private static InvocationExpressionSyntax BuildRenamedInvocationWithToken(
+        InvocationExpressionSyntax invocation,
+        ExpressionSyntax splicedReceiver,
+        string newName,
+        ArgumentSyntax tokenArgument
+    )
+    {
+        var call = SyntaxFactory.InvocationExpression(
+            SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                splicedReceiver,
+                SyntaxFactory.IdentifierName(newName)
+            ),
+            invocation.ArgumentList
+        );
+
+        return call.WithArgumentList(
+            call.ArgumentList.AddArguments(tokenArgument)
+        );
+    }
+
+    /// <summary>
+    /// Speculatively binds the generated call and requires it to resolve to a Task-returning
+    /// <c>SendMailAsync</c> declared by the same type as the original <c>Send</c>, whose
+    /// parameters mirror the original signature — so hiders and unrelated overloads withhold
+    /// the rewrite instead of producing non-compiling or behavior-changing code.
+    /// </summary>
+    private static bool SpeculativeRebindIsUsableCounterpart(
+        SemanticModel semanticModel,
+        int position,
+        InvocationExpressionSyntax call,
+        IMethodSymbol? sendMethod
+    )
+    {
+        var rebound = semanticModel
+            .GetSpeculativeSymbolInfo(position, call, SpeculativeBindingOption.BindAsExpression)
+            .Symbol as IMethodSymbol;
+        return rebound != null
+            && rebound.Name == "SendMailAsync"
+            && rebound.ReturnType.Name == "Task"
+            && rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                == "System.Threading.Tasks"
+            && sendMethod != null
+            && rebound.Parameters.Length >= 1
+            && rebound.Parameters.Length <= sendMethod.Parameters.Length + 1
+            && MatchesSendShape(rebound.Parameters, sendMethod.Parameters)
+            && rebound.ContainingType.Equals(sendMethod.OriginalDefinition.ContainingType);
+    }
+
+    private static bool MatchesSendShape(
+        ImmutableArray<IParameterSymbol> reboundParameters,
+        ImmutableArray<IParameterSymbol> sendParameters
+    )
+    {
+        // The trailing appended token is not part of the original shape.
+        var comparable = reboundParameters.Length == sendParameters.Length + 1
+            ? reboundParameters.RemoveAt(reboundParameters.Length - 1)
+            : reboundParameters;
+        for (var i = 0; i < comparable.Length; i++)
+        {
+            if (
+                !SymbolEqualityComparer.Default.Equals(
+                    comparable[i].Type,
+                    sendParameters[i].Type
+                )
+            )
+                return false;
+        }
+
+        return true;
     }
 
     private static async Task<Document> ReplaceAsync(
