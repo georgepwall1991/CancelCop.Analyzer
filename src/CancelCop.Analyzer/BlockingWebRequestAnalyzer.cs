@@ -265,7 +265,7 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
         // provably `this` (`this`, `base`, or a local assigned from this) inside a
         // GetResponseAsync member retargets the enclosing call itself and
         // recurses when the fix virtually dispatches. Withhold those.
-        if (ReceiverIsProvablyFresh(invocation))
+        if (ReceiverIsProvablyFresh(context, invocation, webRequestType))
             return false;
 
         var enclosing =
@@ -287,8 +287,13 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
             && IsTaskLike(enclosing.ReturnType);
     }
 
-    private static bool ReceiverIsProvablyFresh(InvocationExpressionSyntax invocation)
+    private static bool ReceiverIsProvablyFresh(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        INamedTypeSymbol webRequestType
+    )
     {
+
         // A bare `GetResponse(...)` IS an implicit-this call — never fresh.
         if (invocation.Expression is IdentifierNameSyntax)
             return false;
@@ -334,11 +339,13 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
         // may be a factory that returns `this`. Anything else — this, base, locals,
         // parameters, fields, properties — could alias the enclosing instance and
         // recurse after the rewrite, so it is withheld.
-        return receiver
-            is ObjectCreationExpressionSyntax
-            {
-                Type: IdentifierNameSyntax { Identifier.Text: "WebRequest" },
-            };
+        // Compare the constructed type by SYMBOL, not by name: a user type that
+        // merely happens to be named WebRequest is not provably fresh.
+        if (receiver is not ObjectCreationExpressionSyntax creation)
+            return false;
+        var createdType = context.SemanticModel.GetTypeInfo(creation.Type).Type;
+        return createdType is not null
+            && SymbolEqualityComparer.Default.Equals(createdType, webRequestType);
     }
 
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)

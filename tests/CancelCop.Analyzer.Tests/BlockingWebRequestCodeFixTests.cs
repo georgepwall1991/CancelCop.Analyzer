@@ -237,10 +237,10 @@ public class Worker : FileWebRequest
     public Worker()
         : base(default, default) { }
 
-    public async Task<bool> GetResponseAsync(bool verbose)
+    public override async Task<WebResponse> GetResponseAsync()
     {
         {|#0:GetResponse|}();
-        return true;
+        return null!;
     }
 }";
 

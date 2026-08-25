@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **CC052 (new rule):** blocking `System.Net.WebRequest.GetResponse`
-  (including the `FileWebResponse`/`HttpWebRequest` overrides) in async code
+  (including the `FileWebRequest`/`HttpWebRequest` overrides) in async code
   now reports with a rewrite to `await GetResponseAsync`. Symbol-gated to
   framework `WebRequest`; both `GetResponse` and its TAP counterpart are
   virtual on the framework type, so derived types match through the
