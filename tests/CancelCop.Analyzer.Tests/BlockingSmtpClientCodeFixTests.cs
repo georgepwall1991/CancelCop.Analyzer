@@ -695,4 +695,55 @@ public class TestClass
         var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+    [Fact]
+    public async Task ChainedConditionalSendWithToken_HoistsWithSplicedClient()
+    {
+        var test =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public SmtpClient Client { get; } = new SmtpClient();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, MailMessage message, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        host?.Client.{|#0:Send|}(message);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public SmtpClient Client { get; } = new SmtpClient();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, MailMessage message, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Client.SendMailAsync(message, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }

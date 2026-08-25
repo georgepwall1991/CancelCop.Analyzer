@@ -131,6 +131,7 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
                 var tokenParameterName =
                     ResolveCounterpartTokenParameterName(
                         semanticModel,
+                        conditionalAccess.Expression,
                         splicedReceiver,
                         sendMethod
                     ) ?? "cancellationToken";
@@ -321,6 +322,7 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
     /// </summary>
     private static string? ResolveCounterpartTokenParameterName(
         SemanticModel semanticModel,
+        ExpressionSyntax attachedOperation,
         ExpressionSyntax splicedReceiver,
         IMethodSymbol? sendMethod
     )
@@ -328,7 +330,9 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         if (sendMethod == null)
             return null;
 
-        var type = semanticModel.GetTypeInfo(splicedReceiver).Type;
+        // Type lookups need an attached node; the spliced receiver is synthesized, so the type is
+        // taken from the (same-typed) attached operation.
+        var type = semanticModel.GetTypeInfo(attachedOperation).Type;
         while (type != null)
         {
             foreach (var member in type.GetMembers("SendMailAsync"))
@@ -337,10 +341,16 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
                     member is not IMethodSymbol
                     {
                         IsStatic: false,
-                        DeclaredAccessibility: Accessibility.Public,
                         ReturnType.Name: "Task",
                         Parameters: { Length: > 0 } parameters
                     }
+                )
+                    continue;
+                if (
+                    !semanticModel.Compilation.IsSymbolAccessibleWithin(
+                        member,
+                        semanticModel.Compilation.Assembly
+                    )
                 )
                     continue;
                 var last = parameters[parameters.Length - 1];

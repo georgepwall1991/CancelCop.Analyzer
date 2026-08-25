@@ -215,8 +215,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   chained spines splice the client). The in-scope token is
   re-resolved by the fixer (the analyzer drops it for spine
   shapes) and a speculative rebind requires the framework's
-  Task-returning `SendMailAsync`. 2 new fixer tests; 1 NoFix test
-  updated to expect the hoist.
+  Task-returning `SendMailAsync`, resolved accessibly across base
+types. 4 new fixer tests; 1 NoFix test updated to expect the hoist.
 - v1.52.24: 1478 tests, green locally. **CC030 fixer** —
   null-conditional `WaitForExit()` statements hoist to an
   `is not null` check via the shared `NullConditionalHoist`
