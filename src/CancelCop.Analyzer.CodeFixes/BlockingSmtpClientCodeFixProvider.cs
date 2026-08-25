@@ -99,6 +99,12 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         {
             var sendMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
 
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
             InvocationExpressionSyntax? BuildCall(string? token) =>
                 token == null
                     ? SyntaxFactory.InvocationExpression(
@@ -116,6 +122,18 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
                         TokenArgument(token, tokenArgumentName)
                     );
 
+            InvocationExpressionSyntax? BuildNamedTokenCall()
+            {
+                if (hoistToken == null)
+                    return null;
+                return BuildRenamedInvocationWithToken(
+                    invocation,
+                    splicedReceiver,
+                    "SendMailAsync",
+                    TokenArgument(hoistToken, "cancellationToken")
+                );
+            }
+
             bool IsValid(InvocationExpressionSyntax call) =>
                 SpeculativeRebindIsUsableCounterpart(
                     semanticModel,
@@ -127,25 +145,29 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
             // Prefer the cancellable form; fall back to the tokenless one (e.g. .NET Framework's
             // SendMailAsync has no CancellationToken overload). Both are validated by speculative
             // rebinding so hidden non-awaitable members withhold the rewrite.
-            var hoistToken =
-                tokenName
-                ?? CancellationTokenHelpers
-                    .FindEnclosingCancellationToken(invocation, semanticModel)
-                    ?.ExpressionText;
-
             InvocationExpressionSyntax? sendCall = null;
             if (hoistToken != null)
             {
-                var candidate = BuildCall(hoistToken);
-                if (IsValid(candidate))
-                    sendCall = candidate;
+                var positional = BuildCall(hoistToken);
+                if (IsValid(positional))
+                {
+                    sendCall = positional;
+                }
+                else
+                {
+                    // Reordered named arguments make a positional token unbindable; the
+                    // framework's token parameter is named `cancellationToken`.
+                    var named = BuildNamedTokenCall();
+                    if (named != null && IsValid(named))
+                        sendCall = named;
+                }
             }
 
             if (sendCall == null)
             {
-                var candidate = BuildCall(null);
-                if (candidate != null && IsValid(candidate))
-                    sendCall = candidate;
+                var tokenless = BuildCall(null);
+                if (tokenless != null && IsValid(tokenless))
+                    sendCall = tokenless;
             }
 
             if (sendCall == null)
