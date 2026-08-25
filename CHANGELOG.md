@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.36] - 2026-08-25
+
+### Changed
+
+- **CC028 fixer:** null-conditional statement spines now fix
+  instead of being withheld (`reader?.ReadLine();` becomes
+  `if (reader is not null) { await reader.ReadLineAsync(ct); }`).
+  Covers StreamReader ReadLine/ReadToEnd, StreamWriter
+  Write/WriteLine/Flush, and Stream primitives; direct and
+  chained spines splice correctly and an in-scope token flows
+  into the awaited call.
+
 ## [1.52.35] - 2026-08-25
 
 ### Changed
