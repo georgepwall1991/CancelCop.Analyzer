@@ -206,7 +206,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task Connect_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task Connect_NullConditional_HoistsToIfNotNullConnectAsync()
     {
         var source =
             @"
@@ -223,7 +223,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(TcpClient? client, CancellationToken cancellationToken)
+    {
+        if (client is not null)
+        {
+            await client.ConnectAsync(""localhost"", 80, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -390,5 +408,128 @@ public class TestClass
 }";
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalConnect_HoistsToIfNotNullConnectAsync()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(TcpClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        client?.{|#0:Connect|}(""example.com"", 443);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(TcpClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (client is not null)
+        {
+            await client.ConnectAsync(""example.com"", 443, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC037", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalConnect_HoistsWithSplicedClient()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public TcpClient Client { get; } = new TcpClient();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        host?.Client.{|#0:Connect|}(""example.com"", 443);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public TcpClient Client { get; } = new TcpClient();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Client.ConnectAsync(""example.com"", 443, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC037", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalConnectWithHiddenConnectAsync_ReportsWithoutOfferingAFix()
+    {
+        // A subclass hiding ConnectAsync with a non-awaitable member would make the rewrite
+        // non-compiling; the speculative rebind withholds it.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading.Tasks;
+
+public class HidingClient : TcpClient
+{
+    public new int ConnectAsync(string host, int port) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(HidingClient? client)
+    {
+        await Task.Yield();
+        client?.{|#0:Connect|}(""example.com"", 443);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC037", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
     }
 }
