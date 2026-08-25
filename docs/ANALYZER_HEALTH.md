@@ -207,6 +207,13 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.52.37: 1508 tests, green locally. **CC013 fixer** —
+  real bug fixed: a named `Thread.Sleep(millisecondsTimeout:)`
+  argument was copied verbatim into `Task.Delay`, whose first
+  parameter is named `millisecondsDelay`/`delay`, emitting CS1739.
+  The rewrite now strips name colons and binds positionally.
+  3 new tests pin TimeSpan, named-argument, and
+  Timeout.InfiniteTimeSpan shapes with token flow.
 - v1.52.36: 1505 tests, green locally. **CC028 fixer** —
   null-conditional statement spines (direct `reader?.ReadLine();`,
   chained `holder?.Reader.ReadLine();`, plus ReadToEnd and

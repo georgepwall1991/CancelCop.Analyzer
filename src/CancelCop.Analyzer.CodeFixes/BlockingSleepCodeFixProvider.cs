@@ -65,7 +65,17 @@ public class BlockingSleepCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
+        // Parameter names are NOT portable across the rewrite: Thread.Sleep spells its first
+        // parameter `millisecondsTimeout`, while Task.Delay uses `millisecondsDelay`/`delay`.
+        // Copying a named argument verbatim emits CS1739, so the rewrite binds positionally —
+        // the argument list maps one-to-one onto every Delay overload the rule can reach.
         var arguments = sleepInvocation.ArgumentList.Arguments;
+        if (arguments.Any(a => a.NameColon != null))
+        {
+            arguments = SyntaxFactory.SeparatedList(
+                arguments.Select(a => a.NameColon == null ? a : a.WithNameColon(null)));
+        }
+
         if (tokenName != null)
         {
             arguments = arguments.Add(
