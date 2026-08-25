@@ -4,7 +4,7 @@
 //
 // WHY THIS MATTERS:
 // ManualResetEventSlim.Wait(), CountdownEvent.Wait(), WaitHandle.WaitOne(),
-// Monitor.Wait(), Thread.Join(), ReaderWriterLockSlim.Enter*Lock(),
+// Monitor.Wait(), ReaderWriterLockSlim.Enter*Lock(),
 // ReaderWriterLock.Acquire*Lock(), and
 // Barrier.SignalAndWait() park a
 // thread-pool thread until another thread signals (or every conflicting holder

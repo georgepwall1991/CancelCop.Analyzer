@@ -25,14 +25,10 @@ namespace CancelCop.Analyzer;
 /// Verified against the net9/net10 reference packs:
 /// <c>System.Threading.Thread</c> declares only
 /// <c>Join()</c>, <c>Join(int)</c>, and <c>Join(TimeSpan)</c> — none of them
-/// virtual — and declares no TAP counterpart at all. The speculative rebind
-/// to a hypothetical <c>JoinAsync</c> is retained so that if the framework
-/// ever grows one, the rewrite lights up without an analyzer change; today
-/// every diagnostic is reported without a rewrite, with the in-scope token
-/// riding along for a future hoist.
+/// virtual — and declares no TAP counterpart at all, so CC053 is
+/// analyzer-only by design: every diagnostic is reported without a rewrite.
 /// <c>Thread</c> is also sealed on current .NET, so no user-derived
-/// override or hider can participate: the receiver lineage check only ever
-/// sees the framework type itself.
+/// override or hider can participate.
 /// </para>
 /// </remarks>
 /// <example>
@@ -46,27 +42,6 @@ namespace CancelCop.Analyzer;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
 {
-    /// <summary>
-    /// The diagnostic ID for this analyzer rule.
-    /// </summary>
-    public const string DiagnosticId = "CC053";
-
-    /// <summary>
-    /// Property key used to pass the in-scope token parameter name (if any) to the code fix provider.
-    /// </summary>
-    public const string TokenNameProperty = "TokenName";
-
-    /// <summary>
-    /// Property key set when the diagnostic is correct but no safe rewrite exists.
-    /// </summary>
-    public const string NoFixProperty = "NoFix";
-
-    /// <summary>
-    /// Property key for the TAP token parameter name when the original call
-    /// already uses named arguments.
-    /// </summary>
-    public const string TokenArgumentNameProperty = "TokenArgumentName";
-
     private static readonly LocalizableString Title =
         "Avoid blocking Thread.Join in async code";
     private static readonly LocalizableString MessageFormat =
@@ -156,193 +131,19 @@ public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
 
-        var properties = ImmutableDictionary<string, string?>.Empty;
-
-        if (
-            CancellationTokenHelpers.AwaitInsertionIsUnsafe(
-                context.SemanticModel,
-                invocation
-            )
-        )
-            properties = properties.Add(NoFixProperty, "await-unsafe");
-
-        if (
-            !properties.ContainsKey(NoFixProperty)
-            && IsInsideJoinAsync(context, invocation, threadType)
-            && !ReceiverIsProvablyFresh(context, invocation, threadType)
-        )
-            properties = properties.Add(NoFixProperty, "self-async");
-
-        var tokenName = CancellationTokenHelpers
-            .FindEnclosingCancellationToken(invocation, context.SemanticModel)
-            ?.ExpressionText;
-
-        var tokenArgumentName =
-            tokenName != null && invocation.ArgumentList.Arguments.Any(a => a.NameColon != null)
-                ? FindTokenParameterName(threadType)
-                : null;
-
-        if (
-            ResolvesToUsableCounterpart(
-                context,
-                invocation,
-                threadType,
-                tokenName,
-                tokenArgumentName
-            )
-            || ResolvesToUsableCounterpart(context, invocation, threadType, null, null)
-        )
-        {
-            // Token-taking rebind failed but the tokenless form binds: drop the token.
-            if (
-                !ResolvesToUsableCounterpart(
-                    context,
-                    invocation,
-                    threadType,
-                    tokenName,
-                    tokenArgumentName
-                )
-            )
-            {
-                tokenName = null;
-                tokenArgumentName = null;
-            }
-
-            if (tokenName != null)
-                properties = properties.Add(TokenNameProperty, tokenName);
-
-            if (tokenArgumentName != null)
-                properties = properties.Add(TokenArgumentNameProperty, tokenArgumentName);
-
-            context.ReportDiagnostic(
-                Diagnostic.Create(Rule, invokedName.GetLocation(), properties, definition.Name)
-            );
-            return;
-        }
-
-        // No speculative rebind is possible (no JoinAsync exists on Thread
-        // today, or the shape is unusable), but the call IS blocking: report
-        // without a rewrite. The in-scope token still rides along so the
-        // fixer's statement hoist can offer a candidate it re-validates by
-        // speculative binding.
-        if (!properties.ContainsKey(NoFixProperty))
-            properties = properties.Add(
-                NoFixProperty,
-                CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation)
-                    ? "conditional-access"
-                    : "no-safe-rewrite"
-            );
-
-        var hoistTokenName =
-            tokenName
-            ?? CancellationTokenHelpers
-                .FindEnclosingCancellationToken(invocation, context.SemanticModel)
-                ?.ExpressionText;
-        if (hoistTokenName != null && !properties.ContainsKey(TokenNameProperty))
-            properties = properties.Add(TokenNameProperty, hoistTokenName);
-        if (
-            hoistTokenName != null
-            && invocation.ArgumentList.Arguments.Any(a => a.NameColon != null)
-            && !properties.ContainsKey(TokenArgumentNameProperty)
-        )
-            properties = properties.Add(
-                TokenArgumentNameProperty,
-                FindTokenParameterName(threadType)
-            );
-
+        // Analyzer-only by design: Thread declares no JoinAsync on any shipped .NET,
+        // so there is nothing to rewrite toward and no code-fix provider is exported.
         context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, definition.Name)
+            Diagnostic.Create(
+                Rule,
+                invokedName.GetLocation(),
+                ImmutableDictionary<string, string?>.Empty,
+                definition.Name
+            )
         );
     }
 
-    private static bool IsInsideJoinAsync(
-        SyntaxNodeAnalysisContext context,
-        InvocationExpressionSyntax invocation,
-        INamedTypeSymbol threadType
-    )
-    {
-        // A bare `Join(...)` — or one on a receiver that is provably `this`
-        // (`this`, `base`, or a local assigned from this) — inside a
-        // JoinAsync-shaped member retargets the enclosing call itself and
-        // recurses when the fix virtually dispatches. Withhold those.
-        var enclosing =
-            context
-                .SemanticModel.GetEnclosingSymbol(
-                    invocation.SpanStart,
-                    context.CancellationToken
-                )
-                as IMethodSymbol;
 
-        while (
-            enclosing is { MethodKind: MethodKind.LocalFunction or MethodKind.AnonymousFunction }
-        )
-            enclosing = enclosing.ContainingSymbol as IMethodSymbol;
-
-        return enclosing is not null
-            && enclosing.Name == "JoinAsync"
-            && DerivesFromOrEquals(enclosing.ContainingType, threadType)
-            && IsTaskLike(enclosing.ReturnType);
-    }
-
-    private static bool ReceiverIsProvablyFresh(
-        SyntaxNodeAnalysisContext context,
-        InvocationExpressionSyntax invocation,
-        INamedTypeSymbol threadType
-    )
-    {
-        // A bare `Join(...)` IS an implicit-this call — never fresh.
-        if (invocation.Expression is IdentifierNameSyntax)
-            return false;
-
-        ExpressionSyntax? receiver;
-        if (invocation.Expression is MemberBindingExpressionSyntax)
-        {
-            // A `?.` spine surfaces as a member binding; the receiver is the
-            // conditional access's operation (`self?.Join(...)`).
-            receiver = null;
-            for (
-                var current = invocation.Parent;
-                current is not null;
-                current = current.Parent
-            )
-            {
-                if (
-                    current is ConditionalAccessExpressionSyntax conditional
-                    && ReferenceEquals(invocation, conditional.WhenNotNull)
-                )
-                {
-                    receiver = conditional.Expression;
-                    break;
-                }
-            }
-
-            if (receiver is null)
-                return true;
-        }
-        else if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-        {
-            receiver = memberAccess.Expression;
-        }
-        else
-        {
-            return true;
-        }
-
-        while (receiver is ParenthesizedExpressionSyntax parenthesized)
-            receiver = parenthesized.Expression;
-        // Only `new Thread(...)` is PROVABLY fresh: a derived construction
-        // (`new Worker(...)`) may be the enclosing instance, and an invocation result
-        // may be a factory that returns `this`. Anything else — this, base, locals,
-        // parameters, fields, properties — could alias the enclosing instance and
-        // recurse after the rewrite, so it is withheld.
-        // Compare the constructed type by SYMBOL, not by name: a user type that
-        // merely happens to be named Thread is not provably fresh.
-        if (receiver is not ObjectCreationExpressionSyntax creation)
-            return false;
-        var createdType = context.SemanticModel.GetTypeInfo(creation.Type).Type;
-        return createdType is not null
-            && SymbolEqualityComparer.Default.Equals(createdType, threadType);
-    }
 
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
     {
@@ -356,62 +157,7 @@ public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static string? FindTokenParameterName(INamedTypeSymbol threadType)
-    {
-        for (var current = threadType; current != null; current = current.BaseType)
-        {
-            foreach (
-                var member in current
-                    .GetMembers("JoinAsync")
-                    .OfType<IMethodSymbol>()
-            )
-            {
-                if (member.Parameters.IsEmpty)
-                    continue;
 
-                var last = member.Parameters[member.Parameters.Length - 1];
-                if (CancellationTokenHelpers.IsCancellationToken(last.Type))
-                    return last.Name;
-            }
-        }
-
-        return "cancellationToken";
-    }
-
-    private static bool ResolvesToUsableCounterpart(
-        SyntaxNodeAnalysisContext context,
-        InvocationExpressionSyntax invocation,
-        INamedTypeSymbol threadType,
-        string? tokenName,
-        string? tokenArgumentName
-    )
-    {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
-            invocation,
-            "JoinAsync",
-            tokenName,
-            tokenArgumentName
-        );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
-        return bound is not null
-            && !bound.IsStatic
-            && bound.Name == "JoinAsync"
-            && IsTaskLike(bound.ReturnType)
-            && ResolvesOnFrameworkThread(bound, threadType)
-            && bound.Parameters.Count(p =>
-                !CancellationTokenHelpers.IsCancellationToken(p.Type)
-            ) == invocation.ArgumentList.Arguments.Count;
-    }
 
     private static bool ResolvesOnFrameworkThread(
         IMethodSymbol bound,
