@@ -1544,6 +1544,20 @@ public static class CancellationTokenHelpers
     /// <c>TimeSpan.Zero</c>, <c>default</c>, and <c>new TimeSpan()</c> — none of which is a constant,
     /// so a constant-value check alone misses them and flags a non-blocking probe.
     /// </remarks>
+    /// <summary>
+    /// Resolves a method-group handler expression: the direct symbol, or — when the group is
+    /// ambiguous only in form (C# 10 natural delegate type) — its single candidate. Analyzer
+    /// and code-fix matching must use this same resolver so the two never disagree about
+    /// which declaration a diagnostic refers to.
+    /// </summary>
+    public static IMethodSymbol? ResolveMethodGroupHandler(SymbolInfo symbolInfo)
+    {
+        var handlerMethod = symbolInfo.Symbol as IMethodSymbol;
+        if (handlerMethod == null && symbolInfo.CandidateSymbols.Length == 1)
+            handlerMethod = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
+        return handlerMethod;
+    }
+
     public static bool HasProvablyZeroTimeout(
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel,
