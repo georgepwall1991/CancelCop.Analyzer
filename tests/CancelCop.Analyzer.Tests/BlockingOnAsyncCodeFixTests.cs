@@ -496,4 +496,112 @@ public class TestClass
         var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Result");
         await VerifyCS.VerifyCodeFixAsync(test, expected, test);
     }
+    [Fact]
+    public async Task BlockingWithTrailingWork_ReportsWithoutOfferingAFix()
+    {
+        // `…GetResult().Dispose()` does real work after the block; the hoist would silently
+        // drop it, so the diagnostic stands without a rewrite.
+        var test =
+            @"
+using System;
+using System.Threading.Tasks;
+
+public class Disposable : IDisposable
+{
+    public void Dispose() { }
+}
+
+public class Holder
+{
+    public Task<Disposable> Work { get; }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder)
+    {
+        await Task.Yield();
+        holder?.Work.GetAwaiter().{|#0:GetResult|}().Dispose();
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS
+            .Diagnostic("CC015")
+            .WithLocation(0)
+            .WithArguments(".GetAwaiter().GetResult()");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task ConditionalBlockingInArgumentPosition_ReportsWithoutOfferingAFix()
+    {
+        // The inner `?.` is not a whole statement; splicing the outer operation would rewrite
+        // an unrelated call, so no fix is offered.
+        var test =
+            @"
+using System;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public Task<int> Work { get; }
+
+    public int? Consume(int? value) => value;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, Holder? other)
+    {
+        await Task.Yield();
+        Console.WriteLine(other?.Consume(holder?.Work.GetAwaiter().{|#0:GetResult|}()));
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS
+            .Diagnostic("CC015")
+            .WithLocation(0)
+            .WithArguments(".GetAwaiter().GetResult()");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
+
+    [Fact]
+    public async Task DirectSpineGetAwaiterGetResult_HoistsToIfNotNullAwait()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Task? task)
+    {
+        await Task.Yield();
+        task?.GetAwaiter().{|#0:GetResult|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Task? task)
+    {
+        await Task.Yield();
+        if (task is not null)
+        {
+            await task;
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".GetAwaiter().GetResult()");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

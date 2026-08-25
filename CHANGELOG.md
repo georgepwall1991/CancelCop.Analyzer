@@ -20,8 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `NullConditionalHoist` helper used by both fixers; eligibility
   rules are identical (local/parameter/`this` operations only,
   no surviving nested `?.`, no nullable-struct receivers,
-  C# 9+, dangling-else guard) plus a speculative type check that
-  the spliced task expression still binds to the same task.
+  C# 9+, dangling-else guard), the blocking operation must be the
+  terminal expression of the conditional statement, and a
+  speculative type check confirms the spliced task expression
+  still binds to the original task.
 
 ## [1.52.21] - 2026-08-24
 

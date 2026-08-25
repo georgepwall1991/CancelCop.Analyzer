@@ -207,14 +207,20 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.22: 1471 tests, green locally. **CC015 fixer** —
+- v1.52.22: 1474 tests, green locally. **CC015 fixer** —
   null-conditional blocking statements (`host?.Work.Result;`,
   `task?.Wait();`, `holder?.Work.GetAwaiter().GetResult();`)
   hoist to `if (x is not null) { await x.Work; }` via the shared
   `NullConditionalHoist`; speculative type check confirms the
-  spliced task expression still binds to the original task.
+  spliced task expression still binds to the original task, and
+  the blocking operation must be the terminal expression of the
+  statement (`.GetResult().Dispose()` stays unfixed). The spine
+  is bound syntactically to the diagnosed access, so argument-
+  position nested conditionals never splice an outer operation.
   Hoist extracted from v1.52.21's CC022 fixer into shared
-  `NullConditionalHoist`. 4 new fixer tests, 1 updated.
+  `NullConditionalHoist`. 7 new fixer tests, 1 updated; codex
+  review found the trailing-work, wrong-spine, and direct-spine
+  GetAwaiter gaps this hardening closes.
 - v1.52.21: 1468 tests, green locally. **CC022 fixer** —
   null-conditional `Cancel()` statements hoist to an
   `is not null` check with the awaited call (`cts?.Cancel()` →

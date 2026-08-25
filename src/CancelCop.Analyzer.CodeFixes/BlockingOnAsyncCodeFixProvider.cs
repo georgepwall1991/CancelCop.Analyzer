@@ -44,40 +44,38 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
             return;
 
         var diagnostic = context.Diagnostics.First();
-        var isConditionalAccess =
-            diagnostic.Properties.TryGetValue(
-                BlockingOnAsyncAnalyzer.NoFixProperty,
-                out var noFixReason
-            ) && noFixReason == BlockingOnAsyncAnalyzer.ConditionalAccessReason;
-        // The diagnostic stands but the analyzer determined that inserting an await here would
-        // not compile, so no rewrite is offered.
-        if (!isConditionalAccess && diagnostic.Properties.ContainsKey(BlockingOnAsyncAnalyzer.NoFixProperty))
-            return;
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingOnAsyncAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+
         var name = root.FindToken(diagnostic.Location.SourceSpan.Start).Parent;
         if (name == null)
             return;
 
-        if (isConditionalAccess)
-        {
-            // `host?.Work.Result;` cannot take an in-place rewrite (`host?(await .Work)` does
-            // not parse), but as a whole statement it hoists to an `is not null` check whose
-            // body awaits the task with the operation spliced back into it.
-            if (
-                !NullConditionalHoist.TryGetStatement(
-                    semanticModel,
-                    name,
-                    out var statement,
-                    out var conditionalAccess
-                )
-                || !TryGetTaskExpression(name, conditionalAccess, out var taskExpression)
-                || !NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
-                || NullConditionalHoist.IsNullableStructOperation(
-                    semanticModel,
-                    conditionalAccess.Expression
-                )
-            )
-                return;
+        // Await insertion is unsafe here (a lock body, an exception filter, …): nothing can be
+        // offered, hoisted or in place.
+        if (hasNoFix && noFixReason != BlockingOnAsyncAnalyzer.ConditionalAccessReason)
+            return;
 
+        // A `?.` spine is detected syntactically from the diagnosed name — the analyzer marks
+        // the common shapes, but deep chains like `task?.GetAwaiter().GetResult()` are only
+        // discoverable by walking the tree.
+        if (
+            NullConditionalHoist.TryGetStatement(
+                semanticModel,
+                name,
+                out var statement,
+                out var conditionalAccess
+            )
+            && TryGetTaskExpression(name, conditionalAccess, out var taskExpression)
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
             // The task expression arrives attached to the tree; the spliced variant is a new,
             // detached node. The original is kept for the speculative type comparison.
             ExpressionSyntax hoistedTask;
@@ -123,10 +121,17 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
             return;
         }
 
+        if (hasNoFix)
+            return;
 
         if (name.Parent is not MemberAccessExpressionSyntax memberAccess)
             return;
         if (!TryBuildRewrite(memberAccess, out var target, out var replacement))
+            return;
+
+        // `host?.Work.Result` is an ordinary member access, but it is the WhenNotNull
+        // of `?.`. Replacing it with `(await .Work)` yields `host?(await .Work)`.
+        if (target is not null && CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(target))
             return;
 
         // `host?.Work.Result` is an ordinary member access, but it is the WhenNotNull
@@ -148,8 +153,10 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
     /// <summary>
     /// Resolves the awaited-from task expression behind the diagnosed blocking member
     /// (<c>.Result</c>, parameterless <c>.Wait()</c>, or <c>.GetAwaiter().GetResult()</c>).
-    /// A `.Result` or `.Wait()` sitting directly on the spine arrives as a receiver-less member
-    /// binding; the awaited task is the spine operation itself, so no splice is needed.
+    /// The blocking operation must be the terminal expression of the conditional statement —
+    /// `holder?.Work.GetAwaiter().GetResult().Dispose();` does real work after the block, which
+    /// the rewrite would drop. A `.Result` or `.Wait()` sitting directly on the spine arrives as
+    /// a receiver-less member binding; the awaited task is the spine operation itself.
     /// </summary>
     private static bool TryGetTaskExpression(
         SyntaxNode name,
@@ -157,39 +164,51 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
         out ExpressionSyntax task
     )
     {
+        var terminal = conditionalAccess.WhenNotNull;
+
         if (name.Parent is MemberAccessExpressionSyntax access && access.Name == name)
         {
             switch (access.Name.Identifier.Text)
             {
-                case "Result":
+                case "Result" when ReferenceEquals(access, terminal):
                     task = access.Expression;
                     return true;
-                case "Wait":
+                case "Wait"
+                    when access.Parent is InvocationExpressionSyntax waitInvocation
+                        && waitInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(waitInvocation, terminal):
                     // Only the parameterless Wait() maps cleanly to `await task`; timeout and
                     // token overloads change semantics and stay without a fix.
-                    if (
-                        access.Parent is InvocationExpressionSyntax waitInvocation
-                        && waitInvocation.ArgumentList.Arguments.Count == 0
-                    )
-                    {
-                        task = access.Expression;
-                        return true;
-                    }
-                    break;
-                case "GetResult":
-                    // `<task>.GetAwaiter().GetResult()` awaits <task>.
-                    if (
-                        access.Expression
+                    task = access.Expression;
+                    return true;
+                case "GetResult"
+                    when access.Expression
                             is InvocationExpressionSyntax
                             {
                                 Expression: MemberAccessExpressionSyntax getAwaiterAccess
                             }
-                    )
-                    {
-                        task = getAwaiterAccess.Expression;
-                        return true;
-                    }
-                    break;
+                        && access.Parent is InvocationExpressionSyntax getResultInvocation
+                        && getResultInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(getResultInvocation, terminal):
+                    // `<task>.GetAwaiter().GetResult()` awaits <task>.
+                    task = getAwaiterAccess.Expression;
+                    return true;
+                case "GetResult"
+                    when access.Expression
+                            is InvocationExpressionSyntax
+                            {
+                                Expression: MemberBindingExpressionSyntax
+                                {
+                                    Name.Identifier.Text: "GetAwaiter"
+                                }
+                            }
+                        && access.Parent is InvocationExpressionSyntax directGetResultInvocation
+                        && directGetResultInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(directGetResultInvocation, terminal):
+                    // Direct spine (`task?.GetAwaiter().GetResult()`): the awaited task is the
+                    // spine operation itself.
+                    task = conditionalAccess.Expression;
+                    return true;
             }
         }
         else if (name.Parent is MemberBindingExpressionSyntax binding)
@@ -198,12 +217,24 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
             // member bindings; the awaited task is the spine operation itself.
             switch (binding.Name.Identifier.Text)
             {
-                case "Result":
+                case "Result"
+                    when ReferenceEquals(binding.Parent, terminal):
                     task = conditionalAccess.Expression;
                     return true;
                 case "Wait"
                     when binding.Parent is InvocationExpressionSyntax waitInvocation
-                        && waitInvocation.ArgumentList.Arguments.Count == 0:
+                        && waitInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(waitInvocation, terminal):
+                    task = conditionalAccess.Expression;
+                    return true;
+                case "GetAwaiter"
+                    when binding.Parent is MemberAccessExpressionSyntax
+                    {
+                        Name.Identifier.Text: "GetResult",
+                        Parent: InvocationExpressionSyntax getResultInvocation
+                    } getResultAccess
+                        && getResultInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(getResultInvocation, terminal):
                     task = conditionalAccess.Expression;
                     return true;
             }

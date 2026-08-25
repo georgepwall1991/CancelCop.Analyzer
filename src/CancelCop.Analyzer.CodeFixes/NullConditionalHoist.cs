@@ -33,6 +33,9 @@ internal static class NullConditionalHoist
     {
         for (var current = node.Parent; current != null; current = current.Parent)
         {
+            // The first `?.` on the way up is the spine the diagnosed access belongs to. If it
+            // is not itself a whole statement, the hoist cannot apply — an outer conditional
+            // would splice the wrong operation into the chain.
             if (current is not ConditionalAccessExpressionSyntax candidate)
                 continue;
             if (
@@ -46,6 +49,9 @@ internal static class NullConditionalHoist
                 conditionalAccess = candidate;
                 return true;
             }
+            statement = null!;
+            conditionalAccess = null!;
+            return false;
         }
 
         statement = null!;
