@@ -202,16 +202,31 @@ public class BlockingDbCommandCodeFixProvider : CodeFixProvider
 
         if (
             rebound == null
+            || rebound.IsStatic
             || rebound.Name != "ExecuteReaderAsync"
             || rebound.ReturnType.Name != "Task"
             || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                 != "System.Threading.Tasks"
-            || readerMethod == null
-            || !rebound.ContainingType.Equals(readerMethod.OriginalDefinition.ContainingType)
         )
             return false;
 
-        return true;
+        // The awaited result must be a DbDataReader-shaped Task<T> (the framework signature).
+        if (
+            rebound.ReturnType is not INamedTypeSymbol namedTask
+            || namedTask.TypeArguments.Length != 1
+        )
+            return false;
+        for (
+            var reader = namedTask.TypeArguments[0];
+            reader is INamedTypeSymbol namedReader;
+            reader = namedReader.BaseType
+        )
+        {
+            if (namedReader.ToDisplayString() == "System.Data.Common.DbDataReader")
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(
