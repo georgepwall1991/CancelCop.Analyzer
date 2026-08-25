@@ -338,7 +338,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExecuteReader_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task ExecuteReader_NullConditional_HoistsToIfNotNullExecuteReaderAsync()
     {
         var source =
             @"
@@ -355,7 +355,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteReaderAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -530,7 +548,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    public async Task ChainedConditionalAccess_HoistsToIfNotNullExecuteReaderAsync()
     {
         var source =
             @"
@@ -552,7 +570,30 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        if (host is not null)
+        {
+            await host.Command.ExecuteReaderAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -694,7 +735,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExtraExecuteReaderAsyncIntOverload_NullConditional_StillReportsWithoutAFix()
+    public async Task ExtraExecuteReaderAsyncIntOverload_NullConditional_HoistsToCancellableForm()
     {
         // An unrelated ExecuteReaderAsync(int) is arity-compatible with the
         // token-taking rewrite. ReachesCounterpart must keep scanning to the
@@ -716,7 +757,27 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+public class ExtraCommand : MidCommand
+{
+    public int ExecuteReaderAsync(int timeout) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ExtraCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteReaderAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
