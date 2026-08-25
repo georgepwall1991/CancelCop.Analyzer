@@ -179,8 +179,9 @@ public class TestClass
     }
 
     [Fact]
-    public async Task Send_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task Send_NullConditional_HoistsToIfNotNullSendMailAsync()
     {
+        // The whole null-conditional statement hoists; the in-scope token flows into the call.
         var source =
             @"
 using System.Net.Mail;
@@ -196,7 +197,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SmtpClient? client, MailMessage message, CancellationToken cancellationToken)
+    {
+        if (client is not null)
+        {
+            await client.SendMailAsync(message, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -535,5 +554,196 @@ public class TestClass
 }";
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+    }
+    [Fact]
+    public async Task ConditionalSend_HoistsToIfNotNullSendMailAsync()
+    {
+        var test =
+            @"
+using System;
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SmtpClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        var message = new MailMessage();
+        client?.{|#0:Send|}(message);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SmtpClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        var message = new MailMessage();
+        if (client is not null)
+        {
+            await client.SendMailAsync(message, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalSendWithHiddenSendMailAsync_ReportsWithoutOfferingAFix()
+    {
+        // A subclass hiding SendMailAsync with a non-awaitable member would make the rewrite
+        // non-compiling; the speculative rebind withholds it.
+        var test =
+            @"
+using System.Net.Mail;
+using System.Threading.Tasks;
+
+public class HidingClient : SmtpClient
+{
+    public new int SendMailAsync(MailMessage message) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(HidingClient? client)
+    {
+        await Task.Yield();
+        var message = new MailMessage();
+        client?.{|#0:Send|}(message);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
+    }
+    [Fact]
+    public async Task ConditionalSendWithDerivedTokenParameterName_UsesTheCounterpartName()
+    {
+        // Reordered named arguments make a positional token unbindable, so the fix resolves the
+        // counterpart's own token parameter name (`ct`) and appends it by name.
+        var test =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class DerivedClient : SmtpClient
+{
+    public new Task SendMailAsync(
+        string from,
+        string recipients,
+        string subject,
+        string body,
+        CancellationToken ct = default
+    ) => Task.CompletedTask;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(DerivedClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        client?.{|#0:Send|}(subject: ""s"", body: ""b"", from: ""f"", recipients: ""t"");
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class DerivedClient : SmtpClient
+{
+    public new Task SendMailAsync(
+        string from,
+        string recipients,
+        string subject,
+        string body,
+        CancellationToken ct = default
+    ) => Task.CompletedTask;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(DerivedClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (client is not null)
+        {
+            await client.SendMailAsync(subject: ""s"", body: ""b"", from: ""f"", recipients: ""t"", ct: cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+    [Fact]
+    public async Task ChainedConditionalSendWithToken_HoistsWithSplicedClient()
+    {
+        var test =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public SmtpClient Client { get; } = new SmtpClient();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, MailMessage message, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        host?.Client.{|#0:Send|}(message);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public SmtpClient Client { get; } = new SmtpClient();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, MailMessage message, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Client.SendMailAsync(message, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
     }
 }

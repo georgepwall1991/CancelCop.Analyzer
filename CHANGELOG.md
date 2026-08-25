@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.25] - 2026-08-24
+
+### Changed
+
+- **CC049 fixer:** null-conditional `Send(...)` statements now rewrite
+  instead of being withheld (`client?.Send(message);` becomes
+  `if (client is not null) { await client.SendMailAsync(message, ct); }`,
+  chained spines splice the client into the awaited call). The
+  in-scope token is re-resolved by the fixer and a speculative
+  rebind withholds the rewrite when a subclass hides
+  `SendMailAsync` with a non-awaitable member.
+
 ## [1.52.24] - 2026-08-24
 
 ### Changed
