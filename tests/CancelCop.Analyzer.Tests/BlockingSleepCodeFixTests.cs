@@ -153,4 +153,112 @@ public class TestClass
         var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    [Fact]
+    public async Task ThreadSleep_TimeSpanArgument_BecomesTaskDelayWithToken()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        {|#0:Thread.Sleep(TimeSpan.FromSeconds(1))|};
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task ThreadSleep_NamedArgument_BecomesPositionalTaskDelay()
+    {
+        // Thread.Sleep's parameter is `millisecondsTimeout` but Task.Delay names it
+        // `millisecondsDelay` — copying the name would emit CS1739. The rewrite strips the
+        // names and binds positionally.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        {|#0:Thread.Sleep(millisecondsTimeout: 1000)|};
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(1000, cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task ThreadSleep_InfiniteTimeSpan_BecomesTaskDelayWithToken()
+    {
+        // `await Task.Delay(Timeout.InfiniteTimeSpan, ct)` is the canonical cancellable
+        // indefinite wait; the fix preserves the infinite delay and flows the token.
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        {|#0:Thread.Sleep(Timeout.InfiniteTimeSpan)|};
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC013").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

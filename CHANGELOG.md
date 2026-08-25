@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.37] - 2026-08-25
+
+### Fixed
+
+- **CC013 fixer:** a named `Thread.Sleep(millisecondsTimeout: n)`
+  was rewritten to `Task.Delay(millisecondsTimeout: n, ct)`, which
+  fails with CS1739 because Task.Delay names the parameter
+  `millisecondsDelay`. The rewrite now binds positionally (names
+  stripped), which is valid for every Delay overload the rule can
+  reach.
+
+### Added
+
+- CC013 fixer pins for `TimeSpan`, named-argument, and
+  `Timeout.InfiniteTimeSpan` arguments, each with token flow.
+
 ## [1.52.36] - 2026-08-25
 
 ### Changed
