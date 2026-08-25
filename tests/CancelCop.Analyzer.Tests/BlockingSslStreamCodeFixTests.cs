@@ -326,37 +326,52 @@ public class Client : SslStream
     }
 
     [Fact]
-    public async Task AuthenticateAsClient_ConditionalSpineWithHider_NoFix()
+    public async Task AuthenticateAsClient_ConditionalNonAliasReceiver_StillFixes()
     {
-        // A derived type hides the TAP member with a same-named `new` method. The spine
-        // hoist must not bind to it: only the framework's own
-        // SslStream.AuthenticateAsClientAsync validates.
-        var source =
+        // A plain parameter receiver is NOT `this`: even inside an
+        // AuthenticateAsClientAsync-named member the hoisted call dispatches to the
+        // framework method, so the fix is safe and is still offered.
+        var test =
             @"
 using System.IO;
 using System.Net.Security;
+using System.Threading;
 using System.Threading.Tasks;
 
-public class Derived : SslStream
+public class Client : SslStream
 {
-    public Derived()
+    public Client()
         : base(Stream.Null) { }
 
-    public new async Task AuthenticateAsClientAsync(string host)
+    public async Task<bool> AuthenticateAsClientAsync(SslStream? other)
     {
-        await Task.Yield();
-    }
-}
-
-public class TestClass
-{
-    public async Task RunAsync(Derived? stream)
-    {
-        stream?.{|#0:AuthenticateAsClient|}(""host"");
-        await Task.Yield();
+        other?.{|#0:AuthenticateAsClient|}(""host"");
+        return true;
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(SslStream? other)
+    {
+        if (other is not null)
+        {
+            await other.AuthenticateAsClientAsync(""host"");
+        }
+        return true;
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
 }

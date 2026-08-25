@@ -149,10 +149,7 @@ public class BlockingSslStreamCodeFixProvider : CodeFixProvider
                         != "System.Threading.Tasks"
                     || streamMethod == null
                     || frameworkStreamType == null
-                    || !SymbolEqualityComparer.Default.Equals(
-                        reboundCandidate.OriginalDefinition.ContainingType,
-                        frameworkStreamType
-                    )
+                    || !ResolvesOnFrameworkStream(reboundCandidate, frameworkStreamType)
                     // Non-token parameters must mirror the original
                     // AuthenticateAsClient arguments.
                     || reboundCandidate.Parameters.Count(
@@ -208,6 +205,24 @@ public class BlockingSslStreamCodeFixProvider : CodeFixProvider
                 equivalenceKey: Title
             ),
             diagnostic
+        );
+    }
+
+    private static bool ResolvesOnFrameworkStream(
+        IMethodSymbol bound,
+        INamedTypeSymbol frameworkStreamType
+    )
+    {
+        // Walk overrides so a legitimate override of the framework TAP member keeps
+        // its framework lineage; a same-named `new` hider has no override chain and
+        // must declare on SslStream itself to pass.
+        var definition = bound.OriginalDefinition;
+        while (definition.OverriddenMethod != null)
+            definition = definition.OverriddenMethod.OriginalDefinition;
+
+        return SymbolEqualityComparer.Default.Equals(
+            definition.ContainingType,
+            frameworkStreamType
         );
     }
 

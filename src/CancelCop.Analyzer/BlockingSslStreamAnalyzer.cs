@@ -291,6 +291,10 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
 
     private static bool ReceiverMayBeThis(InvocationExpressionSyntax invocation)
     {
+        // A bare `AuthenticateAsClient(...)` IS an implicit-this call.
+        if (invocation.Expression is IdentifierNameSyntax)
+            return true;
+
         // A `?.` spine surfaces as a member binding; the receiver to classify is the
         // conditional access's operation (`self?.AuthenticateAsClient(...)`).
         if (invocation.Expression is MemberBindingExpressionSyntax)
@@ -318,18 +322,16 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
     {
         switch (expression)
         {
-            case IdentifierNameSyntax:
+            // An identifier here is a named local or parameter, NOT implicit this —
+            // only one provably assigned from `this` counts.
+            case IdentifierNameSyntax alias:
+                return LocalIsAssignedFromThis(alias);
+            case MemberAccessExpressionSyntax memberAccess
+                when memberAccess.Expression is ThisExpressionSyntax
+                    or BaseExpressionSyntax:
                 return true;
-            case MemberAccessExpressionSyntax memberAccess:
-                switch (memberAccess.Expression)
-                {
-                    case ThisExpressionSyntax or BaseExpressionSyntax:
-                        return true;
-                    case IdentifierNameSyntax alias:
-                        return LocalIsAssignedFromThis(alias);
-                    default:
-                        return false;
-                }
+            case MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax alias }:
+                return LocalIsAssignedFromThis(alias);
             case ThisExpressionSyntax or BaseExpressionSyntax:
                 return true;
             default:
@@ -433,13 +435,25 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             && !bound.IsStatic
             && bound.Name == "AuthenticateAsClientAsync"
             && IsTaskLike(bound.ReturnType)
-            && SymbolEqualityComparer.Default.Equals(
-                bound.OriginalDefinition.ContainingType,
-                sslStreamType
-            )
+            && ResolvesOnFrameworkStream(bound, sslStreamType)
             && bound.Parameters.Count(p =>
                 !CancellationTokenHelpers.IsCancellationToken(p.Type)
             ) == invocation.ArgumentList.Arguments.Count;
+    }
+
+    private static bool ResolvesOnFrameworkStream(
+        IMethodSymbol bound,
+        INamedTypeSymbol sslStreamType
+    )
+    {
+        // Walk overrides so a legitimate override of the framework TAP member keeps
+        // its framework lineage; a same-named `new` hider has no override chain and
+        // must declare on SslStream itself to pass.
+        var definition = bound.OriginalDefinition;
+        while (definition.OverriddenMethod != null)
+            definition = definition.OverriddenMethod.OriginalDefinition;
+
+        return SymbolEqualityComparer.Default.Equals(definition.ContainingType, sslStreamType);
     }
 
     private static bool IsTaskLike(ITypeSymbol type)
