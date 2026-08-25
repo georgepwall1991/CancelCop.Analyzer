@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.38] - 2026-08-25
+
+### Added
+
+- **CC050 (new rule):** blocking `System.Net.NetworkInformation.Ping.Send`
+  in async code now reports with a rewrite to `await SendPingAsync`.
+  Symbol-gated to framework `Ping`; the TAP counterpart is `SendPingAsync`
+  (`SendAsync` is event-based EAP and is deliberately not treated as the
+  counterpart). The fixer preserves the original arguments and flows an
+  in-scope token when the rewritten call still binds — the token-taking
+  `SendPingAsync` overloads are modern .NET only and exist only on the
+  `TimeSpan` arity, so a bare `Send(host)` rewrites tokenless. Null-conditional
+  statements hoist to an `is not null` guard; await-forbidden contexts (lock
+  bodies, unsafe) and a bare implicit-this `Send` inside a `SendPingAsync`
+  member are reported without a fix.
+
 ## [1.52.37] - 2026-08-25
 
 ### Fixed

@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (49 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (50 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.37">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.38">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.37
+Install-Package CancelCop.Analyzer -Version 1.52.38
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -163,6 +163,7 @@ dotnet build samples/CancelCop.Sample
 | **CC047** | Blocking `DbCommand.ExecuteNonQuery` in async code | Warning | ✅ |
 | **CC048** | Blocking `DbCommand.ExecuteScalar` in async code | Warning | ✅ |
 | **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ✅ |
+| **CC050** | Blocking `Ping.Send` in async code | Warning | ✅ |
 
 ## Quick Examples
 
@@ -1136,6 +1137,30 @@ await client.SendMailAsync(message, cancellationToken);
 > compile, and a this/base/this-alias call inside `SendMailAsync` are
 > reported without a fix.
 
+### CC050: Blocking `Ping.Send` in Async Code
+
+```csharp
+// ❌ Warning CC050 - parks a pool thread waiting for an echo reply
+public async Task RunAsync(Ping ping, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    ping.Send("example.org");
+}
+
+// ✅ Fixed
+await ping.SendPingAsync("example.org");
+```
+
+> CC036–CC044 cover the Socket/Tcp/Udp/HttpListener/named-pipe/DNS families.
+> `Ping.Send` is a separate type, which none of the previous rules reported.
+> The TAP counterpart is `SendPingAsync`, **not** the event-based `SendAsync`.
+> The token-taking `SendPingAsync` overloads are modern .NET only and exist
+> solely on the `TimeSpan` arity (host, timeout, buffer, options, token), so a
+> bare `Send(host)` rewrites tokenless — appending a token argument would not
+> bind — while the full-arity call flows the in-scope token. Null-conditional
+> statements hoist to an `is not null` guard; lock bodies, unsafe contexts,
+> and a bare `Send` inside a `SendPingAsync` member are reported without a fix.
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
@@ -1236,7 +1261,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **49 rules** spanning token presence, propagation, positioning, loop checks,
+CancelCop now ships **50 rules** spanning token presence, propagation, positioning, loop checks,
 async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →
