@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (51 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (52 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.39">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.40">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.39
+Install-Package CancelCop.Analyzer -Version 1.52.40
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -165,6 +165,7 @@ dotnet build samples/CancelCop.Sample
 | **CC049** | Blocking `SmtpClient.Send` in async code | Warning | ✅ |
 | **CC050** | Blocking `Ping.Send` in async code | Warning | ✅ |
 | **CC051** | Blocking `SslStream.AuthenticateAsClient` in async code | Warning | ✅ |
+| **CC052** | Blocking `WebRequest.GetResponse` in async code | Warning | ✅ |
 
 ## Quick Examples
 
@@ -1185,6 +1186,30 @@ await stream.AuthenticateAsClientAsync("example.org");
 > guard; lock bodies, unsafe contexts, and a bare `AuthenticateAsClient`
 > inside an `AuthenticateAsClientAsync` member are reported without a fix.
 
+### CC052: Blocking `WebRequest.GetResponse` in Async Code
+
+```csharp
+// ❌ Warning CC052 - parks a pool thread for the whole request/response round trip
+public async Task RunAsync(WebRequest request, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    request.GetResponse();
+}
+
+// ✅ Fixed
+await request.GetResponseAsync();
+```
+
+> `WebRequest.GetResponse` is the legacy HTTP stack, which none of the
+> previous blocking rules reported. The TAP counterpart is
+> `GetResponseAsync`; it is parameterless and no arity in the family accepts
+> a token, so the rewrite is always tokenless — appending a token argument
+> would not bind — and real cancellation means moving off the legacy stack
+> (e.g. to `HttpClient`). Null-conditional statements hoist to an
+> `is not null` guard; lock bodies, unsafe contexts, and a bare
+> `GetResponse` inside a `GetResponseAsync` member are reported without a
+> fix.
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
@@ -1285,7 +1310,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **51 rules** spanning token presence, propagation, positioning, loop checks,
+CancelCop now ships **52 rules** spanning token presence, propagation, positioning, loop checks,
 async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.40] - 2026-08-25
+
+### Added
+
+- **CC052 (new rule):** blocking `System.Net.WebRequest.GetResponse`
+  (including the `FileWebRequest`/`HttpWebRequest` overrides) in async code
+  now reports with a rewrite to `await GetResponseAsync`. Symbol-gated to
+  framework `WebRequest`; both `GetResponse` and its TAP counterpart are
+  virtual on the framework type, so derived types match through the
+  `.OverriddenMethod` chain. Verified against the net9 ref pack:
+  `GetResponseAsync` exists only as a parameterless
+  `Task<WebResponse>` with no token-taking arity anywhere in the family, so
+  every rewrite stays tokenless even when a token is in scope — real
+  cancellation means leaving the legacy stack (e.g. for `HttpClient`). The
+  APM `BeginGetResponse`/`EndGetResponse` pair is never treated as the
+  counterpart. Null-conditional statements hoist to an `is not null` guard;
+  lock bodies/unsafe contexts and a bare implicit-this call inside a
+  `GetResponseAsync` member are reported without a fix.
+
+
 ## [1.52.39] - 2026-08-25
 
 ### Added
