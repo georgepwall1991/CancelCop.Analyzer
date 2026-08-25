@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CC031:** `Thread.Join` moved out of the sync-primitive family into the
   dedicated CC053, so each join call reports exactly once. CC031 now covers
   `ManualResetEventSlim.Wait`, `CountdownEvent.Wait`, `WaitHandle.WaitOne`/
-  `WaitAll`/`WaitAny`, and `Monitor.Wait`.
+  `WaitAll`/`WaitAny`, `Monitor.Wait`, the `ReaderWriterLockSlim`/
+  `ReaderWriterLock` families, and `Barrier.SignalAndWait`.
 
 ## [1.52.40] - 2026-08-25
 
