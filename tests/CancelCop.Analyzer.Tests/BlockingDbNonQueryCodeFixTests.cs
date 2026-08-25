@@ -744,4 +744,93 @@ public class RecursiveCommand : MidCommand
 
         await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task NullConditional_ProviderAsyncOverride_ChainReachesDbCommand()
+    {
+        // ProviderCommand overrides ExecuteNonQuery() and ExecuteNonQueryAsync — the override
+        // chain reaches DbCommand, so the null-conditional hoist applies to it too.
+        var test =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class ProviderCommand : DbCommand
+{
+    public override string CommandText { get; set; } = """";
+    public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; }
+    public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection DbConnection { get; set; } = null!;
+    protected override DbParameterCollection DbParameterCollection => null!;
+    protected override DbTransaction DbTransaction { get; set; } = null!;
+    public override void Cancel() { }
+    public override int ExecuteNonQuery() => 0;
+    public override object ExecuteScalar() => null!;
+    public override void Prepare() { }
+    protected override DbParameter CreateDbParameter() => null!;
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => null!;
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        return 1;
+    }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ProviderCommand? command, CancellationToken cancellationToken)
+    {
+        command?.{|#0:ExecuteNonQuery|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class ProviderCommand : DbCommand
+{
+    public override string CommandText { get; set; } = """";
+    public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; }
+    public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection DbConnection { get; set; } = null!;
+    protected override DbParameterCollection DbParameterCollection => null!;
+    protected override DbTransaction DbTransaction { get; set; } = null!;
+    public override void Cancel() { }
+    public override int ExecuteNonQuery() => 0;
+    public override object ExecuteScalar() => null!;
+    public override void Prepare() { }
+    protected override DbParameter CreateDbParameter() => null!;
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => null!;
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        return 1;
+    }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ProviderCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }
