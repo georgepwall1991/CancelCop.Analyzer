@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.27] - 2026-08-24
+
+### Changed
+
+- **CC037 fixer:** null-conditional `Connect(...)` statements now
+  rewrite instead of being withheld (`client?.Connect(host, port);`
+  becomes `if (client is not null)
+  { await client.ConnectAsync(host, port, ct); }`, chained spines
+  splice the client into the awaited call). The in-scope token is
+  re-resolved by the fixer; a speculative rebind requires the
+  framework's Task/ValueTask-returning `ConnectAsync` on
+  System.Net.Sockets.TcpClient with matching arity, so hidden
+  non-awaitable members withhold the rewrite.
+
 ## [1.52.26] - 2026-08-24
 
 ### Changed

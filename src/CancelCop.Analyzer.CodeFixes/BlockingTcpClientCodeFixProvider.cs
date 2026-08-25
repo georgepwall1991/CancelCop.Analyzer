@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.Generic;
 using System.Composition;
 using System.Linq;
 using System.Threading;
@@ -37,9 +38,21 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingTcpClientAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingTcpClientAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "no-safe-rewrite")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -64,6 +77,83 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
             ? argumentName
             : null;
 
+        // A whole null-conditional statement (`client?.Connect(host);`) hoists to
+        // `if (client is not null) { await client.ConnectAsync(host, ct); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`.
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "Connect",
+                "ConnectAsync",
+                out var hoistStatement,
+                out var conditionalAccess,
+                out var hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // The analyzer drops the in-scope token when its in-place rewrite could not apply;
+            // the hoist can, so re-resolve the token here.
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            // Prefer the cancellable form; older targets exposing only a tokenless ConnectAsync
+            // fall back to it. Both are validated by speculative rebinding.
+            // Candidate forms in priority order: positional token, named token (works when the
+            // original call uses reordered named arguments), then tokenless for targets whose
+            // ConnectAsync has no CancellationToken overload.
+            var candidates2 = new List<InvocationExpressionSyntax>();
+            if (hoistToken != null)
+            {
+                candidates2.Add(hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
+                ));
+                candidates2.Add(hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, "cancellationToken"))
+                ));
+            }
+            candidates2.Add(hoistedInvocation);
+
+            // Speculatively rebind: only the framework's awaitable ConnectAsync overloads on
+            // System.Net.Sockets.TcpClient qualify; hidden unrelated members withhold the fix.
+            var connectMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var boundCall = candidates2.FirstOrDefault(c =>
+                RebindsToTcpClientConnectAsync(semanticModel, invocation.SpanStart, c, connectMethod));
+
+            if (boundCall is null)
+                return;
+
+            hoistedInvocation = boundCall;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
+
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
             "ConnectAsync",
@@ -82,6 +172,66 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Speculatively binds the generated call and requires it to land on the framework's
+    /// Task/ValueTask-returning ConnectAsync overloads declared by System.Net.Sockets.TcpClient
+    /// with the same parameter count as the original Connect arguments. A subclass hiding
+    /// ConnectAsync with an unrelated member withholds the rewrite instead of producing
+    /// non-compiling code.
+    /// </summary>
+    private static bool RebindsToTcpClientConnectAsync(
+        SemanticModel semanticModel,
+        int position,
+        InvocationExpressionSyntax call,
+        IMethodSymbol? connectMethod
+    )
+    {
+        var info = semanticModel.GetSpeculativeSymbolInfo(
+            position,
+            call,
+            SpeculativeBindingOption.BindAsExpression
+        );
+
+        // Candidates do not prove the call binds: an invalid argument (e.g. a kept `hostname:`
+        // name) must withhold the rewrite, so only an exactly-resolved symbol qualifies.
+        if (info.Symbol is not IMethodSymbol resolved)
+            return false;
+
+        // ConnectAsync overloads may return Task or ValueTask.
+        return resolved.Name == "ConnectAsync"
+            && !resolved.IsStatic
+            && (resolved.ReturnType.Name == "Task" || resolved.ReturnType.Name == "ValueTask")
+            && resolved.ReturnType.ContainingNamespace?.ToDisplayString()
+                == "System.Threading.Tasks"
+            && resolved.ContainingType?.ToDisplayString() == "System.Net.Sockets.TcpClient"
+            && resolved.Parameters.Length == call.ArgumentList.Arguments.Count
+            && connectMethod != null
+            && resolved.Parameters.Take(connectMethod.Parameters.Length)
+                .Select((p, i) => (p, i))
+                .All(x =>
+                    x.p.Type.Equals(connectMethod.Parameters[x.i].Type)
+                    || string.Equals(
+                        x.p.Name,
+                        connectMethod.Parameters[x.i].Name,
+                        StringComparison.Ordinal
+                    ));
+    }
+
+    private static ArgumentSyntax TokenArgument(string tokenName, string? tokenArgumentName)
+    {
+        var tokenArgument = SyntaxFactory.Argument(
+            CancellationTokenHelpers.TokenExpression(tokenName)
+        );
+        if (tokenArgumentName != null)
+        {
+            tokenArgument = tokenArgument.WithNameColon(
+                SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(tokenArgumentName))
+            );
+        }
+
+        return tokenArgument;
     }
 
     private static async Task<Document> ReplaceAsync(
