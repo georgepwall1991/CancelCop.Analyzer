@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.39] - 2026-08-25
+
+### Added
+
+- **CC051 (new rule):** blocking `System.Net.Security.SslStream.AuthenticateAsClient`
+  in async code now reports with a rewrite to
+  `await AuthenticateAsClientAsync`. Symbol-gated to framework `SslStream`
+  (not sealed — overrides match through the `.OverriddenMethod` chain); the
+  TAP counterpart is verified by name, so the APM
+  `BeginAuthenticateAsClient`/`EndAuthenticateAsClient` pair is never treated
+  as the counterpart. Only the `SslClientAuthenticationOptions` arity accepts
+  a token, so string-arity rewrites stay tokenless while an options-arity
+  call flows an in-scope token; every candidate is revalidated by
+  speculative binding. Null-conditional statements hoist to an
+  `is not null` guard; lock bodies/unsafe contexts and a bare implicit-this
+  call inside an `AuthenticateAsClientAsync` member are reported without a fix.
+
+
 ## [1.52.38] - 2026-08-25
 
 ### Added
