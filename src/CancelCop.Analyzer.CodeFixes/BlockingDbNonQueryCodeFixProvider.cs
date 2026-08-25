@@ -37,10 +37,23 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingDbNonQueryAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingDbNonQueryAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "token-required")
             return;
+
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
             .Parent?.AncestorsAndSelf()
@@ -56,6 +69,109 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
         )
             ? name
             : null;
+
+        // A whole null-conditional statement (`command?.ExecuteNonQuery();`) hoists to
+        // `if (command is not null) { await command.ExecuteNonQueryAsync(ct); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "ExecuteNonQuery",
+                "ExecuteNonQueryAsync",
+                out hoistStatement,
+                out conditionalAccess,
+                out hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // Candidate forms in priority order: positional token (cancellable), then tokenless
+            // (older targets / parameterless-only counterparts).
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            var candidates = new List<InvocationExpressionSyntax>();
+            if (hoistToken != null)
+            {
+                candidates.Add(hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(
+                        SyntaxFactory.Argument(
+                            CancellationTokenHelpers.TokenExpression(hoistToken)
+                        )
+                    )
+                ));
+            }
+            candidates.Add(hoistedInvocation);
+
+            InvocationExpressionSyntax? boundCall = null;
+            foreach (var candidate in candidates)
+            {
+                var reboundCandidate = semanticModel
+                    .GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        candidate,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+                if (
+                    reboundCandidate == null
+                    || reboundCandidate.IsStatic
+                    || reboundCandidate.Name != "ExecuteNonQueryAsync"
+                    || reboundCandidate.ReturnType.Name != "Task"
+                    || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
+                        != "System.Threading.Tasks"
+                )
+                    continue;
+
+                if (
+                    reboundCandidate.ReturnType is not INamedTypeSymbol namedResult
+                    || namedResult.TypeArguments.Length != 1
+                    || namedResult.TypeArguments[0].SpecialType != SpecialType.System_Int32
+                )
+                    continue;
+
+                if (!ReachesDbCommandExecuteNonQueryAsync(reboundCandidate))
+                    continue;
+
+                boundCall = candidate;
+                break;
+            }
+
+            if (boundCall is null)
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            boundCall,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
+
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
@@ -74,6 +190,26 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Walks the override chain and requires it to reach the framework's ExecuteNonQueryAsync on
+    /// System.Data.Common.DbCommand — so provider overrides qualify while unrelated `new`
+    /// hiders on derived classes do not.
+    /// </summary>
+    private static bool ReachesDbCommandExecuteNonQueryAsync(IMethodSymbol? method)
+    {
+        for (
+            var current = method?.OriginalDefinition;
+            current != null;
+            current = current.OverriddenMethod
+        )
+        {
+            if (current.ContainingType?.ToDisplayString() == "System.Data.Common.DbCommand")
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(

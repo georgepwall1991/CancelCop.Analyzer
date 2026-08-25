@@ -133,7 +133,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExecuteNonQuery_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task ExecuteNonQuery_NullConditional_HoistsToIfNotNullExecuteNonQueryAsync()
     {
         var source =
             @"
@@ -150,7 +150,74 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalExecuteNonQuery_HoistsWithSplicedCommand()
+    {
+        var source =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        host?.Command.{|#0:ExecuteNonQuery|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        if (host is not null)
+        {
+            await host.Command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -373,8 +440,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExtraExecuteNonQueryAsyncIntOverload_NullConditional_StillReportsWithoutAFix()
+    public async Task ExtraExecuteNonQueryAsyncIntOverload_NullConditional_HoistsToCancellableForm()
     {
+        // The unrelated ExecuteNonQueryAsync(int) hider is skipped: the speculative rebind
+        // selects the inherited framework ExecuteNonQueryAsync(CancellationToken).
         var source =
             MidCommandScaffold
             + @"
@@ -392,7 +461,27 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+public class ExtraCommand : MidCommand
+{
+    public int ExecuteNonQueryAsync(int timeout) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ExtraCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -493,9 +582,9 @@ using System.Threading.Tasks;
 
 public class TestClass
 {
-    public async Task RunAsync(DbCommand a, DbCommand b, CancellationToken cancellationToken)
+    public async Task RunAsync(DbCommand? a, DbCommand b, CancellationToken cancellationToken)
     {
-        a.{|#0:ExecuteNonQuery|}();
+        a?.{|#0:ExecuteNonQuery|}();
         b.{|#1:ExecuteNonQuery|}();
         await Task.Yield();
     }
@@ -509,14 +598,106 @@ using System.Threading.Tasks;
 
 public class TestClass
 {
-    public async Task RunAsync(DbCommand a, DbCommand b, CancellationToken cancellationToken)
+    public async Task RunAsync(DbCommand? a, DbCommand b, CancellationToken cancellationToken)
     {
-        await a.ExecuteNonQueryAsync(cancellationToken);
+        if (a is not null)
+        {
+            await a.ExecuteNonQueryAsync(cancellationToken);
+        }
         await b.ExecuteNonQueryAsync(cancellationToken);
         await Task.Yield();
     }
 }";
 
-        await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+        var expected = new[]
+        {
+            new DiagnosticResult("CC047", DiagnosticSeverity.Warning).WithLocation(0),
+            new DiagnosticResult("CC047", DiagnosticSeverity.Warning).WithLocation(1),
+        };
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task SelfRecursiveThisSpine_ReportsWithoutOfferingAFix()
+    {
+        var test =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class RecursiveCommand : DbCommand
+{
+    public override string CommandText { get; set; } = """";
+    public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; }
+    public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection DbConnection { get; set; } = null!;
+    protected override DbParameterCollection DbParameterCollection => null!;
+    protected override DbTransaction DbTransaction { get; set; } = null!;
+    public override void Cancel() { }
+    public override int ExecuteNonQuery() => 0;
+    public override object ExecuteScalar() => null!;
+    public override void Prepare() { }
+    protected override DbParameter CreateDbParameter() => null!;
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => null!;
+
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        this?.{|#0:ExecuteNonQuery|}();
+        return 1;
+    }
+}";
+
+        await CreateTest(test, test, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task OtherReceiverSpineInsideExecuteNonQueryAsync_StillGetsTheFix()
+    {
+        // The spine receiver (`holder`) is another object — calling its Command's
+        // ExecuteNonQuery is not recursive, so the safe hoist applies.
+        var source =
+            MidCommandScaffold
+            + @"
+
+public class Holder
+{
+    public MidCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, CancellationToken cancellationToken)
+    {
+        holder?.Command.{|#0:ExecuteNonQuery|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+
+public class Holder
+{
+    public MidCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, CancellationToken cancellationToken)
+    {
+        if (holder is not null)
+        {
+            await holder.Command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 }

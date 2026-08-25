@@ -231,14 +231,33 @@ public class BlockingDbNonQueryAnalyzer : DiagnosticAnalyzer
         )
             return false;
 
-        // Only the recursive this/implicit-this call is unsafe.
-        // other.ExecuteNonQuery() and base.ExecuteNonQuery() still rewrite.
+        // Only the recursive this/implicit-this call is unsafe — including the receiver-less
+        // member binding of a `this?.ExecuteNonQuery()` spine (whose operation must be `this`;
+        // `other?.ExecuteNonQuery()` still rewrites). other.ExecuteNonQuery() and
+        // base.ExecuteNonQuery() also still rewrite.
         return invocation.Expression switch
         {
             IdentifierNameSyntax => true,
             MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } => true,
+            MemberBindingExpressionSyntax => IsThisSpine(invocation),
             _ => false,
         };
+    }
+
+    private static bool IsThisSpine(InvocationExpressionSyntax invocation)
+    {
+        var spine = invocation
+            .Ancestors()
+            .OfType<ConditionalAccessExpressionSyntax>()
+            .FirstOrDefault();
+
+        // Unwrap parentheses: ((this))?.ExecuteNonQuery() is still recursive.
+        var operation = spine?.Expression;
+        while (operation is ParenthesizedExpressionSyntax parenthesized)
+            operation = parenthesized.Expression;
+
+        return operation is ThisExpressionSyntax;
+
     }
 
     private static bool IsFrameworkExecuteNonQuery(

@@ -104,6 +104,7 @@ internal static class NullConditionalHoist
         )
             return false;
 
+
         SimpleNameSyntax newNameNode;
         ExpressionSyntax splicedReceiver;
         switch (invocation.Expression)
