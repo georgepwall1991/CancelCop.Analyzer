@@ -117,8 +117,11 @@ public class TestClass
         await t.RunAsync();
     }
 
+    // Thread.Join moved out of CC031 in v1.52.42 — the dedicated CC053 owns it now.
+    // This harness registers only BlockingSyncPrimitiveAnalyzer, so a join call must
+    // produce NO CC031 diagnostic (CC053's own tests pin its reporting).
     [Fact]
-    public async Task ThreadJoin_InAsyncMethod_ShouldReportDiagnostic()
+    public async Task ThreadJoin_InAsyncMethod_NoLongerReportedByCC031()
     {
         var test =
             @"
@@ -129,14 +132,12 @@ public class TestClass
 {
     public async Task RunAsync(Thread worker)
     {
-        worker.{|#0:Join|}();
+        worker.Join();
         await Task.Yield();
     }
 }";
 
-        var t = Test(test);
-        t.ExpectedDiagnostics.Add(Expected("Thread.Join"));
-        await t.RunAsync();
+        await Test(test).RunAsync();
     }
 
     [Fact]

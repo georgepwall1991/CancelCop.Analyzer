@@ -144,7 +144,7 @@ dotnet build samples/CancelCop.Sample
 | **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`, `Stream`) in async code; use the async counterpart | Warning | ✅ |
 | **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
 | **CC030** | Avoid blocking `Process.WaitForExit()` in async code; use `await WaitForExitAsync(token)` | Warning | ✅ |
-| **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`, `ReaderWriterLockSlim.Enter*Lock`/`TryEnter*Lock`, `ReaderWriterLock.Acquire*Lock`/`UpgradeToWriterLock`, `Barrier.SignalAndWait`) in async code | Warning | ❌ |
+| **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `ReaderWriterLockSlim.Enter*Lock`/`TryEnter*Lock`, `ReaderWriterLock.Acquire*Lock`/`UpgradeToWriterLock`, `Barrier.SignalAndWait`) in async code | Warning | ❌ |
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
@@ -166,7 +166,7 @@ dotnet build samples/CancelCop.Sample
 | **CC050** | Blocking `Ping.Send` in async code | Warning | ✅ |
 | **CC051** | Blocking `SslStream.AuthenticateAsClient` in async code | Warning | ✅ |
 | **CC052** | Blocking `WebRequest.GetResponse` in async code | Warning | ✅ |
-| **CC053** | Blocking `Thread.Join` in async code (no TAP counterpart on any shipped .NET — reported without a rewrite) | Warning | ✅ |
+| **CC053** | Blocking `Thread.Join` in async code (no TAP counterpart on any shipped .NET — reported without a rewrite; moved out of CC031) | Warning | ❌ |
 
 ## Quick Examples
 
@@ -673,7 +673,8 @@ public async Task WaitForReadyAsync(SemaphoreSlim ready, CancellationToken cance
 > Analyzer-only by design. These primitives have no `…Async` counterpart in .NET, so resolving the
 > finding is a design change — a `SemaphoreSlim`, a `TaskCompletionSource`, or awaiting the task
 > instead of joining the thread — rather than a mechanical rewrite. `SemaphoreSlim.Wait` belongs to
-> CC026, which can offer a real fix. `ReaderWriterLockSlim.Enter*Lock` / `TryEnter*Lock`,
+> CC026, which can offer a real fix. `Thread.Join` belonged here until v1.52.42 and now has its own
+> dedicated rule, CC053. `ReaderWriterLockSlim.Enter*Lock` / `TryEnter*Lock`,
 > `ReaderWriterLock.Acquire*Lock`, and `Barrier.SignalAndWait` are included because they
 > are not `WaitHandle` members and would otherwise be a silent false negative. A
 > zero-timeout `TryEnter` or `Acquire*Lock` is an immediate probe and stays quiet.
@@ -1229,13 +1230,14 @@ await workTask; // await the task that represents the work instead of joining a 
 > `Join(TimeSpan)` on current .NET (verified against the net9/net10 reference
 > packs) and **no** TAP `JoinAsync` counterpart on any shipped version, so
 > CC053 is analyzer-only by design: every call is reported **without a
-> rewrite** — do not expect a code fix. The fixer machinery is retained for
-> forward compatibility: if the framework ever grows a `JoinAsync`, rewrites
-> light up automatically. Prefer awaiting the task that represents the work;
-> a blocking join in async code is a deadlock risk under a starving pool.
-> CC031 covers `Join` as part of the broader sync-primitive family; CC053 is
-> the dedicated, symbol-gated rule for the type itself. `Thread` is also
-> sealed, so no derived-type receiver shapes exist.
+> rewrite** — do not expect a code fix. Prefer awaiting the task that
+> represents the work; a blocking join in async code is a deadlock risk under
+> a starving pool.
+> `Thread.Join` moved out of CC031 (v1.52.42) into this dedicated,
+> symbol-gated rule for the type itself, so each join call reports exactly
+> once. `Thread` is also sealed, so no derived-type receiver shapes exist.
+> The CC031 quick-example note above no longer lists `Thread.Join` for the
+> same reason.
 
 ## Configuration
 

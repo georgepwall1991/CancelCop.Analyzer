@@ -16,10 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reports. Verified against the net9/net10 ref packs: `Thread` declares only
   those three non-virtual `Join` overloads, declares **no** TAP
   `JoinAsync` counterpart on any shipped .NET, and is sealed, so CC053 is
-  analyzer-only by design — every diagnostic is reported without a rewrite,
-  with the speculative-rebind machinery retained so that a future framework
-  `JoinAsync` enables rewrites automatically. Await the task representing
-  the work instead of joining a raw thread.
+  analyzer-only by design — every diagnostic is reported without a rewrite.
+  Await the task representing the work instead of joining a raw thread.
+
+### Changed
+
+- **CC031:** `Thread.Join` moved out of the sync-primitive family into the
+  dedicated CC053, so each join call reports exactly once. CC031 now covers
+  `ManualResetEventSlim.Wait`, `CountdownEvent.Wait`, `WaitHandle.WaitOne`/
+  `WaitAll`/`WaitAny`, and `Monitor.Wait`.
 
 ## [1.52.40] - 2026-08-25
 
