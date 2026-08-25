@@ -330,4 +330,103 @@ public class TestClass
 
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    [Fact]
+    public async Task SingleStatementBody_WrapsInBlockWithCheckFirst()
+    {
+        // A brace-less loop body must become a block so the check executes every
+        // iteration, not only the first statement of a malformed rewrite.
+        var source = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(System.Collections.Generic.List<int> items, CancellationToken ct)
+    {
+        {|#0:foreach|} (var item in items)
+            Console.WriteLine(item);
+    }
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(System.Collections.Generic.List<int> items, CancellationToken ct)
+    {
+        foreach (var item in items)
+        {
+            ct.ThrowIfCancellationRequested();
+            Console.WriteLine(item);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009").WithLocation(0).WithArguments("ct");
+        await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task InnerWhileOfNestedLoops_CheckInsertedInInnerBodyOnly()
+    {
+        // The diagnostic targets the inner while; fixing it inserts the check into
+        // the INNER body only — the outer loop's statements stay untouched.
+        var source = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(int[][] rows, CancellationToken ct)
+    {
+        foreach (var row in rows)
+        {
+            {|#0:while|} (row.Length > 0)
+            {
+                Console.WriteLine(row[0]);
+                break;
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(int[][] rows, CancellationToken ct)
+    {
+        foreach (var row in rows)
+        {
+            while (row.Length > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                Console.WriteLine(row[0]);
+                break;
+            }
+        }
+    }
+}";
+
+        // The outer foreach reports too (no check of its own); the fix for marker 0
+        // must still touch only the inner body.
+        source = source.Replace("foreach (var row in rows)", "{|#1:foreach|} (var row in rows)");
+        // Both loops lack a check, so the harness applies both fixes; each loop ends
+        // up with its own check.
+        source = source.Replace("foreach (var row in rows)", "{|#1:foreach|} (var row in rows)");
+        fixedCode = fixedCode.Replace(
+            "foreach (var row in rows)\n        {",
+            "foreach (var row in rows)\n        {\n            ct.ThrowIfCancellationRequested();");
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("CC009").WithLocation(0).WithArguments("ct"),
+            VerifyCS.Diagnostic("CC009").WithLocation(1).WithArguments("ct"),
+        };
+await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
+    }
 }
