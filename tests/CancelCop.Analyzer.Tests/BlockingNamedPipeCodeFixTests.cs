@@ -109,7 +109,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task WaitForConnection_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task WaitForConnection_NullConditional_HoistsToIfNotNullWaitForConnectionAsync()
     {
         var source =
             @"
@@ -126,7 +126,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.IO.Pipes;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(NamedPipeServerStream? server, CancellationToken cancellationToken)
+    {
+        if (server is not null)
+        {
+            await server.WaitForConnectionAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -236,5 +254,111 @@ public class TestClass
 }";
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalWaitForConnection_HoistsToIfNotNullWaitForConnectionAsync()
+    {
+        var test =
+            @"
+using System.IO.Pipes;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(NamedPipeServerStream? pipe, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        pipe?.{|#0:WaitForConnection|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO.Pipes;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(NamedPipeServerStream? pipe, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (pipe is not null)
+        {
+            await pipe.WaitForConnectionAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC041", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalWaitForConnection_HoistsWithSplicedPipe()
+    {
+        var test =
+            @"
+using System.IO.Pipes;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public NamedPipeServerStream Pipe { get; } = new NamedPipeServerStream(
+        ""p"",
+        PipeDirection.Out,
+        1,
+        PipeTransmissionMode.Byte,
+        PipeOptions.Asynchronous
+    );
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        host?.Pipe.{|#0:WaitForConnection|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO.Pipes;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public NamedPipeServerStream Pipe { get; } = new NamedPipeServerStream(
+        ""p"",
+        PipeDirection.Out,
+        1,
+        PipeTransmissionMode.Byte,
+        PipeOptions.Asynchronous
+    );
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Pipe.WaitForConnectionAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC041", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
     }
 }
