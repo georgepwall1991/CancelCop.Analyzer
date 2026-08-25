@@ -185,8 +185,10 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
                     when access.Expression
                             is InvocationExpressionSyntax
                             {
+                                ArgumentList.Arguments.Count: 0,
                                 Expression: MemberAccessExpressionSyntax getAwaiterAccess
                             }
+                        && getAwaiterAccess.Name.Identifier.Text == "GetAwaiter"
                         && access.Parent is InvocationExpressionSyntax getResultInvocation
                         && getResultInvocation.ArgumentList.Arguments.Count == 0
                         && ReferenceEquals(getResultInvocation, terminal):

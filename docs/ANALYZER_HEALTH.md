@@ -214,7 +214,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   `NullConditionalHoist`; speculative type check confirms the
   spliced task expression still binds to the original task, and
   the blocking operation must be the terminal expression of the
-  statement (`.GetResult().Dispose()` stays unfixed). The spine
+  statement (`.GetResult().Dispose()` stays unfixed), and the
+  awaiter must be a parameterless `GetAwaiter()`. The spine
   is bound syntactically to the diagnosed access, so argument-
   position nested conditionals never splice an outer operation.
   Hoist extracted from v1.52.21's CC022 fixer into shared
