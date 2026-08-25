@@ -215,7 +215,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   timeouts carried through). Argument lists carried verbatim;
   terminality and spine-exactness enforced, plus a speculative
   rebind so hidden non-awaitable `WaitAsync` members withhold the
-  rewrite on direct and null-conditional paths alike. 4 new fixer tests, 1 updated.
+  rewrite on direct and null-conditional paths alike. 3 new fixer tests, 1 updated.
 - v1.52.22: 1475 tests, green locally. **CC015 fixer** —
   null-conditional blocking statements (`task?.Wait();`,
   `holder?.Work.GetAwaiter().GetResult();`)
