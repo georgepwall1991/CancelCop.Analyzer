@@ -218,8 +218,7 @@ internal static class NullConditionalHoist
             ThisExpressionSyntax => true,
             IdentifierNameSyntax identifier => semanticModel.GetSymbolInfo(identifier).Symbol
                 is IParameterSymbol
-                or ILocalSymbol
-                or IFieldSymbol,
+                or ILocalSymbol,
             _ => false,
         };
     }

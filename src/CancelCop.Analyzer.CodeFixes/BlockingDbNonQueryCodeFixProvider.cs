@@ -93,50 +93,62 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
             )
         )
         {
+            // Candidate forms in priority order: positional token (cancellable), then tokenless
+            // (older targets / parameterless-only counterparts).
             var hoistToken =
                 tokenName
                 ?? CancellationTokenHelpers
                     .FindEnclosingCancellationToken(invocation, semanticModel)
                     ?.ExpressionText;
 
+            var candidates = new List<InvocationExpressionSyntax>();
             if (hoistToken != null)
             {
-                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                candidates.Add(hoistedInvocation.WithArgumentList(
                     hoistedInvocation.ArgumentList.AddArguments(
                         SyntaxFactory.Argument(
                             CancellationTokenHelpers.TokenExpression(hoistToken)
                         )
                     )
-                );
+                ));
+            }
+            candidates.Add(hoistedInvocation);
+
+            InvocationExpressionSyntax? boundCall = null;
+            foreach (var candidate in candidates)
+            {
+                var reboundCandidate = semanticModel
+                    .GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        candidate,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+                if (
+                    reboundCandidate == null
+                    || reboundCandidate.IsStatic
+                    || reboundCandidate.Name != "ExecuteNonQueryAsync"
+                    || reboundCandidate.ReturnType.Name != "Task"
+                    || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
+                        != "System.Threading.Tasks"
+                )
+                    continue;
+
+                if (
+                    reboundCandidate.ReturnType is not INamedTypeSymbol namedResult
+                    || namedResult.TypeArguments.Length != 1
+                    || namedResult.TypeArguments[0].SpecialType != SpecialType.System_Int32
+                )
+                    continue;
+
+                if (!ReachesDbCommandExecuteNonQueryAsync(reboundCandidate))
+                    continue;
+
+                boundCall = candidate;
+                break;
             }
 
-            // Speculatively rebind: only a Task<int>-returning ExecuteNonQueryAsync whose
-            // override chain reaches the framework's DbCommand.ExecuteNonQueryAsync qualifies.
-            var rebound = semanticModel
-                .GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    hoistedInvocation,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
-            if (
-                rebound == null
-                || rebound.IsStatic
-                || rebound.Name != "ExecuteNonQueryAsync"
-                || rebound.ReturnType.Name != "Task"
-                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
-                    != "System.Threading.Tasks"
-            )
-                return;
-
-            if (
-                rebound.ReturnType is not INamedTypeSymbol namedResult
-                || namedResult.TypeArguments.Length != 1
-                || namedResult.TypeArguments[0].SpecialType != SpecialType.System_Int32
-            )
-                return;
-
-            if (!ReachesDbCommandExecuteNonQueryAsync(rebound))
+            if (boundCall is null)
                 return;
 
             context.RegisterCodeFix(
@@ -147,7 +159,7 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
                             context.Document,
                             hoistStatement,
                             conditionalAccess,
-                            hoistedInvocation,
+                            boundCall,
                             c
                         ),
                     equivalenceKey: Title
