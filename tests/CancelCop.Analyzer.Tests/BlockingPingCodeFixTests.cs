@@ -199,11 +199,13 @@ public class TestClass
     }
 
     [Fact]
-    public async Task PingSend_ReorderedNamedTimeSpan_HoistsWithNamedToken()
+    public async Task PingSend_NamedTimeSpanSpine_HoistsWithNamedToken()
     {
         // The spine diagnostic carries the token metadata even though no in-place
-        // rebind exists, so the statement hoist can offer a token-taking candidate
+        // rebind exists, so the statement hoist can offer a named-token candidate
         // that its speculative rebind validates against the TimeSpan arity.
+        // The ref pack does not mark buffer/options optional, so all four named
+        // arguments are spelled out; the token is appended as a named argument.
         var source =
             @"
 using System;
@@ -215,7 +217,11 @@ public class TestClass
 {
     public async Task RunAsync(Ping? ping, byte[] buffer, CancellationToken cancellationToken)
     {
-        ping?.{|#0:Send|}(""host"", TimeSpan.FromMilliseconds(500), buffer, null);
+        ping?.{|#0:Send|}(
+            hostNameOrAddress: ""host"",
+            timeout: TimeSpan.FromMilliseconds(500),
+            buffer: buffer,
+            options: null);
         await Task.Yield();
     }
 }";
@@ -233,7 +239,11 @@ public class TestClass
     {
         if (ping is not null)
         {
-            await ping.SendPingAsync(""host"", TimeSpan.FromMilliseconds(500), buffer, null, cancellationToken);
+            await ping.SendPingAsync(
+            hostNameOrAddress: ""host"",
+            timeout: TimeSpan.FromMilliseconds(500),
+            buffer: buffer,
+            options: null, cancellationToken: cancellationToken);
         }
         await Task.Yield();
     }
