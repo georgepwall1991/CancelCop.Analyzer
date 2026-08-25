@@ -125,8 +125,7 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
                 || rebound.ReturnType.Name != "Task"
                 || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                     != "System.Threading.Tasks"
-                || scalarMethod == null
-                || !rebound.ContainingType.Equals(scalarMethod.OriginalDefinition.ContainingType)
+                || !ReachesDbCommandExecuteScalarAsync(rebound)
             )
                 return;
 
@@ -168,6 +167,26 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Walks the override chain and requires it to reach the framework's ExecuteScalarAsync on
+    /// System.Data.Common.DbCommand — provider overrides qualify while unrelated `new` hiders
+    /// on derived classes do not.
+    /// </summary>
+    private static bool ReachesDbCommandExecuteScalarAsync(IMethodSymbol? method)
+    {
+        for (
+            var current = method?.OriginalDefinition;
+            current != null;
+            current = current.OverriddenMethod
+        )
+        {
+            if (current.ContainingType?.ToDisplayString() == "System.Data.Common.DbCommand")
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(

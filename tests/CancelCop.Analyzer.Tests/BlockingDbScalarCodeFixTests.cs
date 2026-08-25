@@ -503,8 +503,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ProtectedHiders_NullConditional_StillReportsWithoutAFix()
+    public async Task ProtectedHiders_NullConditional_HoistsViaInheritedBase()
     {
+        // The protected `new` hiders are inaccessible to external callers; speculative binding
+        // selects the inherited public framework ExecuteScalarAsync(ct), so the safe hoist applies.
         var source =
             MidCommandScaffold
             + @"
@@ -524,12 +526,36 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+public class HiddenCommand : MidCommand
+{
+    protected new Task<object> ExecuteScalarAsync() => Task.FromResult<object>(null!);
+    protected new Task<object> ExecuteScalarAsync(CancellationToken cancellationToken)
+        => Task.FromResult<object>(null!);
+}
+
+public class TestClass
+{
+    public async Task RunAsync(HiddenCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
-    public async Task ExtraExecuteScalarAsyncIntOverload_NullConditional_StillReportsWithoutAFix()
+    public async Task ExtraExecuteScalarAsyncIntOverload_NullConditional_HoistsToCancellableForm()
     {
+        // The unrelated ExecuteScalarAsync(int) hider is skipped: speculative binding selects
+        // the inherited framework ExecuteScalarAsync(ct).
         var source =
             MidCommandScaffold
             + @"
@@ -547,7 +573,27 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+public class ExtraCommand : MidCommand
+{
+    public int ExecuteScalarAsync(int timeout) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ExtraCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
