@@ -1,3 +1,11 @@
+## Release 1.52.38
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC050 | Usage | Warning | Avoid blocking Ping.Send in async code
+
 ## Release 1.52.0
 
 ### New Rules
