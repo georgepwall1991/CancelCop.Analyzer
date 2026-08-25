@@ -267,7 +267,7 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         // provably `this` (`this`, `base`, or a local assigned from this) inside an
         // AuthenticateAsClientAsync member retargets the enclosing call itself and
         // recurses when the fix virtually dispatches. Withhold those.
-        if (!ReceiverCouldDispatchToEnclosing(invocation))
+        if (ReceiverIsProvablyFresh(invocation))
             return false;
 
         var enclosing =
@@ -289,13 +289,9 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             && IsTaskLike(enclosing.ReturnType);
     }
 
-    private static bool ReceiverCouldDispatchToEnclosing(
-        InvocationExpressionSyntax invocation
-    )
+    private static bool ReceiverIsProvablyFresh(InvocationExpressionSyntax invocation)
     {
-        // A bare `AuthenticateAsClient(...)` IS an implicit-this call.
-        if (invocation.Expression is IdentifierNameSyntax)
-            return true;
+        // A bare `AuthenticateAsClient(...)` IS an implicit-this call — never fresh.
 
         ExpressionSyntax? receiver;
         if (invocation.Expression is MemberBindingExpressionSyntax)
@@ -320,7 +316,7 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             }
 
             if (receiver is null)
-                return false;
+                return true;
         }
         else if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
@@ -328,17 +324,31 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         }
         else
         {
-            return false;
+            return true;
         }
 
         while (receiver is ParenthesizedExpressionSyntax parenthesized)
             receiver = parenthesized.Expression;
+        // Only `new SslStream(...)` is PROVABLY fresh: a derived construction
+        // (`new Client(...)`) may be the enclosing instance, and an invocation result
+        // may be a factory that returns `this`. Anything else — this, base, locals,
+        // parameters, fields, properties — could alias the enclosing instance and
+        // recurse after the rewrite, so it is withheld.
+        return receiver
+            is ObjectCreationExpressionSyntax
+            {
+                Type: IdentifierNameSyntax { Identifier.Text: "SslStream" },
+            };
 
-        // Only `new SslStream(...)` is PROVABLY fresh: an invocation result may be a
-        // factory that returns `this`. Anything else — this, base, locals, parameters,
-        // fields, properties — could alias the enclosing instance and recurse after
-        // the rewrite, so it is withheld.
-        return receiver is not ObjectCreationExpressionSyntax;
+        // Only `new` on the exact framework SslStream type is PROVABLY fresh: a
+        // derived construction (`new Client(...)`) may be the enclosing instance, and
+        // an invocation result may be a factory that returns `this`. Anything else —
+        // this, base, locals, parameters, fields, properties — is withheld.
+        return receiver
+            is ObjectCreationExpressionSyntax
+            {
+                Type: IdentifierNameSyntax { Identifier.Text: "SslStream" },
+            };
     }
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
     {
