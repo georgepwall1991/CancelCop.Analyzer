@@ -104,9 +104,12 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
                     .FindEnclosingCancellationToken(invocation, semanticModel)
                     ?.ExpressionText;
 
+            // Prefer the cancellable form; older targets exposing only a tokenless ConnectAsync
+            // fall back to it. Both are validated by speculative rebinding.
+            InvocationExpressionSyntax? tokenCall = null;
             if (hoistToken != null)
             {
-                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                tokenCall = hoistedInvocation.WithArgumentList(
                     hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
                 );
             }
@@ -114,15 +117,28 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
             // Speculatively rebind: only the framework's awaitable ConnectAsync overloads on
             // System.Net.Sockets.TcpClient qualify; hidden unrelated members withhold the fix.
             var connectMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            if (
-                !RebindsToTcpClientConnectAsync(
+            var boundCall =
+                tokenCall != null
+                && RebindsToTcpClientConnectAsync(
                     semanticModel,
                     invocation.SpanStart,
-                    hoistedInvocation,
+                    tokenCall,
                     connectMethod
                 )
-            )
+                    ? tokenCall
+                    : RebindsToTcpClientConnectAsync(
+                            semanticModel,
+                            invocation.SpanStart,
+                            hoistedInvocation,
+                            connectMethod
+                        )
+                        ? hoistedInvocation
+                        : null;
+
+            if (boundCall is null)
                 return;
+
+            hoistedInvocation = boundCall;
 
             context.RegisterCodeFix(
                 CodeAction.Create(
