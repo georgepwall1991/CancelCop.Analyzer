@@ -304,7 +304,7 @@ public class TestClass
     {
         if (client is not null)
         {
-            await client.ConnectAsync();
+            await client.ConnectAsync(cancellationToken);
         }
         await Task.Yield();
     }

@@ -212,8 +212,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`
   with candidate ordering (token first, tokenless fallback) and
   per-candidate speculative rebind requiring the framework's
-  ConnectAsync on NamedPipeClientStream. 2 new fixer tests; 1 NoFix
-  test converted to hoist expectation.
+  ConnectAsync on NamedPipeClientStream; non-token parameters must
+  mirror the original Connect arguments. 2 new fixer tests; 1 NoFix
+  test converted to hoist expectation (token flows).
 - v1.52.34: 1497 tests, green locally. **CC041 fixer** —
   null-conditional `WaitForConnection()` statements hoist to an
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`

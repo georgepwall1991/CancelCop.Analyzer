@@ -142,8 +142,10 @@ public class BlockingNamedPipeClientCodeFixProvider : CodeFixProvider
                     || !reboundCandidate.ContainingType.Equals(
                         clientMethod.OriginalDefinition.ContainingType
                     )
-                    || reboundCandidate.Parameters.Length
-                        != invocation.ArgumentList.Arguments.Count
+                    // Non-token parameters must mirror the original Connect arguments.
+                    || reboundCandidate.Parameters.Count(
+                        p => !CancellationTokenHelpers.IsCancellationToken(p.Type)
+                    ) != invocation.ArgumentList.Arguments.Count
                 )
                     continue;
 
