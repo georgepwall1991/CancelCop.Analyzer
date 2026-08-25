@@ -178,7 +178,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task GetContext_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task GetContext_NullConditional_HoistsToIfNotNullGetContextAsync()
     {
         var source =
             @"
@@ -188,14 +188,32 @@ using System.Threading.Tasks;
 
 public class TestClass
 {
-    public async Task RunAsync(HttpListener? listener, CancellationToken cancellationToken)
+    public async Task RunAsync(HttpListener? listener)
     {
         listener?.{|#0:GetContext|}();
         await Task.Yield();
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(HttpListener? listener)
+    {
+        if (listener is not null)
+        {
+            await listener.GetContextAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -305,5 +323,99 @@ public class TestClass
 }";
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalGetContext_HoistsToIfNotNullGetContextAsync()
+    {
+        var test =
+            @"
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(HttpListener? listener)
+    {
+        await Task.Yield();
+        listener?.{|#0:GetContext|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(HttpListener? listener)
+    {
+        await Task.Yield();
+        if (listener is not null)
+        {
+            await listener.GetContextAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC040", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalGetContext_HoistsWithSplicedListener()
+    {
+        var test =
+            @"
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public HttpListener Listener { get; } = new HttpListener();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host)
+    {
+        await Task.Yield();
+        host?.Listener.{|#0:GetContext|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public HttpListener Listener { get; } = new HttpListener();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Listener.GetContextAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC040", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
     }
 }
