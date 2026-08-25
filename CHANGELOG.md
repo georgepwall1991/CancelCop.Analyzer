@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.35] - 2026-08-25
+
+### Changed
+
+- **CC042 fixer:** null-conditional `Connect(...)` statements now
+  rewrite instead of being withheld (`pipe?.Connect();` becomes
+  `if (pipe is not null) { await pipe.ConnectAsync(ct); }`,
+  chained spines splice the pipe into the awaited call).
+  Candidate ordering (cancellable first, tokenless fallback) with
+  per-candidate speculative rebind requiring the framework
+  ConnectAsync on System.IO.Pipes.NamedPipeClientStream.
+
 ## [1.52.34] - 2026-08-25
 
 ### Changed
