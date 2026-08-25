@@ -182,6 +182,19 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
             invocation.ArgumentList
         );
 
+        if (tokenName != null)
+        {
+            asyncInvocation = asyncInvocation.WithArgumentList(
+                asyncInvocation.ArgumentList.AddArguments(
+                    SyntaxFactory.Argument(
+                        CancellationTokenHelpers.TokenExpression(tokenName)
+                    )
+                )
+            );
+        }
+
+        // Speculatively bind the exact emitted invocation: a subclass hiding WaitForExitAsync
+        // with a non-awaitable member must withhold the rewrite instead of breaking the build.
         var waitMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
         var rebound = semanticModel
             .GetSpeculativeSymbolInfo(
@@ -202,17 +215,6 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
         {
             asyncInvocation = null;
             return false;
-        }
-
-        if (tokenName != null)
-        {
-            asyncInvocation = asyncInvocation.WithArgumentList(
-                asyncInvocation.ArgumentList.AddArguments(
-                    SyntaxFactory.Argument(
-                        CancellationTokenHelpers.TokenExpression(tokenName)
-                    )
-                )
-            );
         }
 
         return true;
