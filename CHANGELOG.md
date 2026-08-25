@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are carried verbatim; parameterless `Wait()` gains the in-scope
   token exactly like the direct-path fix. A speculative rebind
   withholds the rewrite when a subclass hides `WaitAsync` with an
-  unrelated member.
+  unrelated member — for direct and null-conditional calls alike.
 
 ## [1.52.22] - 2026-08-24
 

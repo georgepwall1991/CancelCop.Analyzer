@@ -55,11 +55,17 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         if (semanticModel == null)
             return;
 
+        var name = root.FindToken(diagnostic.Location.SourceSpan.Start).Parent;
+        if (name == null)
+            return;
+
+        var waitMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+
         var tokenName = diagnostic.Properties.TryGetValue(
             BlockingSemaphoreAnalyzer.TokenNameProperty,
-            out var name
+            out var tokenNameProperty
         )
-            ? name
+            ? tokenNameProperty
             : null;
 
         // A whole null-conditional statement (`gate?.Wait();`) hoists to
@@ -121,24 +127,16 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
 
             // Speculatively rebind the generated call: a SemaphoreSlim subclass may hide
             // WaitAsync with an unrelated member, and the rewrite must not invoke it.
-            var waitMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            var rebound = semanticModel
-                .GetSpeculativeSymbolInfo(
+            if (
+                !SpeculativeRebindIsFrameworkWaitAsync(
+                    semanticModel,
                     invocation.SpanStart,
                     waitAsync,
-                    SpeculativeBindingOption.BindAsExpression
+                    waitMethod
                 )
-                .Symbol as IMethodSymbol;
-            if (
-                rebound == null
-                || rebound.Name != "WaitAsync"
-                || rebound.ReturnType.Name != "Task"
-                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
-                    != "System.Threading.Tasks"
-                || waitMethod == null
-                || !rebound.ContainingType.Equals(waitMethod.OriginalDefinition.ContainingType)
             )
                 return;
+
 
             context.RegisterCodeFix(
                 CodeAction.Create(
@@ -158,8 +156,9 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
             return;
         }
 
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+        if (name.Parent is not MemberAccessExpressionSyntax memberAccess)
             return;
+
 
         // Only withhold when this Wait (or a postfix chain on it) is the WhenNotNull
         // branch of `?.`. An argument nested inside an unrelated `holder?.Consume(...)`
@@ -167,6 +166,25 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
             return;
 
+        // The same hidden-member hazard applies to the in-place rewrite: only register when
+        // the renamed call speculatively rebinds to the framework's awaitable WaitAsync().
+        var candidateCall = SyntaxFactory.InvocationExpression(
+            SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                memberAccess.Expression.WithoutTrivia(),
+                SyntaxFactory.IdentifierName("WaitAsync")
+            ),
+            BuildArgumentList(invocation.ArgumentList, tokenName)
+        );
+        if (
+            !SpeculativeRebindIsFrameworkWaitAsync(
+                semanticModel,
+                invocation.SpanStart,
+                candidateCall,
+                waitMethod
+            )
+        )
+            return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -177,6 +195,31 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Speculatively binds the rewritten call and requires it to resolve to a
+    /// Task-returning <c>WaitAsync</c> declared by the same type as the original
+    /// <c>Wait()</c> — so a subclass hiding <c>WaitAsync</c> with an unrelated member
+    /// withholds the rewrite instead of producing non-compiling code.
+    /// </summary>
+    private static bool SpeculativeRebindIsFrameworkWaitAsync(
+        SemanticModel semanticModel,
+        int position,
+        InvocationExpressionSyntax call,
+        IMethodSymbol? waitMethod
+    )
+    {
+        var rebound = semanticModel
+            .GetSpeculativeSymbolInfo(position, call, SpeculativeBindingOption.BindAsExpression)
+            .Symbol as IMethodSymbol;
+        return rebound != null
+            && rebound.Name == "WaitAsync"
+            && rebound.ReturnType.Name == "Task"
+            && rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                == "System.Threading.Tasks"
+            && waitMethod != null
+            && rebound.ContainingType.Equals(waitMethod.OriginalDefinition.ContainingType);
     }
 
     /// <summary>
