@@ -207,14 +207,20 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.36: 1502 tests, green locally. **CC028 fixer** —
+- v1.52.36: 1505 tests, green locally. **CC028 fixer** —
   null-conditional statement spines (direct `reader?.ReadLine();`,
   chained `holder?.Reader.ReadLine();`, plus ReadToEnd and
   StreamWriter.WriteLine) hoist to an `is not null` guard with
   token flow; the fixer previously returned early because a `?.`
   spine surfaces as a MemberBindingExpression, which the name
-  switch did not handle. 4 new fixer tests; 1 NoFix test
-  converted to hoist expectation.
+  switch did not handle. NoFix precedence reordered so
+  named-argument-mismatch and await-unsafe contexts (lock body,
+  unsafe) stay final even on a `?.` spine — the hoist lands in the
+  same context and copies arguments verbatim; a withheld rewrite
+  that fails to hoist now stays withheld instead of falling through.
+  7 new fixer tests (4 hoists incl. token flow + chained spine;
+  3 NoFix regressions: non-statement conditional access, lock body,
+  renamed ReadAsync overload).
 - v1.52.35: 1499 tests, green locally. **CC042 fixer** —
   null-conditional `Connect(...)` statements hoist to an
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`

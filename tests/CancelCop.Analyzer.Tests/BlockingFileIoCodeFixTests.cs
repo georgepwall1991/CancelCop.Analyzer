@@ -1025,4 +1025,95 @@ public class TestClass
             .WithArguments("WriteLine");
         await CreateTest(test, fixedCode, expected).RunAsync();
     }
+
+    [Fact]
+    public async Task NonStatementConditionalAccess_ReportsWithoutOfferingAFix()
+    {
+        // The conditional access feeds a local, so there is no whole statement to hoist and
+        // `await` cannot sit on the spine — the diagnostic stands, no fix is offered.
+        var source =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader? reader)
+    {
+        var line = reader?.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(source, source, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalAccessInsideLock_ReportsWithoutOfferingAFix()
+    {
+        // The hoist lands its if-statement in the same lock body, where await stays illegal,
+        // so the rewrite is withheld entirely.
+        var source =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object sync = new();
+
+    public async Task RunAsync(StreamReader? reader)
+    {
+        lock (sync)
+        {
+            reader?.{|#0:ReadLine|}();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(source, source, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalAccessWithRenamedNamedArgument_ReportsWithoutOfferingAFix()
+    {
+        // A subclass adds a ReadAsync overload with renamed parameters (`buf`/`off`/`cnt`), so
+        // `buffer:`/`offset:`/`count:` would not bind on the rewrite target — and the hoist copies
+        // the argument list verbatim. No fix either way.
+        var source =
+            @"
+using System.IO;
+using System.IO.Compression;
+using System.Threading.Tasks;
+
+public class RenamedStream : GZipStream
+{
+    public RenamedStream(Stream stream)
+        : base(stream, CompressionMode.Decompress) { }
+
+    public new Task<int> ReadAsync(byte[] buf, int off, int cnt) =>
+        base.ReadAsync(buf, off, cnt);
+}
+
+public class TestClass
+{
+    public async Task RunAsync(RenamedStream? stream, byte[] data)
+    {
+        stream?.{|#0:Read|}(buffer: data, offset: 0, count: data.Length);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Read");
+        await CreateTest(source, source, expected).RunAsync();
+    }
 }

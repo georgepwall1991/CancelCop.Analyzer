@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Covers StreamReader ReadLine/ReadToEnd, StreamWriter
   Write/WriteLine/Flush, and Stream primitives; direct and
   chained spines splice correctly and an in-scope token flows
-  into the awaited call.
+  into the awaited call. NoFix reasons are re-ordered so
+  renamed-parameter calls and await-forbidden contexts (lock
+  bodies, unsafe) remain unfixable even on a `?.` spine, and a
+  conditional-access diagnostic the hoist cannot apply stays
+  fix-free instead of falling through to an invalid rewrite.
 
 ## [1.52.35] - 2026-08-25
 

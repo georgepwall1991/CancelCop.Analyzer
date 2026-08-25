@@ -137,6 +137,11 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
             return;
         }
 
+        // The hoist did not apply (non-statement conditional access, unsupported language level,
+        // dangling else, …). A withheld rewrite must stay withheld.
+        if (hasNoFix)
+            return;
+
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,
