@@ -114,32 +114,60 @@ public class BlockingTcpListenerCodeFixProvider : CodeFixProvider
         )
         {
             // The analyzer drops the in-scope token when its in-place rewrite could not apply;
-            // the hoist can, so re-resolve the token here.
+            // the hoist can, so re-resolve the token here. Prefer the cancellable form; older
+            // targets exposing only a parameterless Accept*Async fall back to it.
             var hoistToken =
                 tokenName
                 ?? CancellationTokenHelpers
                     .FindEnclosingCancellationToken(invocation, semanticModel)
                     ?.ExpressionText;
 
+            var acceptMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            InvocationExpressionSyntax? tokenCall = null;
             if (hoistToken != null)
             {
-                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                tokenCall = hoistedInvocation.WithArgumentList(
                     hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
                 );
             }
 
-            // Speculatively rebind: only the framework's awaitable Accept*Async overloads on
-            // System.Net.Sockets.TcpListener qualify; hidden unrelated members withhold the fix.
-            var acceptMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
             if (
-                !RebindsToTcpListenerAcceptAsync(
+                tokenCall != null
+                && !RebindsToTcpListenerAcceptAsync(
                     semanticModel,
                     invocation.SpanStart,
-                    hoistedInvocation,
+                    tokenCall,
                     acceptMethod
                 )
             )
+                throw new InvalidOperationException(
+                    "DBG-TOKENCALL-REJECTED symbol="
+                    + (semanticModel.GetSpeculativeSymbolInfo(invocation.SpanStart, tokenCall, SpeculativeBindingOption.BindAsExpression).Symbol?.ToDisplayString() ?? "null")
+                    + " candidates=" + string.Join("|", semanticModel.GetSpeculativeSymbolInfo(invocation.SpanStart, tokenCall, SpeculativeBindingOption.BindAsExpression).CandidateSymbols.Select(c2 => c2.ToDisplayString()))
+                );
+
+            var boundCall =
+                tokenCall != null
+                && RebindsToTcpListenerAcceptAsync(
+                    semanticModel,
+                    invocation.SpanStart,
+                    tokenCall,
+                    acceptMethod
+                )
+                    ? tokenCall
+                    : RebindsToTcpListenerAcceptAsync(
+                            semanticModel,
+                            invocation.SpanStart,
+                            hoistedInvocation,
+                            acceptMethod
+                        )
+                        ? hoistedInvocation
+                        : null;
+
+            if (boundCall is null)
                 return;
+
+            hoistedInvocation = boundCall;
 
             context.RegisterCodeFix(
                 CodeAction.Create(
@@ -216,11 +244,29 @@ public class BlockingTcpListenerCodeFixProvider : CodeFixProvider
             SpeculativeBindingOption.BindAsExpression
         );
 
+        // Only the framework's awaitable Accept*Async on TcpListener qualifies; the async forms
+        // may return Task or ValueTask.
         if (info.Symbol is not IMethodSymbol resolved)
             return false;
 
-        return resolved.Name == "AcceptTcpClientAsync"
-            || resolved.Name == "AcceptSocketAsync";
+        if (
+            resolved.IsStatic
+            || (resolved.ReturnType.Name != "Task" && resolved.ReturnType.Name != "ValueTask")
+            || resolved.ReturnType.ContainingNamespace?.ToDisplayString()
+                != "System.Threading.Tasks"
+            || resolved.ContainingType?.ToDisplayString() != "System.Net.Sockets.TcpListener"
+            || resolved.Parameters.Length != call.ArgumentList.Arguments.Count
+            || (
+                acceptMethod != null
+                && !resolved.ContainingType.Equals(
+                    acceptMethod.OriginalDefinition.ContainingType
+                )
+            )
+        )
+            return false;
+
+        return true;
+
     }
 
     private static async Task<Document> ReplaceAsync(
