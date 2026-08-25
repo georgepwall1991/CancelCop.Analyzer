@@ -290,11 +290,16 @@ public class Client : SslStream
     public async Task<bool> AuthenticateAsClientAsync(string host)
     {
         SslStream self = this;
-        self.{|#0:AuthenticateAsClient|}(host);
+        if (host.Length > 0)
+        {
+            self.{|#0:AuthenticateAsClient|}(host);
+        }
         return true;
     }
 }";
 
+        // The alias assignment sits in the OUTER block; the lookup must cross
+        // nested-block boundaries.
         await CreateTest(source, source, Expected()).RunAsync();
     }
 

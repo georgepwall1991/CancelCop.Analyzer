@@ -341,15 +341,11 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
 
     private static bool LocalIsAssignedFromThis(IdentifierNameSyntax identifier)
     {
-        for (
-            var current = identifier.Parent;
-            current is not null;
-            current = current.Parent
-        )
+        // The assignment may live in any enclosing block of the same function body
+        // (`SslStream self = this;` above an `if { self.AuthenticateAsClient(); }`),
+        // so scan outward block by block until a function boundary.
+        foreach (var block in identifier.AncestorsAndSelf().OfType<BlockSyntax>())
         {
-            if (current is not BlockSyntax block)
-                continue;
-
             foreach (var statement in block.Statements)
             {
                 if (
@@ -364,9 +360,21 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
                         is ThisExpressionSyntax
                 )
                     return true;
-            }
 
-            break;
+                if (
+                    statement
+                        is ExpressionStatementSyntax
+                        {
+                            Expression: AssignmentExpressionSyntax
+                            {
+                                Left: IdentifierNameSyntax assigned,
+                                Right: ThisExpressionSyntax,
+                            }
+                        }
+                    && assigned.Identifier.Text == identifier.Identifier.Text
+                )
+                    return true;
+            }
         }
 
         return false;
