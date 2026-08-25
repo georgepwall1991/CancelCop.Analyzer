@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.Generic;
 using System.Composition;
 using System.Linq;
 using System.Threading;
@@ -105,32 +106,58 @@ public class BlockingNamedPipeCodeFixProvider : CodeFixProvider
                     .FindEnclosingCancellationToken(invocation, semanticModel)
                     ?.ExpressionText;
 
+            // Candidate forms in priority order: cancellable, then parameterless for targets
+            // whose WaitForConnectionAsync lacks a CancellationToken overload.
+            var candidates = new List<InvocationExpressionSyntax>();
             if (hoistToken != null)
             {
-                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                candidates.Add(hoistedInvocation.WithArgumentList(
                     hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
-                );
+                ));
             }
+            candidates.Add(hoistedInvocation);
 
             var waitForMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            var rebound = semanticModel
-                .GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    hoistedInvocation,
-                    SpeculativeBindingOption.BindAsExpression
+            InvocationExpressionSyntax? boundCall = null;
+            foreach (var candidate in candidates)
+            {
+                var rebound = semanticModel
+                    .GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        candidate,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+                if (
+                    rebound == null
+                    || rebound.IsStatic
+                    || rebound.Name != "WaitForConnectionAsync"
+                    || (rebound.ReturnType.Name != "Task" && rebound.ReturnType.Name != "ValueTask")
+                    || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                        != "System.Threading.Tasks"
+                    || waitForMethod == null
+                    || !rebound.ContainingType.Equals(
+                        waitForMethod.OriginalDefinition.ContainingType
+                    )
                 )
-                .Symbol as IMethodSymbol;
-            if (
-                rebound == null
-                || rebound.IsStatic
-                || rebound.Name != "WaitForConnectionAsync"
-                || (rebound.ReturnType.Name != "Task" && rebound.ReturnType.Name != "ValueTask")
-                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
-                    != "System.Threading.Tasks"
-                || waitForMethod == null
-                || !rebound.ContainingType.Equals(waitForMethod.OriginalDefinition.ContainingType)
-            )
+                {
+                    if (
+                        candidate != hoistedInvocation
+                    )
+                        throw new InvalidOperationException(
+                            $"DBG cand rejected name={rebound?.Name} args={candidate.ArgumentList.Arguments.Count} containing={rebound?.ContainingType} rt={rebound?.ReturnType}"
+                        );
+                    continue;
+                }
+
+                boundCall = candidate;
+                break;
+            }
+
+            if (boundCall is null)
                 return;
+
+            hoistedInvocation = boundCall;
 
             context.RegisterCodeFix(
                 CodeAction.Create(
