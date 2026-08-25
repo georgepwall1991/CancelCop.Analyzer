@@ -131,6 +131,7 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
                 var tokenParameterName =
                     ResolveCounterpartTokenParameterName(
                         semanticModel,
+                        invocation.SpanStart,
                         conditionalAccess.Expression,
                         splicedReceiver,
                         sendMethod
@@ -322,6 +323,7 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
     /// </summary>
     private static string? ResolveCounterpartTokenParameterName(
         SemanticModel semanticModel,
+        int position,
         ExpressionSyntax attachedOperation,
         ExpressionSyntax splicedReceiver,
         IMethodSymbol? sendMethod
@@ -330,9 +332,17 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         if (sendMethod == null)
             return null;
 
-        // Type lookups need an attached node; the spliced receiver is synthesized, so the type is
-        // taken from the (same-typed) attached operation.
-        var type = semanticModel.GetTypeInfo(attachedOperation).Type;
+        // The spliced receiver is synthesized (detached), so its type comes from speculative
+        // binding at the call site; the attached operation's type would be the spine operation,
+        // not the awaited client.
+        var type =
+            semanticModel
+                .GetSpeculativeTypeInfo(
+                    position,
+                    splicedReceiver,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Type ?? semanticModel.GetTypeInfo(attachedOperation).Type;
         while (type != null)
         {
             foreach (var member in type.GetMembers("SendMailAsync"))
