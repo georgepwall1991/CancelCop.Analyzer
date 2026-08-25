@@ -211,8 +211,9 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   null-conditional `ExecuteNonQuery()` statements hoist to an
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`
   with token flow and a speculative rebind requiring the framework's
-  ExecuteNonQueryAsync on DbCommand. 2 new fixer tests; 1 NoFix test
-  updated to expect the hoist.
+  ExecuteNonQueryAsync on DbCommand. 3 new fixer tests (direct,
+  chained, self-recursion this-spine + parenthesized + other-receiver
+  variants) and 2 NoFix tests converted to hoist expectations.
 - v1.52.31: 1489 tests, green locally. **CC046 fixer** —
   null-conditional `ExecuteReader()` statements hoist to an
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`
