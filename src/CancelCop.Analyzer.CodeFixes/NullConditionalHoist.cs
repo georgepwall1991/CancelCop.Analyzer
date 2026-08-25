@@ -80,6 +80,82 @@ internal static class NullConditionalHoist
             && ResolveReceiver(conditionalAccess, invocation, memberName, out receiver);
     }
 
+    /// <summary>
+    /// Convenience wrapper for the whole-statement blocking-call shape: detects the
+    /// <c>x?.<paramref name="memberName"/>(…)</c> statement, enforces terminality, and builds the
+    /// renamed invocation <c>x.<paramref name="newName"/>(original arguments)</c> with the
+    /// operation spliced back under the receiver. Callers add rule-specific gates (language
+    /// version, nullable-struct operations, speculative rebinding, token flow).
+    /// </summary>
+    public static bool TryPrepareHoistedCall(
+        SemanticModel semanticModel,
+        InvocationExpressionSyntax invocation,
+        string memberName,
+        string newName,
+        out ExpressionStatementSyntax statement,
+        out ConditionalAccessExpressionSyntax conditionalAccess,
+        out InvocationExpressionSyntax asyncInvocation
+    )
+    {
+        asyncInvocation = null!;
+        if (
+            !TryGetStatement(semanticModel, invocation, out statement, out conditionalAccess)
+            || !ReferenceEquals(invocation, conditionalAccess.WhenNotNull)
+        )
+            return false;
+
+        SimpleNameSyntax newNameNode;
+        ExpressionSyntax splicedReceiver;
+        switch (invocation.Expression)
+        {
+            case MemberBindingExpressionSyntax
+                {
+                    Name.Identifier.Text: var directName
+                } directBinding
+                when directName == memberName:
+                // Direct spine (`x?.Wait()`): the awaited receiver is the operation itself.
+                splicedReceiver = conditionalAccess.Expression;
+                newNameNode = SyntaxFactory.IdentifierName(newName).WithTriviaFrom(
+                    directBinding.Name
+                );
+                break;
+            case MemberAccessExpressionSyntax chainedAccess
+                when chainedAccess.Name.Identifier.Text == memberName:
+                // Chained spine (`holder?.Gate.Wait()`): splice the operation under the
+                // receiver-less chain.
+                if (
+                    !TrySpliceOperation(
+                        chainedAccess.Expression,
+                        conditionalAccess.Expression.WithoutTrivia(),
+                        out var spliced
+                    )
+                    || ContainsNullConditionalAccess(spliced)
+                )
+                {
+                    asyncInvocation = null!;
+                    return false;
+                }
+                splicedReceiver = spliced;
+                newNameNode = SyntaxFactory.IdentifierName(newName).WithTriviaFrom(
+                    chainedAccess.Name
+                );
+                break;
+            default:
+                asyncInvocation = null!;
+                return false;
+        }
+
+        asyncInvocation = SyntaxFactory.InvocationExpression(
+            SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                splicedReceiver,
+                newNameNode
+            ),
+            invocation.ArgumentList
+        );
+        return true;
+    }
+
     private static bool ResolveReceiver(
         ConditionalAccessExpressionSyntax conditionalAccess,
         InvocationExpressionSyntax invocation,

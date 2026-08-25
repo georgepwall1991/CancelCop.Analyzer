@@ -38,6 +38,12 @@ public class BlockingDbConnectionCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
         if (diagnostic.Properties.ContainsKey(BlockingDbConnectionAnalyzer.NoFixProperty))
@@ -58,6 +64,75 @@ public class BlockingDbConnectionCodeFixProvider : CodeFixProvider
             ? name
             : null;
 
+        // A whole null-conditional statement (`connection?.Open();`) hoists to
+        // `if (connection is not null) { await connection.OpenAsync(ct); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`.
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "Open",
+                "OpenAsync",
+                out var hoistStatement,
+                out var conditionalAccess,
+                out var hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            if (tokenName != null)
+            {
+                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(
+                        SyntaxFactory.Argument(
+                            CancellationTokenHelpers.TokenExpression(tokenName)
+                        )
+                    )
+                );
+            }
+
+            var openMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var rebound = semanticModel
+                .GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    hoistedInvocation,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+            if (
+                rebound == null
+                || rebound.Name != "OpenAsync"
+                || rebound.ReturnType.Name != "Task"
+                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                    != "System.Threading.Tasks"
+                || !ReachesDbConnectionOpenAsync(rebound)
+                || openMethod == null
+                || !ReachesDbConnectionOpenAsync(openMethod)
+            )
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
             "OpenAsync",
@@ -75,6 +150,24 @@ public class BlockingDbConnectionCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Walks the override chain and requires it to reach the framework's OpenAsync on
+    /// System.Data.Common.DbConnection — so provider overrides qualify while unrelated `new`
+    /// hiders on derived classes do not.
+    /// </summary>
+    private static bool ReachesDbConnectionOpenAsync(IMethodSymbol? method)
+    {
+        for (var current = method?.OriginalDefinition; current != null; current = current.OverriddenMethod)
+        {
+            if (
+                current.ContainingType?.ToDisplayString() == "System.Data.Common.DbConnection"
+            )
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(

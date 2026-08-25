@@ -155,7 +155,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task Open_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task Open_NullConditional_HoistsToIfNotNullOpenAsync()
     {
         var source =
             @"
@@ -172,7 +172,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbConnection? connection, CancellationToken cancellationToken)
+    {
+        if (connection is not null)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -347,7 +365,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    public async Task ChainedConditionalAccess_HoistsToIfNotNullOpenAsync()
     {
         var source =
             @"
@@ -369,7 +387,30 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbConnection Connection { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        if (host is not null)
+        {
+            await host.Connection.OpenAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -444,7 +485,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExtraOpenAsyncIntOverload_NullConditional_StillReportsWithoutAFix()
+    public async Task ExtraOpenAsyncIntOverload_NullConditional_HoistsToCancellableForm()
     {
         // An unrelated OpenAsync(int) is arity-compatible with the token-taking
         // rewrite. ReachesCounterpart must keep scanning to the framework method.
@@ -479,7 +520,41 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+                var fixedCode =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class ExtraConnection : DbConnection
+{
+    public override string ConnectionString { get; set; } = """";
+    public override string Database => """";
+    public override string DataSource => """";
+    public override string ServerVersion => """";
+    public override ConnectionState State => ConnectionState.Closed;
+    public override void ChangeDatabase(string databaseName) { }
+    public override void Close() { }
+    public override void Open() { }
+    public int OpenAsync(int timeout) => 0;
+    protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => null!;
+    protected override DbCommand CreateDbCommand() => null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ExtraConnection? connection, CancellationToken cancellationToken)
+    {
+        if (connection is not null)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -564,5 +639,97 @@ public class TestClass
 }";
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalOpen_HoistsToIfNotNullOpenAsync()
+    {
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbConnection? connection, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        connection?.{|#0:Open|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbConnection? connection, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (connection is not null)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalOpen_HoistsWithSplicedConnection()
+    {
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbConnection Connection { get; }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        host?.Connection.{|#0:Open|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbConnection Connection { get; }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Connection.OpenAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
 }

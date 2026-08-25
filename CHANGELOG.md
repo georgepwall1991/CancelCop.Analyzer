@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.26] - 2026-08-24
+
+### Changed
+
+- **CC045 fixer:** null-conditional `Open()` statements now rewrite
+  instead of being withheld (`connection?.Open();` becomes
+  `if (connection is not null)
+  { await connection.OpenAsync(cancellationToken); }`, chained
+  spines splice the connection into the awaited call).
+- **Shared hoist machinery:** extracted `TryPrepareHoistedCall`
+  into `NullConditionalHoist`; new hoists build on it, keeping
+  spine detection, terminality, receiver resolution, and splicing
+  in one place. The rebind check walks the override chain so
+  provider `OpenAsync` overrides qualify while unrelated hiders
+  do not.
+
 ## [1.52.25] - 2026-08-24
 
 ### Changed
