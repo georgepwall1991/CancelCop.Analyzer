@@ -37,9 +37,21 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingDbScalarAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingDbScalarAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "token-required")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -56,6 +68,102 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
         )
             ? name
             : null;
+
+        // A whole null-conditional statement (`command?.ExecuteScalar();`) hoists to
+        // `if (command is not null) { await command.ExecuteScalarAsync(ct); }`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "ExecuteScalar",
+                "ExecuteScalarAsync",
+                out hoistStatement,
+                out conditionalAccess,
+                out hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // The analyzer drops the in-scope token when its in-place rewrite could not apply;
+            // the hoist can, so re-resolve the token here.
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            // Candidate forms in priority order: cancellable (in-scope token re-resolved),
+            // then tokenless for targets whose ExecuteScalarAsync lacks a ct overload.
+            var candidates = new List<InvocationExpressionSyntax>();
+            if (hoistToken != null)
+            {
+                candidates.Add(hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(
+                        SyntaxFactory.Argument(
+                            CancellationTokenHelpers.TokenExpression(hoistToken)
+                        )
+                    )
+                ));
+            }
+            candidates.Add(hoistedInvocation);
+
+            InvocationExpressionSyntax? boundCall = null;
+            foreach (var candidate in candidates)
+            {
+                var reboundCandidate = semanticModel
+                    .GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        candidate,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+                if (
+                    reboundCandidate == null
+                    || reboundCandidate.IsStatic
+                    || reboundCandidate.Name != "ExecuteScalarAsync"
+                    || reboundCandidate.ReturnType.Name != "Task"
+                    || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
+                        != "System.Threading.Tasks"
+                    || !ReachesDbCommandExecuteScalarAsync(reboundCandidate)
+                )
+                    continue;
+
+                boundCall = candidate;
+                break;
+            }
+
+            if (boundCall is null)
+                return;
+
+            hoistedInvocation = boundCall;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
@@ -74,6 +182,26 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Walks the override chain and requires it to reach the framework's ExecuteScalarAsync on
+    /// System.Data.Common.DbCommand — provider overrides qualify while unrelated `new` hiders
+    /// on derived classes do not.
+    /// </summary>
+    private static bool ReachesDbCommandExecuteScalarAsync(IMethodSymbol? method)
+    {
+        for (
+            var current = method?.OriginalDefinition;
+            current != null;
+            current = current.OverriddenMethod
+        )
+        {
+            if (current.ContainingType?.ToDisplayString() == "System.Data.Common.DbCommand")
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(
