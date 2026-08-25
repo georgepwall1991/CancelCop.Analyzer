@@ -261,7 +261,7 @@ public class TestClass
     {
         lock (sync)
         {
-            ping.{|#0:Send|}(""host"");
+            ping?.{|#0:Send|}(""host"");
         }
         await Task.Yield();
     }
