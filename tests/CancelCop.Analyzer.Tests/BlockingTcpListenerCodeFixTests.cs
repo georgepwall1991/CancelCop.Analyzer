@@ -249,7 +249,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task AcceptTcpClient_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task AcceptTcpClient_NullConditional_HoistsToIfNotNullAwait()
     {
         var source =
             @"
@@ -266,7 +266,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected("AcceptTcpClient")).RunAsync();
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(TcpListener? listener, CancellationToken cancellationToken)
+    {
+        if (listener is not null)
+        {
+            await listener.AcceptTcpClientAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected("AcceptTcpClient")).RunAsync();
     }
 
     [Fact]
