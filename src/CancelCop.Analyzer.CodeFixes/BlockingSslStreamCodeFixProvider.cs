@@ -122,6 +122,13 @@ public class BlockingSslStreamCodeFixProvider : CodeFixProvider
             candidates.Add(hoistedInvocation);
 
             var streamMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            // The hoisted candidate must resolve to the framework's
+            // AuthenticateAsClientAsync on System.Net.Security.SslStream — a same-named
+            // `new` hider on a derived type must not pass just because it shares the
+            // receiver type with the original sync call.
+            var frameworkStreamType = semanticModel.Compilation.GetTypeByMetadataName(
+                "System.Net.Security.SslStream"
+            );
             InvocationExpressionSyntax? boundCall = null;
             foreach (var candidate in candidates)
             {
@@ -141,9 +148,10 @@ public class BlockingSslStreamCodeFixProvider : CodeFixProvider
                     || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
                         != "System.Threading.Tasks"
                     || streamMethod == null
+                    || frameworkStreamType == null
                     || !SymbolEqualityComparer.Default.Equals(
-                        reboundCandidate.ContainingType,
-                        streamMethod.OriginalDefinition.ContainingType
+                        reboundCandidate.OriginalDefinition.ContainingType,
+                        frameworkStreamType
                     )
                     // Non-token parameters must mirror the original
                     // AuthenticateAsClient arguments.

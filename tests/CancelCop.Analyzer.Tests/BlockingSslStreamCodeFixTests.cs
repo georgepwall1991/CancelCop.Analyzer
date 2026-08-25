@@ -271,4 +271,65 @@ public class TestClass
         await CreateTest(source, source, Expected()).RunAsync();
     }
 
+    [Fact]
+    public async Task AuthenticateAsClient_ThisAliasInsideAuthenticateAsClientAsync_NoFix()
+    {
+        // A receiver provably assigned from `this` virtually dispatches the rewrite back
+        // to the enclosing member — implicit-this recursion through an alias.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        SslStream self = this;
+        self.{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task AuthenticateAsClient_ConditionalSpineWithHider_NoFix()
+    {
+        // A derived type hides the TAP member with a same-named `new` method. The spine
+        // hoist must not bind to it: only the framework's own
+        // SslStream.AuthenticateAsClientAsync validates.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Derived : SslStream
+{
+    public Derived()
+        : base(Stream.Null) { }
+
+    public new async Task AuthenticateAsClientAsync(string host)
+    {
+        await Task.Yield();
+    }
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Derived? stream)
+    {
+        stream?.{|#0:AuthenticateAsClient|}(""host"");
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }

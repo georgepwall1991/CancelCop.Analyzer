@@ -263,17 +263,20 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         INamedTypeSymbol sslStreamType
     )
     {
-        // Only an implicit-this call (a bare `AuthenticateAsClient(...)`
-        // without a receiver) can retarget the enclosing
-        // AuthenticateAsClientAsync itself and recurse.
-        if (invocation.Expression is not IdentifierNameSyntax)
+        // A bare `AuthenticateAsClient(...)` — or one on a receiver that is
+        // provably `this` (`this`, `base`, or a local assigned from this) inside an
+        // AuthenticateAsClientAsync member retargets the enclosing call itself and
+        // recurses when the fix virtually dispatches. Withhold those.
+        if (!ReceiverMayBeThis(invocation))
             return false;
 
         var enclosing =
-            context.SemanticModel.GetEnclosingSymbol(
-                invocation.SpanStart,
-                context.CancellationToken
-            ) as IMethodSymbol;
+            context
+                .SemanticModel.GetEnclosingSymbol(
+                    invocation.SpanStart,
+                    context.CancellationToken
+                )
+                as IMethodSymbol;
 
         while (
             enclosing is { MethodKind: MethodKind.LocalFunction or MethodKind.AnonymousFunction }
@@ -284,6 +287,60 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             && enclosing.Name == "AuthenticateAsClientAsync"
             && DerivesFromOrEquals(enclosing.ContainingType, sslStreamType)
             && IsTaskLike(enclosing.ReturnType);
+    }
+
+    private static bool ReceiverMayBeThis(InvocationExpressionSyntax invocation)
+    {
+        switch (invocation.Expression)
+        {
+            case IdentifierNameSyntax:
+                return true;
+            case MemberAccessExpressionSyntax memberAccess:
+                switch (memberAccess.Expression)
+                {
+                    case ThisExpressionSyntax or BaseExpressionSyntax:
+                        return true;
+                    case IdentifierNameSyntax alias when alias.Identifier.Text != "base":
+                        return LocalIsAssignedFromThis(alias);
+                    default:
+                        return false;
+                }
+            default:
+                return false;
+        }
+    }
+
+    private static bool LocalIsAssignedFromThis(IdentifierNameSyntax identifier)
+    {
+        for (
+            var current = identifier.Parent;
+            current is not null;
+            current = current.Parent
+        )
+        {
+            if (current is not BlockSyntax block)
+                continue;
+
+            foreach (var statement in block.Statements)
+            {
+                if (
+                    statement
+                        is LocalDeclarationStatementSyntax
+                        {
+                            Declaration.Variables.Count: 1
+                        } declaration
+                    && declaration.Declaration.Variables[0].Identifier.Text
+                        == identifier.Identifier.Text
+                    && declaration.Declaration.Variables[0].Initializer?.Value
+                        is ThisExpressionSyntax
+                )
+                    return true;
+            }
+
+            break;
+        }
+
+        return false;
     }
 
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
