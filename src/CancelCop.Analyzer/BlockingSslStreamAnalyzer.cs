@@ -291,7 +291,32 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
 
     private static bool ReceiverMayBeThis(InvocationExpressionSyntax invocation)
     {
-        switch (invocation.Expression)
+        // A `?.` spine surfaces as a member binding; the receiver to classify is the
+        // conditional access's operation (`self?.AuthenticateAsClient(...)`).
+        if (invocation.Expression is MemberBindingExpressionSyntax)
+        {
+            for (
+                var current = invocation.Parent;
+                current is not null;
+                current = current.Parent
+            )
+            {
+                if (
+                    current is ConditionalAccessExpressionSyntax conditional
+                    && ReferenceEquals(invocation, conditional.WhenNotNull)
+                )
+                    return ReceiverMayBeThisOnExpression(conditional.Expression);
+            }
+
+            return false;
+        }
+
+        return ReceiverMayBeThisOnExpression(invocation.Expression);
+    }
+
+    private static bool ReceiverMayBeThisOnExpression(ExpressionSyntax expression)
+    {
+        switch (expression)
         {
             case IdentifierNameSyntax:
                 return true;
@@ -300,11 +325,13 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
                 {
                     case ThisExpressionSyntax or BaseExpressionSyntax:
                         return true;
-                    case IdentifierNameSyntax alias when alias.Identifier.Text != "base":
+                    case IdentifierNameSyntax alias:
                         return LocalIsAssignedFromThis(alias);
                     default:
                         return false;
                 }
+            case ThisExpressionSyntax or BaseExpressionSyntax:
+                return true;
             default:
                 return false;
         }

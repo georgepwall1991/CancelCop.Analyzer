@@ -208,7 +208,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.39: 1535 tests, green locally. **CC051 (new)** —
+- v1.52.39: 1536 tests, green locally. **CC051 (new)** —
   flags `SslStream.AuthenticateAsClient` in async code; fixer rewrites to
   `await AuthenticateAsClientAsync`, preserving arguments. Only the
   `SslClientAuthenticationOptions` arity accepts a token, so string-arity

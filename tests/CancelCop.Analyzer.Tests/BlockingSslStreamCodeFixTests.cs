@@ -299,6 +299,33 @@ public class Client : SslStream
     }
 
     [Fact]
+    public async Task AuthenticateAsClient_ConditionalThisAliasInsideAuthenticateAsClientAsync_NoFix()
+    {
+        // `self?.AuthenticateAsClient(...)` on a spine whose operation is provably
+        // `this` dispatches the hoisted call back into the enclosing member.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        SslStream self = this;
+        self?.{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
     public async Task AuthenticateAsClient_ConditionalSpineWithHider_NoFix()
     {
         // A derived type hides the TAP member with a same-named `new` method. The spine
