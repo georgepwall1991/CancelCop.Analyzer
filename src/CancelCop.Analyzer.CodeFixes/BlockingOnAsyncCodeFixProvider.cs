@@ -37,15 +37,95 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
-        var diagnostic = context.Diagnostics.First();
-        // The diagnostic stands but the analyzer determined that inserting an await here would not
-        // compile, so no rewrite is offered.
-        if (diagnostic.Properties.ContainsKey(BlockingOnAsyncAnalyzer.NoFixProperty))
-            return;
-        var name = root.FindToken(diagnostic.Location.SourceSpan.Start).Parent;
-        if (name?.Parent is not MemberAccessExpressionSyntax memberAccess)
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
             return;
 
+        var diagnostic = context.Diagnostics.First();
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingOnAsyncAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+
+        var name = root.FindToken(diagnostic.Location.SourceSpan.Start).Parent;
+        if (name == null)
+            return;
+
+        // Await insertion is unsafe here (a lock body, an exception filter, …): nothing can be
+        // offered, hoisted or in place.
+        if (hasNoFix && noFixReason != BlockingOnAsyncAnalyzer.ConditionalAccessReason)
+            return;
+
+        // A `?.` spine is detected syntactically from the diagnosed name — the analyzer marks
+        // the common shapes, but deep chains like `task?.GetAwaiter().GetResult()` are only
+        // discoverable by walking the tree.
+        if (
+            NullConditionalHoist.TryGetStatement(
+                semanticModel,
+                name,
+                out var statement,
+                out var conditionalAccess
+            )
+            && TryGetTaskExpression(name, conditionalAccess, out var taskExpression)
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // The task expression arrives attached to the tree; the spliced variant is a new,
+            // detached node. The original is kept for the speculative type comparison.
+            ExpressionSyntax hoistedTask;
+            if (ReferenceEquals(taskExpression, conditionalAccess.Expression))
+            {
+                // Direct spine (`task?.Wait()`): the awaited task is the operation itself.
+                hoistedTask = taskExpression;
+            }
+            else if (
+                NullConditionalHoist.TrySpliceOperation(
+                    taskExpression,
+                    conditionalAccess.Expression.WithoutTrivia(),
+                    out var spliced
+                )
+                && !NullConditionalHoist.ContainsNullConditionalAccess(spliced)
+            )
+            {
+                hoistedTask = spliced;
+            }
+            else
+            {
+                return;
+            }
+
+            if (!SpeculativeRebindIsSameTask(semanticModel, name.SpanStart, taskExpression, hoistedTask))
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            statement,
+                            conditionalAccess,
+                            hoistedTask,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
+
+        if (name.Parent is not MemberAccessExpressionSyntax memberAccess)
+            return;
         if (!TryBuildRewrite(memberAccess, out var target, out var replacement))
             return;
 
@@ -63,6 +143,128 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Resolves the awaited-from task expression behind the diagnosed blocking member
+    /// (<c>.Result</c>, parameterless <c>.Wait()</c>, or <c>.GetAwaiter().GetResult()</c>).
+    /// The blocking operation must be the terminal expression of the conditional statement —
+    /// `holder?.Work.GetAwaiter().GetResult().Dispose();` does real work after the block, which
+    /// the rewrite would drop. A `.Result` or `.Wait()` sitting directly on the spine arrives as
+    /// a receiver-less member binding; the awaited task is the spine operation itself.
+    /// </summary>
+    private static bool TryGetTaskExpression(
+        SyntaxNode name,
+        ConditionalAccessExpressionSyntax conditionalAccess,
+        out ExpressionSyntax task
+    )
+    {
+        var terminal = conditionalAccess.WhenNotNull;
+
+        if (name.Parent is MemberAccessExpressionSyntax access && access.Name == name)
+        {
+            switch (access.Name.Identifier.Text)
+            {
+                case "Result" when ReferenceEquals(access, terminal):
+                    task = access.Expression;
+                    return true;
+                case "Wait"
+                    when access.Parent is InvocationExpressionSyntax waitInvocation
+                        && waitInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(waitInvocation, terminal):
+                    // Only the parameterless Wait() maps cleanly to `await task`; timeout and
+                    // token overloads change semantics and stay without a fix.
+                    task = access.Expression;
+                    return true;
+                case "GetResult"
+                    when access.Expression
+                            is InvocationExpressionSyntax
+                            {
+                                ArgumentList.Arguments.Count: 0,
+                                Expression: MemberAccessExpressionSyntax getAwaiterAccess
+                            }
+                        && getAwaiterAccess.Name.Identifier.Text == "GetAwaiter"
+                        && access.Parent is InvocationExpressionSyntax getResultInvocation
+                        && getResultInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(getResultInvocation, terminal):
+                    // `<task>.GetAwaiter().GetResult()` awaits <task>.
+                    task = getAwaiterAccess.Expression;
+                    return true;
+                case "GetResult"
+                    when access.Expression
+                            is InvocationExpressionSyntax
+                            {
+                                ArgumentList.Arguments.Count: 0,
+                                Expression: MemberBindingExpressionSyntax
+                                {
+                                    Name.Identifier.Text: "GetAwaiter"
+                                }
+                            }
+                        && access.Parent is InvocationExpressionSyntax directGetResultInvocation
+                        && directGetResultInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(directGetResultInvocation, terminal):
+                    // Direct spine (`task?.GetAwaiter().GetResult()`): the awaited task is the
+                    // spine operation itself.
+                    task = conditionalAccess.Expression;
+                    return true;
+            }
+        }
+        else if (name.Parent is MemberBindingExpressionSyntax binding)
+        {
+            // Direct spine: `.Result` and parameterless `.Wait()` arrive as receiver-less
+            // member bindings; the awaited task is the spine operation itself.
+            switch (binding.Name.Identifier.Text)
+            {
+                case "Result"
+                    when ReferenceEquals(binding.Parent, terminal):
+                    task = conditionalAccess.Expression;
+                    return true;
+                case "Wait"
+                    when binding.Parent is InvocationExpressionSyntax waitInvocation
+                        && waitInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(waitInvocation, terminal):
+                    task = conditionalAccess.Expression;
+                    return true;
+                case "GetAwaiter"
+                    when binding.Parent is MemberAccessExpressionSyntax
+                    {
+                        Name.Identifier.Text: "GetResult",
+                        Parent: InvocationExpressionSyntax getResultInvocation
+                    } getResultAccess
+                        && getResultInvocation.ArgumentList.Arguments.Count == 0
+                        && ReferenceEquals(getResultInvocation, terminal):
+                    task = conditionalAccess.Expression;
+                    return true;
+            }
+        }
+
+        task = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Speculatively binds the spliced task expression and requires it to resolve to the same
+    /// task type as the original expression — so a subclass hiding an intermediate member with
+    /// something other than the task withholds the rewrite instead of awaiting the wrong thing.
+    /// </summary>
+    private static bool SpeculativeRebindIsSameTask(
+        SemanticModel semanticModel,
+        int position,
+        ExpressionSyntax originalTask,
+        ExpressionSyntax splicedTask
+    )
+    {
+        var originalType = semanticModel.GetTypeInfo(originalTask).Type;
+        var reboundType = semanticModel
+            .GetSpeculativeTypeInfo(
+                position,
+                splicedTask,
+                SpeculativeBindingOption.BindAsExpression
+            )
+            .Type;
+        return originalType != null
+            && reboundType != null
+            && SymbolEqualityComparer.Default.Equals(originalType, reboundType);
     }
 
     private static bool TryBuildRewrite(
