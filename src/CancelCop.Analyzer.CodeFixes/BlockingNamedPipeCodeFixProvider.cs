@@ -141,12 +141,6 @@ public class BlockingNamedPipeCodeFixProvider : CodeFixProvider
                     )
                 )
                 {
-                    if (
-                        candidate != hoistedInvocation
-                    )
-                        throw new InvalidOperationException(
-                            $"DBG cand rejected name={rebound?.Name} args={candidate.ArgumentList.Arguments.Count} containing={rebound?.ContainingType} rt={rebound?.ReturnType}"
-                        );
                     continue;
                 }
 
