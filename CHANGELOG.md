@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **CC015 fixer:** null-conditional blocking statements now rewrite
-  instead of being withheld (`host?.Work.Result;`,
-  `task?.Wait();`, `holder?.Work.GetAwaiter().GetResult();`
-  hoist to `if (x is not null) { await x.Work; }`).
+  instead of being withheld (`task?.Wait();`,
+  `holder?.Work.GetAwaiter().GetResult();` hoist to
+  `if (x is not null) { await x.Work; }`; a bare `.Result` read is
+  not a legal statement on its own and keeps reporting without a
+  rewrite in expression positions).
 - **Shared hoist machinery:** the null-conditional statement hoist
   introduced for CC022 in v1.52.21 moved into a shared
   `NullConditionalHoist` helper used by both fixers; eligibility

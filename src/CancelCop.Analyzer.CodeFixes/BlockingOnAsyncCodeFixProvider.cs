@@ -134,11 +134,6 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
         if (target is not null && CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(target))
             return;
 
-        // `host?.Work.Result` is an ordinary member access, but it is the WhenNotNull
-        // of `?.`. Replacing it with `(await .Work)` yields `host?(await .Work)`.
-        if (target is not null && CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(target))
-            return;
-
         context.RegisterCodeFix(
             CodeAction.Create(
                 title: Title,

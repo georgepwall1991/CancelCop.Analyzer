@@ -604,4 +604,42 @@ public class TestClass
         var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".GetAwaiter().GetResult()");
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    [Fact]
+    public async Task ConditionalHoist_PreservesReceiverComment()
+    {
+        var test =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Task? task)
+    {
+        await Task.Yield();
+        task /* keep */ ?.{|#0:Wait|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Task? task)
+    {
+        await Task.Yield();
+        if (task is not null)
+        {
+            await task /* keep */ ;
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC015").WithLocation(0).WithArguments(".Wait()");
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
 }

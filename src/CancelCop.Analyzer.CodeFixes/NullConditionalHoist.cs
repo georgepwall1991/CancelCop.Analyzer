@@ -207,8 +207,10 @@ internal static class NullConditionalHoist
         var indentationTrivia = leading.LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
         var indentation = indentationTrivia != default ? indentationTrivia.ToString() : "";
 
+        // Leading trivia is dropped (the block provides indentation), but trailing trivia —
+        // comments between the operation and the removed `?.` — survives before the semicolon.
         var awaitedStatement = SyntaxFactory.ExpressionStatement(
-            SyntaxFactory.AwaitExpression(awaitedExpression.WithoutTrivia())
+            SyntaxFactory.AwaitExpression(awaitedExpression.WithoutLeadingTrivia())
         );
         awaitedStatement = awaitedStatement.WithLeadingTrivia(
             SyntaxFactory.TriviaList(
