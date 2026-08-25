@@ -7,77 +7,97 @@ Usage:
 Sends an LSP initialize handshake over stdio and prints the advertised
 capabilities. Exit code 0 means the server responded correctly.
 """
-import json, subprocess, sys, time, os
 
-server_cmd = sys.argv[1:]
-root = os.getcwd()
-proc = subprocess.Popen(server_cmd, stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-buf = b""
+import json
+import os
+import select
+import subprocess
+import sys
+import time
 
-def read_message(deadline):
-    global buf
+
+def read_message(proc, buf, deadline):
+    """Read one LSP frame from proc.stdout, honoring the deadline even when
+    the server is silent. Returns (message, buffer)."""
     while True:
-        if time.time() > deadline:
-            return None
-        idx = buf.find(b"Content-Length:")
-        if idx > 0:
-            buf = buf[idx:]
-            idx = 0
-        if idx == -1:
-            chunk = proc.stdout.read1(65536)
-            if not chunk:
-                return None
-            buf += chunk
-            continue
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return None, buf
+
         hdr_end = buf.find(b"\r\n\r\n")
-        if hdr_end == -1:
-            chunk = proc.stdout.read1(65536)
-            if not chunk:
-                return None
-            buf += chunk
+        if hdr_end != -1:
+            headers = {}
+            for line in buf[:hdr_end].decode(errors="replace").split("\r\n"):
+                if ": " in line:
+                    k, v = line.split(": ", 1)
+                    headers[k.lower()] = v.strip()
+            length = int(headers["content-length"])
+            body_start = hdr_end + 4
+            needed = body_start + length
+            if len(buf) >= needed:
+                message = json.loads(buf[body_start:needed])
+                return message, buf[needed:]
+
+        rlist, _, _ = select.select([proc.stdout], [], [], min(remaining, 0.5))
+        if not rlist:
             continue
-        headers = dict(
-            l.split(": ", 1) for l in buf[:hdr_end].decode().split("\r\n") if ": " in l
-        )
-        length = int(headers["Content-Length"])
-        while len(buf) < hdr_end + 4 + length:
-            chunk = proc.stdout.read1(hdr_end + 4 + length - len(buf))
-            if not chunk:
-                return None
-            buf += chunk
-        body = buf[hdr_end + 4 : hdr_end + 4 + length]
-        buf = buf[hdr_end + 4 + length :]
-        return json.loads(body)
+        chunk = proc.stdout.read1(65536)
+        if not chunk and proc.poll() is not None:
+            return None, buf
+        buf += chunk
 
-def send(method, params=None, msg_id=None):
-    msg = {"jsonrpc": "2.0", "method": method}
-    if msg_id is not None:
-        msg["id"] = msg_id
-    if params is not None:
-        msg["params"] = params
-    body = json.dumps(msg).encode()
-    proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
-    proc.stdin.flush()
 
-send("initialize", {
-    "processId": os.getpid(),
-    "rootUri": "file://" + root,
-    "capabilities": {},
-}, msg_id=1)
+def main():
+    import shlex
 
-deadline = time.time() + int(os.environ.get("PROBE_TIMEOUT", "240"))
-while time.time() < deadline:
-    m = read_message(deadline)
-    if m is None:
-        print("TIMEOUT/EOF waiting for initialize response", flush=True)
-        sys.exit(2)
-    if m.get("id") == 1:
-        caps = m["result"]["capabilities"]
-        print("INIT-OK capabilities:", ", ".join(sorted(caps.keys())), flush=True)
-        break
+    server_cmd = shlex.split(" ".join(sys.argv[1:]))
+    root = os.getcwd()
 
-send("initialized", {})
-time.sleep(3)
-proc.terminate()
-print("DONE", flush=True)
+    proc = subprocess.Popen(
+        server_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    buf = b""
+
+    def send(method, params=None, msg_id=None):
+        message = {"jsonrpc": "2.0", "method": method}
+        if msg_id is not None:
+            message["id"] = msg_id
+        if params is not None:
+            message["params"] = params
+        body = json.dumps(message).encode()
+        proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+        proc.stdin.flush()
+
+    send(
+        "initialize",
+        {
+            "processId": os.getpid(),
+            "rootUri": "file://" + root,
+            "capabilities": {},
+        },
+        msg_id=1,
+    )
+
+    deadline = time.time() + float(os.environ.get("LSP_VERIFY_TIMEOUT", "60"))
+    while True:
+        message, buf = read_message(proc, buf, deadline)
+        if message is None:
+            print("FAIL: no initialize response within timeout")
+            return 2
+
+        if message.get("id") == 1:
+            capabilities = sorted(message["result"]["capabilities"].keys())
+            print("INIT-OK capabilities:", ", ".join(capabilities))
+            break
+
+    send("initialized", {})
+    time.sleep(0.2)
+    proc.terminate()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

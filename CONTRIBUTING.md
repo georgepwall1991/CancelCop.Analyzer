@@ -45,7 +45,7 @@ Verify all three respond to an LSP initialize handshake:
 ```bash
 python3 scripts/lsp-verify.py dotnet csharp-ls --solution CancelCop.sln
 python3 scripts/lsp-verify.py yaml-language-server --stdio
-python3 scripts/lsp-verify.py marksman
+python3 scripts/lsp-verify.py marksman server
 ```
 
 ### Building the Project
