@@ -334,12 +334,11 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         while (receiver is ParenthesizedExpressionSyntax parenthesized)
             receiver = parenthesized.Expression;
 
-        // Only receivers that are PROVABLY fresh instances (`new SslStream(...)`,
-        // a factory call) cannot dispatch to `this`. Anything else — this, base,
-        // locals, parameters, fields, properties — could alias the enclosing
-        // instance and recurse after the rewrite, so it is withheld.
-        return receiver
-            is not (ObjectCreationExpressionSyntax or InvocationExpressionSyntax);
+        // Only `new SslStream(...)` is PROVABLY fresh: an invocation result may be a
+        // factory that returns `this`. Anything else — this, base, locals, parameters,
+        // fields, properties — could alias the enclosing instance and recurse after
+        // the rewrite, so it is withheld.
+        return receiver is not ObjectCreationExpressionSyntax;
     }
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
     {

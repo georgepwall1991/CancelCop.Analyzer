@@ -362,6 +362,60 @@ public class Client : SslStream
     }
 
     [Fact]
+    public async Task AuthenticateAsClient_FactoryReceiverInsideAuthenticateAsClientAsync_NoFix()
+    {
+        // A factory method could return `this`, so an invocation receiver is not
+        // provably fresh — the rewrite is withheld.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public SslStream Current() => this;
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        Current().{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task AuthenticateAsClient_ConditionalFactoryReceiver_NoFix()
+    {
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public SslStream Current() => this;
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        Current()?.{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
     public async Task AuthenticateAsClient_ConditionalReassignmentUnderControlFlow_NoFix()
     {
         // `self` is reassigned from `this` under a condition; when that branch runs,
