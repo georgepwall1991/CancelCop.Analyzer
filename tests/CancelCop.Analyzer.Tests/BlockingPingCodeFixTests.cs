@@ -197,4 +197,77 @@ public class TestClass
 
         await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task PingSend_ReorderedNamedTimeSpan_HoistsWithNamedToken()
+    {
+        // The spine diagnostic carries the token metadata even though no in-place
+        // rebind exists, so the statement hoist can offer a token-taking candidate
+        // that its speculative rebind validates against the TimeSpan arity.
+        var source =
+            @"
+using System;
+using System.Net.NetworkInformation;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Ping? ping, byte[] buffer, CancellationToken cancellationToken)
+    {
+        ping?.{|#0:Send|}(""host"", TimeSpan.FromMilliseconds(500), buffer, null);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Net.NetworkInformation;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Ping? ping, byte[] buffer, CancellationToken cancellationToken)
+    {
+        if (ping is not null)
+        {
+            await ping.SendPingAsync(""host"", TimeSpan.FromMilliseconds(500), buffer, null, cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task PingSend_InsideLock_ReportsWithoutOfferingAFix()
+    {
+        // await-unsafe outranks every other reason; the hoist would land its
+        // if-statement in the same lock body, where await stays illegal.
+        var source =
+            @"
+using System.Net.NetworkInformation;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object sync = new();
+
+    public async Task RunAsync(Ping ping, CancellationToken cancellationToken)
+    {
+        lock (sync)
+        {
+            ping.{|#0:Send|}(""host"");
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
 }

@@ -212,12 +212,31 @@ public class BlockingPingAnalyzer : DiagnosticAnalyzer
 
         // No speculative rebind is possible (conditional-access spine or an
         // unusable shape), but the call IS blocking: report without a rewrite.
+        // The in-scope token still rides along so the fixer's statement hoist can
+        // offer a named-token candidate it re-validates by speculative binding.
         if (!properties.ContainsKey(NoFixProperty))
             properties = properties.Add(
                 NoFixProperty,
                 CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation)
                     ? "conditional-access"
                     : "no-safe-rewrite"
+            );
+
+        var hoistTokenName =
+            tokenName
+            ?? CancellationTokenHelpers
+                .FindEnclosingCancellationToken(invocation, context.SemanticModel)
+                ?.ExpressionText;
+        if (hoistTokenName != null && !properties.ContainsKey(TokenNameProperty))
+            properties = properties.Add(TokenNameProperty, hoistTokenName);
+        if (
+            hoistTokenName != null
+            && invocation.ArgumentList.Arguments.Any(a => a.NameColon != null)
+            && !properties.ContainsKey(TokenArgumentNameProperty)
+        )
+            properties = properties.Add(
+                TokenArgumentNameProperty,
+                FindTokenParameterName(pingType)
             );
 
         context.ReportDiagnostic(
