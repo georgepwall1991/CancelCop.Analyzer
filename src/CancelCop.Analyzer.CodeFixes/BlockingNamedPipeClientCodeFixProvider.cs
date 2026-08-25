@@ -41,9 +41,21 @@ public class BlockingNamedPipeClientCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingNamedPipeClientAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingNamedPipeClientAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "no-safe-rewrite")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -68,6 +80,103 @@ public class BlockingNamedPipeClientCodeFixProvider : CodeFixProvider
             ? argumentName
             : null;
 
+        // A whole null-conditional statement (`pipe?.Connect(server);`) hoists to
+        // `if (pipe is not null) { await pipe.ConnectAsync(ct); }`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "Connect",
+                "ConnectAsync",
+                out hoistStatement,
+                out conditionalAccess,
+                out hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            var candidates = new List<InvocationExpressionSyntax>();
+            if (hoistToken != null)
+            {
+                candidates.Add(hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(
+                        TokenArgument(hoistToken, tokenArgumentName)
+                    )
+                ));
+            }
+            candidates.Add(hoistedInvocation);
+
+            var clientMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            InvocationExpressionSyntax? boundCall = null;
+            foreach (var candidate in candidates)
+            {
+                var reboundCandidate = semanticModel
+                    .GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        candidate,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+                if (
+                    reboundCandidate == null
+                    || reboundCandidate.IsStatic
+                    || reboundCandidate.Name != "ConnectAsync"
+                    || (reboundCandidate.ReturnType.Name != "Task"
+                        && reboundCandidate.ReturnType.Name != "ValueTask")
+                    || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
+                        != "System.Threading.Tasks"
+                    || clientMethod == null
+                    || !reboundCandidate.ContainingType.Equals(
+                        clientMethod.OriginalDefinition.ContainingType
+                    )
+                    || reboundCandidate.Parameters.Length
+                        != invocation.ArgumentList.Arguments.Count
+                )
+                    continue;
+
+                boundCall = candidate;
+                break;
+            }
+
+            if (boundCall is null)
+                return;
+
+            hoistedInvocation = boundCall;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
+
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
             "ConnectAsync",
@@ -86,6 +195,21 @@ public class BlockingNamedPipeClientCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    private static ArgumentSyntax TokenArgument(string tokenName, string? tokenArgumentName)
+    {
+        var tokenArgument = SyntaxFactory.Argument(
+            CancellationTokenHelpers.TokenExpression(tokenName)
+        );
+        if (tokenArgumentName != null)
+        {
+            tokenArgument = tokenArgument.WithNameColon(
+                SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(tokenArgumentName))
+            );
+        }
+
+        return tokenArgument;
     }
 
     private static async Task<Document> ReplaceAsync(
