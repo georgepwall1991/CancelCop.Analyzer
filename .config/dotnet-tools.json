@@ -6,7 +6,15 @@
       "version": "4.16.0",
       "commands": [
         "dotnet-stryker"
-      ]
+      ],
+      "rollForward": false
+    },
+    "csharp-ls": {
+      "version": "0.27.0",
+      "commands": [
+        "csharp-ls"
+      ],
+      "rollForward": false
     }
   }
 }

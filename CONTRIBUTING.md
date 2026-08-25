@@ -16,8 +16,37 @@ Thank you for your interest in contributing to CancelCop! We welcome contributio
 ### Prerequisites
 
 - **.NET 10.0 SDK** (or later)
-- A C# IDE (Visual Studio, JetBrains Rider, or VS Code with C# extension)
+- A C# IDE (Visual Studio, JetBrains Rider, or VS Code with C# extension), or a
+  language-server-capable editor (Neovim, Helix, Emacs, Zed, ...)
 - Git
+
+### Language servers (LSP)
+
+If you use an editor that drives LSP servers directly (Neovim built-in LSP,
+Helix, Zed, Emacs lsp-mode/eglot, VS Code extensions), this project works with:
+
+| Language | Server | Install |
+|----------|--------|---------|
+| C# | [`csharp-ls`](https://github.com/razzmatazz/csharp-language-server) | `dotnet tool restore` (pinned in `.config/dotnet-tools.json`) |
+| YAML (GitHub Actions) | [`yaml-language-server`](https://github.com/redhat-developer/yaml-language-server) | `npm install -g yaml-language-server` |
+| Markdown | [`marksman`](https://github.com/artempyanykh/marksman) | `brew install marksman` |
+
+Start the C# server against the solution:
+
+```bash
+dotnet csharp-ls --solution CancelCop.sln
+```
+
+(Editors typically launch it for you; the command above is what your LSP
+client should run.)
+
+Verify all three respond to an LSP initialize handshake:
+
+```bash
+python3 scripts/lsp-verify.py dotnet csharp-ls --solution CancelCop.sln
+python3 scripts/lsp-verify.py yaml-language-server --stdio
+python3 scripts/lsp-verify.py marksman
+```
 
 ### Building the Project
 
