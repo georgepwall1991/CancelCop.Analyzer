@@ -214,7 +214,10 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   preferred with parameterless fallback; speculative rebind
   requires the framework Accept*Async on TcpListener and withholds
   hidden non-awaitable members. Direct-spine member-binding async
-  names resolve. 2 new fixer tests; 1 NoFix test updated.
+  names resolve. Cancellable form preferred; when the cancellable
+  overload fails to bind the hoist falls back to the parameterless
+  Accept*Async (same fallback semantics as the direct-path fix).
+  1 NoFix test updated to expect the hoist.
 - v1.52.28: 1487 tests, green locally. **CC038 fixer** —
   null-conditional `AcceptTcpClient()` / `AcceptSocket()`
   statements hoist to an `is not null` check via
