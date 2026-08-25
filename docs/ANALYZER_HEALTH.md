@@ -213,7 +213,8 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   parameter is named `millisecondsDelay`/`delay`, emitting CS1739.
   The rewrite now strips name colons and binds positionally.
   3 new tests pin TimeSpan, named-argument, and
-  Timeout.InfiniteTimeSpan shapes with token flow.- v1.52.36: 1505 tests, green locally. **CC028 fixer** —
+  Timeout.InfiniteTimeSpan shapes with token flow.
+- v1.52.36: 1505 tests, green locally. **CC028 fixer** —
   null-conditional statement spines (direct `reader?.ReadLine();`,
   chained `holder?.Reader.ReadLine();`, plus ReadToEnd and
   StreamWriter.WriteLine) hoist to an `is not null` guard with
