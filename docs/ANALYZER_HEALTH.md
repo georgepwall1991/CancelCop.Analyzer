@@ -209,7 +209,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.42: 1569 tests, green locally. **CC053 (new)** —
+- v1.52.42: 1570 tests, green locally. **CC053 (new)** —
   flags blocking `Thread.Join` in async code (parameterless, `int`, and
   `TimeSpan` arities). Verified against the net9/net10 ref packs:
   `System.Threading.Thread` declares only those three non-virtual overloads,

@@ -103,7 +103,7 @@ public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
         };
         if (
             invokedName is null
-            || invokedName.Identifier.Text != "Join"
+            || invokedName.Identifier.ValueText != "Join"
         )
             return;
 

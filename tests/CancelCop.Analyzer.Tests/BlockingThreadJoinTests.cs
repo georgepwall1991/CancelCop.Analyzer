@@ -267,4 +267,26 @@ public class TestClass
             .WithArguments("Join");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task ThreadJoin_EscapedIdentifier_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Thread worker)
+    {
+        worker.{|#0:@Join|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC053")
+            .WithLocation(0)
+            .WithArguments("Join");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }
