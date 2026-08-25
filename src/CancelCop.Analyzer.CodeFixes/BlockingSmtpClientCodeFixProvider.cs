@@ -234,10 +234,11 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
     }
 
     /// <summary>
-    /// Speculatively binds the generated call and requires it to resolve to a Task-returning
-    /// <c>SendMailAsync</c> declared by the same type as the original <c>Send</c>, whose
-    /// parameters mirror the original signature — so hiders and unrelated overloads withhold
-    /// the rewrite instead of producing non-compiling or behavior-changing code.
+    /// Speculatively binds the generated call and validates it with the same shape rules as the
+    /// analyzer: a Task-returning parameterless-static-free <c>SendMailAsync</c> whose non-token
+    /// parameters mirror the original <c>Send</c> signature — so hidden members and unrelated
+    /// overloads withhold the rewrite instead of producing non-compiling or behavior-changing
+    /// code, while inherited framework counterparts on subclasses still qualify.
     /// </summary>
     private static bool SpeculativeRebindIsUsableCounterpart(
         SemanticModel semanticModel,
@@ -249,33 +250,31 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         var rebound = semanticModel
             .GetSpeculativeSymbolInfo(position, call, SpeculativeBindingOption.BindAsExpression)
             .Symbol as IMethodSymbol;
-        return rebound != null
-            && rebound.Name == "SendMailAsync"
-            && rebound.ReturnType.Name == "Task"
-            && rebound.ReturnType.ContainingNamespace?.ToDisplayString()
-                == "System.Threading.Tasks"
-            && sendMethod != null
-            && rebound.Parameters.Length >= 1
-            && rebound.Parameters.Length <= sendMethod.Parameters.Length + 1
-            && MatchesSendShape(rebound.Parameters, sendMethod.Parameters)
-            && rebound.ContainingType.Equals(sendMethod.OriginalDefinition.ContainingType);
-    }
+        if (
+            rebound == null
+            || rebound.IsStatic
+            || rebound.Name != "SendMailAsync"
+            || rebound.ReturnType.Name != "Task"
+            || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                != "System.Threading.Tasks"
+            || sendMethod == null
+        )
+            return false;
 
-    private static bool MatchesSendShape(
-        ImmutableArray<IParameterSymbol> reboundParameters,
-        ImmutableArray<IParameterSymbol> sendParameters
-    )
-    {
-        // The trailing appended token is not part of the original shape.
-        var comparable = reboundParameters.Length == sendParameters.Length + 1
-            ? reboundParameters.RemoveAt(reboundParameters.Length - 1)
-            : reboundParameters;
-        for (var i = 0; i < comparable.Length; i++)
+        // Non-token parameters must mirror the original Send signature exactly.
+        var tapArgs = rebound
+            .Parameters.Where(p => !CancellationTokenHelpers.IsCancellationToken(p.Type))
+            .ToArray();
+        if (tapArgs.Length != sendMethod.Parameters.Length)
+            return false;
+        for (var i = 0; i < tapArgs.Length; i++)
         {
+            if (tapArgs[i].RefKind != sendMethod.Parameters[i].RefKind)
+                return false;
             if (
                 !SymbolEqualityComparer.Default.Equals(
-                    comparable[i].Type,
-                    sendParameters[i].Type
+                    tapArgs[i].Type,
+                    sendMethod.Parameters[i].Type
                 )
             )
                 return false;
