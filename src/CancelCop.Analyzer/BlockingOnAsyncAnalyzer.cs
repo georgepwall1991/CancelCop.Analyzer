@@ -53,6 +53,13 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string NoFixProperty = "NoFix";
 
+    /// <summary>
+    /// Value stored under <see cref="NoFixProperty"/> when the access sits on the spine of a
+    /// null-conditional access. A statement-level rewrite can still be possible (the fixer
+    /// hoists `x?.…` statements to an `is not null` check); other reasons are final.
+    /// </summary>
+    public const string ConditionalAccessReason = "conditional-access";
+
     private static readonly LocalizableString Title = "Avoid blocking on async code";
     private static readonly LocalizableString MessageFormat =
         "Blocking on a task with '{0}' can deadlock; await the task instead";
@@ -261,7 +268,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
         if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, location))
             properties = properties.Add(NoFixProperty, CancellationTokenHelpers.AwaitUnsafeReason);
         else if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(location))
-            properties = properties.Add(NoFixProperty, "conditional-access");
+            properties = properties.Add(NoFixProperty, ConditionalAccessReason);
 
         context.ReportDiagnostic(
             Diagnostic.Create(Rule, location.GetLocation(), properties, display)

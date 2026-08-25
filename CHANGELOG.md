@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.22] - 2026-08-24
+
+### Changed
+
+- **CC015 fixer:** null-conditional blocking statements now rewrite
+  instead of being withheld (`host?.Work.Result;`,
+  `task?.Wait();`, `holder?.Work.GetAwaiter().GetResult();`
+  hoist to `if (x is not null) { await x.Work; }`).
+- **Shared hoist machinery:** the null-conditional statement hoist
+  introduced for CC022 in v1.52.21 moved into a shared
+  `NullConditionalHoist` helper used by both fixers; eligibility
+  rules are identical (local/parameter/`this` operations only,
+  no surviving nested `?.`, no nullable-struct receivers,
+  C# 9+, dangling-else guard) plus a speculative type check that
+  the spliced task expression still binds to the same task.
+
 ## [1.52.21] - 2026-08-24
 
 ### Changed
