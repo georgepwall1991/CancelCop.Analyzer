@@ -207,14 +207,15 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.23: 1477 tests, green locally. **CC026 fixer** —
+- v1.52.23: 1478 tests, green locally. **CC026 fixer** —
   null-conditional `Wait()` statements hoist to an `is not null`
   check via the shared `NullConditionalHoist`
   (`gate?.Wait();` →
   `if (gate is not null) { await gate.WaitAsync(ct); }`,
   timeouts carried through). Argument lists carried verbatim;
-  terminality and spine-exactness enforced. 2 new fixer tests,
-  1 updated.
+  terminality and spine-exactness enforced, plus a speculative
+  rebind so hidden non-awaitable `WaitAsync` members withhold the
+  rewrite. 3 new fixer tests, 1 updated.
 - v1.52.22: 1475 tests, green locally. **CC015 fixer** —
   null-conditional blocking statements (`task?.Wait();`,
   `holder?.Work.GetAwaiter().GetResult();`)

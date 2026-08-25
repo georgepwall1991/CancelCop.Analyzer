@@ -119,6 +119,27 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
                 BuildArgumentList(invocation.ArgumentList, tokenName)
             );
 
+            // Speculatively rebind the generated call: a SemaphoreSlim subclass may hide
+            // WaitAsync with an unrelated member, and the rewrite must not invoke it.
+            var waitMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var rebound = semanticModel
+                .GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    waitAsync,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+            if (
+                rebound == null
+                || rebound.Name != "WaitAsync"
+                || rebound.ReturnType.Name != "Task"
+                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                    != "System.Threading.Tasks"
+                || waitMethod == null
+                || !rebound.ContainingType.Equals(waitMethod.OriginalDefinition.ContainingType)
+            )
+                return;
+
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: Title,

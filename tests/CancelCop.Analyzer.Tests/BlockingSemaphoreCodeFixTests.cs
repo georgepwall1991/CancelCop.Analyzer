@@ -532,4 +532,37 @@ public class TestClass
         var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    [Fact]
+    public async Task ConditionalWaitWithHiddenWaitAsync_ReportsWithoutOfferingAFix()
+    {
+        // A subclass hiding WaitAsync with a non-awaitable member must not receive the hoist —
+        // `await gate.WaitAsync(ct)` would not compile.
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class HidingGate : SemaphoreSlim
+{
+    public HidingGate()
+        : base(1) { }
+
+    public new int WaitAsync(int millisecondsTimeout) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(HidingGate? gate)
+    {
+        await Task.Yield();
+        gate?.{|#0:Wait|}(1000);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, test);
+    }
 }
