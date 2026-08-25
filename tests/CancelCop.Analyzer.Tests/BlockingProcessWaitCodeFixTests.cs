@@ -151,9 +151,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task WaitForExit_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task WaitForExit_NullConditional_HoistsToIfNotNullWaitForExitAsync()
     {
-        // Preserving the null semantics needs control flow, not an expression rewrite.
+        // Preserving the null semantics needs control flow; as a whole statement the call
+        // hoists to an `is not null` check awaiting the async form.
         var source =
             @"
 using System.Diagnostics;
@@ -169,7 +170,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Process? process, CancellationToken cancellationToken)
+    {
+        if (process is not null)
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -330,10 +349,10 @@ public class Worker : Process
     }
 
     [Fact]
-    public async Task NullConditionalOnHidingSubclass_ReportsWithoutOfferingAFix()
+    public async Task NullConditionalOnHidingSubclass_HoistsWithParameterlessFallback()
     {
-        // Same fallback as the direct call — the inherited parameterless overload is reachable, so
-        // the claim holds — but a null-conditional call still gets no fix.
+        // Same fallback as the direct call — the inherited parameterless overload is reachable,
+        // so the hoist uses it (the hidden token overload would not be awaitable).
         var source =
             @"
 using System.Diagnostics;
@@ -354,7 +373,30 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class FakeProcess : Process
+{
+    public new int WaitForExitAsync(CancellationToken cancellationToken) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(FakeProcess? process, CancellationToken cancellationToken)
+    {
+        if (process is not null)
+        {
+            await process.WaitForExitAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -624,12 +666,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    public async Task ChainedConditionalAccess_HoistsToIfNotNullWaitForExitAsync()
     {
-        // `host?.Child.WaitForExit()` reaches the fixer as an ordinary member access, but the whole
-        // invocation is the WhenNotNull branch of a conditional access. Wrapping just that branch
-        // gives `host?await.Child...`, which is not valid syntax — the await belongs outside the
-        // `?.`, which is a restructuring rather than a rewrite.
+        // `host?.Child.WaitForExit();` cannot take an in-place rewrite, but as a whole statement
+        // it hoists to an `is not null` check with the operation spliced into the awaited call.
         var source =
             @"
 using System.Diagnostics;
@@ -650,7 +690,30 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public Process Child { get; } = new Process();
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        if (host is not null)
+        {
+            await host.Child.WaitForExitAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]

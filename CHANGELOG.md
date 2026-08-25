@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.24] - 2026-08-24
+
+### Changed
+
+- **CC030 fixer:** null-conditional `WaitForExit()` statements now
+  rewrite instead of being withheld (`process?.WaitForExit();`
+  becomes `if (process is not null)
+  { await process.WaitForExitAsync(cancellationToken); }`,
+  chained spines like `host?.Child.WaitForExit();` splice the
+  operation into the awaited call). A speculative rebind withholds
+  the rewrite when a subclass hides `WaitForExitAsync` with a
+  non-awaitable member, falling back to the parameterless form
+  where reachable.
+
 ## [1.52.23] - 2026-08-24
 
 ### Changed
