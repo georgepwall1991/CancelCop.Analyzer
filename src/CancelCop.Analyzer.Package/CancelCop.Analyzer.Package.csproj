@@ -12,12 +12,12 @@
     <PackageId>CancelCop.Analyzer</PackageId>
     <!-- Fallback for local packs; the publish workflow overrides this with -p:Version from
              the release tag so the published package always matches the tag. -->
-    <Version>1.52.40</Version>
+    <Version>1.52.42</Version>
     <Authors>George Wall</Authors>
     <Title>CancelCop.Analyzer — CancellationToken and async/await Roslyn analyzer for C#/.NET</Title>
-    <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 52 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
+    <Description>Compile-time CancellationToken and async/await Roslyn analyzer for C#/.NET: catches missing cancellation propagation, ignored ASP.NET Core RequestAborted, EF Core, HttpClient, gRPC, SignalR, and MediatR cancellation, timeout CTS that drops a parent token, sync-over-async deadlocks, blocking I/O, async void, and resource-lifetime bugs across 53 diagnostics—with code fixes. Failures surface in the editor and CI, not only at runtime.</Description>
     <PackageTags>roslyn;roslyn-analyzer;analyzers;analyzer;codefix;code-fix;static-analysis;codeanalysis;csharp;dotnet;cancellation;cancellationtoken;async;async-await;sync-over-async;deadlock;async-void;aspnetcore;RequestAborted;BackgroundService;efcore;httpclient;grpc;signalr;mediatr;WithCancellation;OperationCanceledException;blocking</PackageTags>
-    <PackageReleaseNotes>CC052 reports blocking WebRequest.GetResponse in async code with an await GetResponseAsync rewrite. 52 diagnostics.</PackageReleaseNotes>
+    <PackageReleaseNotes>CC053 reports blocking Thread.Join in async code. Verified against the net9/net10 ref packs: Thread declares no TAP JoinAsync counterpart, so the rule is analyzer-only by design and reports without a rewrite. 53 diagnostics.</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/georgepwall1991/CancelCop.Analyzer</RepositoryUrl>

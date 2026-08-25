@@ -1,3 +1,11 @@
+## Release 1.52.42
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC053 | Usage | Warning | Avoid blocking Thread.Join in async code
+
 ## Release 1.52.40
 
 ### New Rules

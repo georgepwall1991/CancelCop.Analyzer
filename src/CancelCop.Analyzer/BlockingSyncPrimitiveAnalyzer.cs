@@ -11,7 +11,7 @@ namespace CancelCop.Analyzer;
 /// <summary>
 /// Analyzer that detects a blocking synchronization primitive — <c>ManualResetEventSlim.Wait</c>,
 /// <c>CountdownEvent.Wait</c>, <c>WaitHandle.WaitOne</c>, <c>Monitor.Wait</c>,
-/// <c>Thread.Join</c>, <c>ReaderWriterLockSlim.Enter*Lock</c>/<c>TryEnter*Lock</c>,
+/// <c>ReaderWriterLockSlim.Enter*Lock</c>/<c>TryEnter*Lock</c>,
 /// <c>ReaderWriterLock.Acquire*Lock</c>/<c>UpgradeToWriterLock</c>, or
 /// <c>Barrier.SignalAndWait</c> — inside async code.
 /// </summary>
@@ -86,10 +86,6 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
             new KeyValuePair<string, ImmutableHashSet<string>>(
                 "Monitor",
                 ImmutableHashSet.Create("Wait")
-            ),
-            new KeyValuePair<string, ImmutableHashSet<string>>(
-                "Thread",
-                ImmutableHashSet.Create("Join")
             ),
             new KeyValuePair<string, ImmutableHashSet<string>>(
                 "ReaderWriterLockSlim",

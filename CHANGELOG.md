@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.42] - 2026-08-25
+
+### Added
+
+- **CC053 (new rule):** blocking `System.Threading.Thread.Join` — the
+  parameterless, `int`-timeout, and `TimeSpan` arities — in async code now
+  reports. Verified against the net9/net10 ref packs: `Thread` declares only
+  those three non-virtual `Join` overloads, declares **no** TAP
+  `JoinAsync` counterpart on any shipped .NET, and is sealed, so CC053 is
+  analyzer-only by design — every diagnostic is reported without a rewrite.
+  Await the task representing the work instead of joining a raw thread.
+
+### Changed
+
+- **CC031:** `Thread.Join` moved out of the sync-primitive family into the
+  dedicated CC053, so each join call reports exactly once. CC031 now covers
+  `ManualResetEventSlim.Wait`, `CountdownEvent.Wait`, `WaitHandle.WaitOne`/
+  `WaitAll`/`WaitAny`, `Monitor.Wait`, the `ReaderWriterLockSlim`/
+  `ReaderWriterLock` families, and `Barrier.SignalAndWait`.
+
 ## [1.52.40] - 2026-08-25
 
 ### Added

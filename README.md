@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (52 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (53 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.40">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.42">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.40
+Install-Package CancelCop.Analyzer -Version 1.52.42
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -144,7 +144,7 @@ dotnet build samples/CancelCop.Sample
 | **CC028** | Avoid blocking `System.IO` calls (`File`, `StreamReader`, `StreamWriter`, `Stream`) in async code; use the async counterpart | Warning | ✅ |
 | **CC029** | Timeout `CancellationTokenSource` should link the in-scope token (`CreateLinkedTokenSource` + `CancelAfter`) | Warning | ✅ |
 | **CC030** | Avoid blocking `Process.WaitForExit()` in async code; use `await WaitForExitAsync(token)` | Warning | ✅ |
-| **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `Thread.Join`, `ReaderWriterLockSlim.Enter*Lock`/`TryEnter*Lock`, `ReaderWriterLock.Acquire*Lock`/`UpgradeToWriterLock`, `Barrier.SignalAndWait`) in async code | Warning | ❌ |
+| **CC031** | Avoid blocking synchronization primitives (`ManualResetEventSlim.Wait`, `WaitHandle.WaitOne`, `Monitor.Wait`, `ReaderWriterLockSlim.Enter*Lock`/`TryEnter*Lock`, `ReaderWriterLock.Acquire*Lock`/`UpgradeToWriterLock`, `Barrier.SignalAndWait`) in async code | Warning | ❌ |
 | **CC032** | Async call discarded in non-async code, where the compiler's CS4014 does not fire | Warning | ❌ |
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
@@ -166,6 +166,7 @@ dotnet build samples/CancelCop.Sample
 | **CC050** | Blocking `Ping.Send` in async code | Warning | ✅ |
 | **CC051** | Blocking `SslStream.AuthenticateAsClient` in async code | Warning | ✅ |
 | **CC052** | Blocking `WebRequest.GetResponse` in async code | Warning | ✅ |
+| **CC053** | Blocking `Thread.Join` in async code (no TAP counterpart on any shipped .NET — reported without a rewrite; moved out of CC031) | Warning | ❌ |
 
 ## Quick Examples
 
@@ -672,7 +673,8 @@ public async Task WaitForReadyAsync(SemaphoreSlim ready, CancellationToken cance
 > Analyzer-only by design. These primitives have no `…Async` counterpart in .NET, so resolving the
 > finding is a design change — a `SemaphoreSlim`, a `TaskCompletionSource`, or awaiting the task
 > instead of joining the thread — rather than a mechanical rewrite. `SemaphoreSlim.Wait` belongs to
-> CC026, which can offer a real fix. `ReaderWriterLockSlim.Enter*Lock` / `TryEnter*Lock`,
+> CC026, which can offer a real fix. `Thread.Join` belonged here until v1.52.42 and now has its own
+> dedicated rule, CC053. `ReaderWriterLockSlim.Enter*Lock` / `TryEnter*Lock`,
 > `ReaderWriterLock.Acquire*Lock`, and `Barrier.SignalAndWait` are included because they
 > are not `WaitHandle` members and would otherwise be a silent false negative. A
 > zero-timeout `TryEnter` or `Acquire*Lock` is an immediate probe and stays quiet.
@@ -1210,6 +1212,33 @@ await request.GetResponseAsync();
 > `GetResponse` inside a `GetResponseAsync` member are reported without a
 > fix.
 
+### CC053: Blocking `Thread.Join` in Async Code
+
+```csharp
+// ❌ Warning CC053 - parks the calling pool thread until the joined thread terminates
+public async Task RunAsync(Thread thread, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    thread.Join();
+}
+
+// ✅ Preferred
+await workTask; // await the task that represents the work instead of joining a raw thread
+```
+
+> `System.Threading.Thread` declares only `Join()`, `Join(int)`, and
+> `Join(TimeSpan)` on current .NET (verified against the net9/net10 reference
+> packs) and **no** TAP `JoinAsync` counterpart on any shipped version, so
+> CC053 is analyzer-only by design: every call is reported **without a
+> rewrite** — do not expect a code fix. Prefer awaiting the task that
+> represents the work; a blocking join in async code is a deadlock risk under
+> a starving pool.
+> `Thread.Join` moved out of CC031 (v1.52.42) into this dedicated,
+> symbol-gated rule for the type itself, so each join call reports exactly
+> once. `Thread` is also sealed, so no derived-type receiver shapes exist.
+> The CC031 quick-example note above no longer lists `Thread.Join` for the
+> same reason.
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
@@ -1310,8 +1339,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **52 rules** spanning token presence, propagation, positioning, loop checks,
-async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
+CancelCop now ships **53 rules** spanning token presence, propagation, positioning, loop checks,
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →
 **CC023**. New rules are added opportunistically as common cancellation pitfalls surface; bug fixes
