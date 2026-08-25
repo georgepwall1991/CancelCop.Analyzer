@@ -223,4 +223,48 @@ public class TestClass
             .WithArguments("Join");
         await VerifyCS.VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task ThreadJoin_ProvablyZeroTimeout_ShouldStayQuiet()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Thread worker)
+    {
+        worker.Join(0);
+        worker.Join(TimeSpan.Zero);
+        await Task.Yield();
+    }
+}";
+
+        await VerifyCS.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ThreadJoin_NonZeroTimeout_ShouldReportDiagnostic()
+    {
+        var test = @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(Thread worker)
+    {
+        worker.{|#0:Join|}(500);
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC053")
+            .WithLocation(0)
+            .WithArguments("Join");
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
 }

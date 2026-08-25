@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -42,6 +41,11 @@ namespace CancelCop.Analyzer;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
 {
+    /// <summary>
+    /// The diagnostic ID for this analyzer rule.
+    /// </summary>
+    public const string DiagnosticId = "CC053";
+
     private static readonly LocalizableString Title =
         "Avoid blocking Thread.Join in async code";
     private static readonly LocalizableString MessageFormat =
@@ -122,14 +126,21 @@ public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        // Thread declares no JoinAsync on any shipped .NET (verified against
-        // the net9/net10 ref packs), so unlike the sibling rules there is no
-        // counterpart-existence gate: the rule still reports the blocking
-        // call. The speculative rebind below stays so a future framework
-        // JoinAsync enables the rewrite automatically.
-
         if (!CancellationTokenHelpers.IsInAsyncFunction(invocation))
             return;
+
+        // A provably-zero timeout is an immediate probe, not a wait — parity with
+        // CC031's exclusion for the same shape.
+        if (
+            CancellationTokenHelpers.HasProvablyZeroTimeout(
+                invocation,
+                context.SemanticModel,
+                context.CancellationToken
+            )
+        )
+        {
+            return;
+        }
 
         // Analyzer-only by design: Thread declares no JoinAsync on any shipped .NET,
         // so there is nothing to rewrite toward and no code-fix provider is exported.
@@ -145,34 +156,9 @@ public class BlockingThreadJoinAnalyzer : DiagnosticAnalyzer
 
 
 
-    private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
-    {
-        while (type != null)
-        {
-            if (SymbolEqualityComparer.Default.Equals(type, baseType))
-                return true;
-            type = type.BaseType;
-        }
-
-        return false;
-    }
 
 
 
-    private static bool ResolvesOnFrameworkThread(
-        IMethodSymbol bound,
-        INamedTypeSymbol threadType
-    )
-    {
-        // Walk overrides so a legitimate override of the framework TAP member keeps
-        // its framework lineage; a same-named `new` hider has no override chain and
-        // must declare on Thread itself to pass.
-        var definition = bound.OriginalDefinition;
-        while (definition.OverriddenMethod != null)
-            definition = definition.OverriddenMethod.OriginalDefinition;
-
-        return SymbolEqualityComparer.Default.Equals(definition.ContainingType, threadType);
-    }
 
     private static bool IsTaskLike(ITypeSymbol type)
     {
