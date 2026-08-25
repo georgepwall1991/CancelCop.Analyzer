@@ -199,6 +199,7 @@ public class BlockingOnAsyncCodeFixProvider : CodeFixProvider
                     when access.Expression
                             is InvocationExpressionSyntax
                             {
+                                ArgumentList.Arguments.Count: 0,
                                 Expression: MemberBindingExpressionSyntax
                                 {
                                     Name.Identifier.Text: "GetAwaiter"
