@@ -1242,7 +1242,7 @@ dotnet_diagnostic.CC006.severity = warning
 
 ## Project Quality
 
-- **700+ regression tests** with comprehensive coverage, plus a cross-analyzer false-positive guard that
+- **1,500+ regression tests** with comprehensive coverage, plus a cross-analyzer false-positive guard that
   runs every analyzer over idiomatic code (core, framework, nested-scope, exotic-syntax) and asserts
   zero diagnostics
 - **Test-Driven Development** approach

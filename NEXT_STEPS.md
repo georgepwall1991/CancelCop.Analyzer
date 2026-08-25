@@ -8,7 +8,7 @@
 
 ## Current status
 
-CancelCop ships **29 rules** (CC001–CC006, CC009–CC029) covering:
+CancelCop ships **52 rules** (CC001–CC006, CC009–CC052) covering:
 
 - **Token presence** — public async methods (CC001), MediatR/controller/Minimal-API/SignalR handlers
   (CC005A/B/C, CC018), async iterators (CC001 + CC011).
@@ -18,13 +18,19 @@ CancelCop ships **29 rules** (CC001–CC006, CC009–CC029) covering:
 - **Async streams** — `await foreach` should flow a token (CC010); async-iterator
   `[EnumeratorCancellation]` (CC011).
 - **Token misuse** — explicit `None`/`default` when a token is in scope (CC012); unused token
-  parameter (CC016); timeout CTS not linked to the in-scope parent (CC029).
+  parameter (CC016); timeout CTS not linked to the in-scope parent (CC029); `ParallelOptions`
+  created without a token while one is in scope (CC034).
 - **Blocking sync-over-async** — `Thread.Sleep` (CC013), `.Result`/`.Wait()`/`GetAwaiter().GetResult()`
-  (CC015), `SemaphoreSlim.Wait()` (CC026), blocking `File`/`StreamReader` I/O (CC028).
+  (CC015), `SemaphoreSlim.Wait()` (CC026), blocking `File`/`StreamReader` I/O (CC028),
+  `Process.WaitForExit` (CC030), sync primitives (CC031), sockets/TCP/UDP/HTTP listeners
+  (CC036–CC040), named pipes (CC041/CC042), DNS (CC043/CC044), ADO.NET (CC045–CC048),
+  SMTP (CC049), ping (CC050), TLS handshakes (CC051), web requests (CC052).
 - **Resource lifecycle** — undisposed `CancellationTokenSource` (CC014), prefer `CancelAsync()`
-  (CC022), prefer `await using` (CC025), returned task uses a disposed `using` resource (CC027).
+  (CC022), prefer `await using` (CC025), returned task uses a disposed `using` resource (CC027),
+  never-disposed CTS fields (CC033).
 - **Async hygiene** — swallowed `OperationCanceledException` (CC019), `async void` (CC023),
-  async-void lambdas (CC024).
+  async-void lambdas (CC024), unawaited async calls in non-async code (CC032), empty catches
+  that silently discard cancellation (CC035).
 - **Framework cancellation sources** — `BackgroundService.ExecuteAsync` (CC017),
   `ServerCallContext.CancellationToken` (CC020), `HttpContext.RequestAborted` (CC021).
 
