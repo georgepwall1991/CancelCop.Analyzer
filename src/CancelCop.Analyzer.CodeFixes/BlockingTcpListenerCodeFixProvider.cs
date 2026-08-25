@@ -131,21 +131,6 @@ public class BlockingTcpListenerCodeFixProvider : CodeFixProvider
                 );
             }
 
-            if (
-                tokenCall != null
-                && !RebindsToTcpListenerAcceptAsync(
-                    semanticModel,
-                    invocation.SpanStart,
-                    tokenCall,
-                    acceptMethod
-                )
-            )
-                throw new InvalidOperationException(
-                    "DBG-TOKENCALL-REJECTED symbol="
-                    + (semanticModel.GetSpeculativeSymbolInfo(invocation.SpanStart, tokenCall, SpeculativeBindingOption.BindAsExpression).Symbol?.ToDisplayString() ?? "null")
-                    + " candidates=" + string.Join("|", semanticModel.GetSpeculativeSymbolInfo(invocation.SpanStart, tokenCall, SpeculativeBindingOption.BindAsExpression).CandidateSymbols.Select(c2 => c2.ToDisplayString()))
-                );
-
             var boundCall =
                 tokenCall != null
                 && RebindsToTcpListenerAcceptAsync(
