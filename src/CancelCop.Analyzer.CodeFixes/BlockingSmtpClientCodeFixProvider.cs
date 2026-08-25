@@ -40,7 +40,14 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
 
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingSmtpClientAnalyzer.NoFixProperty))
+        // "token-required" means an async counterpart exists but the analyzer's in-place rewrite
+        // could not apply it — the statement hoist below can. "await-unsafe" and "self-async"
+        // are final: no rewrite is offered.
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingSmtpClientAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        if (hasNoFix && noFixReason != "token-required")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -49,6 +56,12 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
             .FirstOrDefault();
 
         if (invocation is null)
+            return;
+
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
             return;
 
         var tokenName = diagnostic.Properties.TryGetValue(
@@ -64,6 +77,92 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         )
             ? argumentName
             : null;
+
+        // A whole null-conditional statement (`smtp?.Send(msg);`) hoists to
+        // `if (smtp is not null) { await smtp.SendMailAsync(msg, ct); }` — an in-place rewrite
+        // cannot be inserted on the spine of `?.`. The spine is detected syntactically.
+        if (
+            NullConditionalHoist.TryGetStatementReceiver(
+                semanticModel,
+                invocation,
+                "Send",
+                out var hoistStatement,
+                out var conditionalAccess,
+                out var splicedReceiver
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            var sendCall = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    splicedReceiver,
+                    SyntaxFactory.IdentifierName("SendMailAsync")
+                ),
+                invocation.ArgumentList
+            );
+
+            // The analyzer drops the in-scope token when its in-place rewrite could not apply;
+            // the hoist can, so re-resolve the token here.
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            if (hoistToken != null)
+            {
+                sendCall = sendCall.WithArgumentList(
+                    sendCall.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
+                );
+            }
+
+            // Speculatively rebind the generated call: a subclass hiding SendMailAsync with a
+            // non-awaitable member must withhold the rewrite instead of breaking the build.
+            var sendMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var rebound = semanticModel
+                .GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    sendCall,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+            if (
+                rebound == null
+                || rebound.Name != "SendMailAsync"
+                || rebound.ReturnType.Name != "Task"
+                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                    != "System.Threading.Tasks"
+                || sendMethod == null
+                || !rebound.ContainingType.Equals(sendMethod.OriginalDefinition.ContainingType)
+            )
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            sendCall,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        // No spine (or the hoist was withheld): any analyzer NoFix reason is final here.
+        if (hasNoFix)
+            return;
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
@@ -83,6 +182,21 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    private static ArgumentSyntax TokenArgument(string tokenName, string? tokenArgumentName)
+    {
+        var tokenArgument = SyntaxFactory.Argument(
+            CancellationTokenHelpers.TokenExpression(tokenName)
+        );
+        if (tokenArgumentName != null)
+        {
+            tokenArgument = tokenArgument.WithNameColon(
+                SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(tokenArgumentName))
+            );
+        }
+
+        return tokenArgument;
     }
 
     private static async Task<Document> ReplaceAsync(

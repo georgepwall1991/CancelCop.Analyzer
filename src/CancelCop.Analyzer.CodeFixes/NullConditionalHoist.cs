@@ -60,6 +60,68 @@ internal static class NullConditionalHoist
     }
 
     /// <summary>
+    /// Convenience wrapper for the common blocking-call shape: <paramref name="invocation"/> is
+    /// the terminal WhenNotNull expression of a whole-statement null-conditional access calling
+    /// <c>x.<paramref name="memberName"/>(…)</c>. Provides the awaited receiver — the spliced
+    /// chain for a chained spine, or the operation itself for a direct one.
+    /// </summary>
+    public static bool TryGetStatementReceiver(
+        SemanticModel semanticModel,
+        InvocationExpressionSyntax invocation,
+        string memberName,
+        out ExpressionStatementSyntax statement,
+        out ConditionalAccessExpressionSyntax conditionalAccess,
+        out ExpressionSyntax receiver
+    )
+    {
+        receiver = null!;
+        return TryGetStatement(semanticModel, invocation, out statement, out conditionalAccess)
+            && ReferenceEquals(invocation, conditionalAccess.WhenNotNull)
+            && ResolveReceiver(conditionalAccess, invocation, memberName, out receiver);
+    }
+
+    private static bool ResolveReceiver(
+        ConditionalAccessExpressionSyntax conditionalAccess,
+        InvocationExpressionSyntax invocation,
+        string memberName,
+        out ExpressionSyntax receiver
+    )
+    {
+        if (invocation.Expression is MemberBindingExpressionSyntax directBinding)
+        {
+            // Direct spine (`x?.Wait()`): the awaited receiver is the operation itself.
+            if (directBinding.Name.Identifier.Text == memberName)
+            {
+                receiver = conditionalAccess.Expression;
+                return true;
+            }
+
+            receiver = null!;
+            return false;
+        }
+
+        if (
+            invocation.Expression is MemberAccessExpressionSyntax chainedAccess
+            && chainedAccess.Name.Identifier.Text == memberName
+            && TrySpliceOperation(
+                chainedAccess.Expression,
+                conditionalAccess.Expression.WithoutTrivia(),
+                out var spliced
+            )
+            && !ContainsNullConditionalAccess(spliced)
+        )
+        {
+            // Chained spine (`holder?.Work.Wait()`): splice the operation under the
+            // receiver-less chain.
+            receiver = spliced;
+            return true;
+        }
+
+        receiver = null!;
+        return false;
+    }
+
+    /// <summary>
     /// The hoist evaluates the operation twice (once in the condition, once in the hoisted call),
     /// so only symbols whose repeated read cannot run code or change identity qualify: a local, a
     /// parameter, or <c>this</c>. A bare identifier can still bind to a property inside its own
