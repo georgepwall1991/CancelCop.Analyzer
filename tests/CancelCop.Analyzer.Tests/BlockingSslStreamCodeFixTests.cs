@@ -304,6 +304,95 @@ public class Client : SslStream
     }
 
     [Fact]
+    public async Task AuthenticateAsClient_InnerShadowingLocal_StillFixes()
+    {
+        // An inner local that merely shares the name `self` is a different symbol than
+        // the outer this-alias: symbol resolution keeps the fix available.
+        var test =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host, SslStream other)
+    {
+        SslStream self = this;
+        return await Task.Run(async () =>
+        {
+            SslStream self = other;
+            self?.{|#0:AuthenticateAsClient|}(host);
+            return true;
+        });
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host, SslStream other)
+    {
+        SslStream self = this;
+        return await Task.Run(async () =>
+        {
+            SslStream self = other;
+            if (self is not null)
+            {
+                await self.AuthenticateAsClientAsync(host);
+            }
+            return true;
+        });
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
+
+    [Fact]
+    public async Task AuthenticateAsClient_ConditionalReassignmentUnderControlFlow_NoFix()
+    {
+        // `self` is reassigned from `this` under a condition; when that branch runs,
+        // the hoisted call would dispatch back into the enclosing member. Conservative:
+        // withhold.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Client : SslStream
+{
+    public Client()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host, bool useThis, SslStream other)
+    {
+        SslStream self = other;
+        if (useThis)
+        {
+            self = this;
+        }
+        self.{|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
     public async Task AuthenticateAsClient_ConditionalThisAliasInsideAuthenticateAsClientAsync_NoFix()
     {
         // `self?.AuthenticateAsClient(...)` on a spine whose operation is provably

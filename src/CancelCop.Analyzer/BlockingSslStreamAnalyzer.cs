@@ -267,7 +267,7 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         // provably `this` (`this`, `base`, or a local assigned from this) inside an
         // AuthenticateAsClientAsync member retargets the enclosing call itself and
         // recurses when the fix virtually dispatches. Withhold those.
-        if (!ReceiverMayBeThis(invocation))
+        if (!ReceiverMayBeThis(context, invocation))
             return false;
 
         var enclosing =
@@ -289,7 +289,10 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             && IsTaskLike(enclosing.ReturnType);
     }
 
-    private static bool ReceiverMayBeThis(InvocationExpressionSyntax invocation)
+    private static bool ReceiverMayBeThis(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation
+    )
     {
         // A bare `AuthenticateAsClient(...)` IS an implicit-this call.
         if (invocation.Expression is IdentifierNameSyntax)
@@ -309,77 +312,116 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
                     current is ConditionalAccessExpressionSyntax conditional
                     && ReferenceEquals(invocation, conditional.WhenNotNull)
                 )
-                    return ReceiverMayBeThisOnExpression(conditional.Expression);
+                    return ReceiverMayBeThisOnExpression(
+                        context,
+                        conditional.Expression
+                    );
             }
 
             return false;
         }
 
-        return ReceiverMayBeThisOnExpression(invocation.Expression);
+        return ReceiverMayBeThisOnExpression(context, invocation.Expression);
     }
 
-    private static bool ReceiverMayBeThisOnExpression(ExpressionSyntax expression)
+    private static bool ReceiverMayBeThisOnExpression(
+        SyntaxNodeAnalysisContext context,
+        ExpressionSyntax expression
+    )
     {
         switch (expression)
         {
+            case ThisExpressionSyntax or BaseExpressionSyntax:
+                return true;
             // An identifier here is a named local or parameter, NOT implicit this —
             // only one provably assigned from `this` counts.
             case IdentifierNameSyntax alias:
-                return LocalIsAssignedFromThis(alias);
-            case MemberAccessExpressionSyntax memberAccess
-                when memberAccess.Expression is ThisExpressionSyntax
-                    or BaseExpressionSyntax:
-                return true;
-            case MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax alias }:
-                return LocalIsAssignedFromThis(alias);
-            case ThisExpressionSyntax or BaseExpressionSyntax:
-                return true;
+                return LocalIsAssignedFromThis(context, alias);
+            case MemberAccessExpressionSyntax memberAccess:
+                return ReceiverMayBeThisOnExpression(context, memberAccess.Expression);
             default:
                 return false;
         }
     }
 
-    private static bool LocalIsAssignedFromThis(IdentifierNameSyntax identifier)
+    private static bool LocalIsAssignedFromThis(
+        SyntaxNodeAnalysisContext context,
+        IdentifierNameSyntax identifier
+    )
     {
-        // The assignment may live in any enclosing block of the same function body
-        // (`SslStream self = this;` above an `if { self.AuthenticateAsClient(); }`),
-        // so scan outward block by block until a function boundary.
-        foreach (var block in identifier.AncestorsAndSelf().OfType<BlockSyntax>())
-        {
-            foreach (var statement in block.Statements)
-            {
-                if (
-                    statement
-                        is LocalDeclarationStatementSyntax
-                        {
-                            Declaration.Variables.Count: 1
-                        } declaration
-                    && declaration.Declaration.Variables[0].Identifier.Text
-                        == identifier.Identifier.Text
-                    && declaration.Declaration.Variables[0].Initializer?.Value
-                        is ThisExpressionSyntax
-                )
-                    return true;
+        var semanticModel = context.SemanticModel;
+        var receiverSymbol =
+            semanticModel.GetSymbolInfo(identifier, context.CancellationToken).Symbol;
+        if (receiverSymbol is not (ILocalSymbol or IParameterSymbol))
+            return false;
 
-                if (
-                    statement
-                        is ExpressionStatementSyntax
-                        {
-                            Expression: AssignmentExpressionSyntax
-                            {
-                                Left: IdentifierNameSyntax assigned,
-                                Right: ThisExpressionSyntax,
-                            }
-                        }
-                    && assigned.Identifier.Text == identifier.Identifier.Text
-                )
-                    return true;
+        // The assignment may sit anywhere in the same function body, including under
+        // control flow (`if (useThis) self = this;`), so scan the whole enclosing
+        // function. Symbols are compared, never names: an unrelated lambda parameter
+        // that happens to share the name is not an alias.
+        foreach (
+            var node in EnclosingFunctionBody(identifier)?.DescendantNodes()
+                ?? Enumerable.Empty<SyntaxNode>()
+        )
+        {
+            switch (node)
+            {
+                case VariableDeclaratorSyntax
+                    {
+                        Initializer.Value: ThisExpressionSyntax,
+                    } declarator
+                when declarator.Identifier.Text == identifier.Identifier.Text:
+                    if (
+                        SymbolEqualityComparer.Default.Equals(
+                            semanticModel.GetDeclaredSymbol(declarator),
+                            receiverSymbol
+                        )
+                    )
+                        return true;
+                    break;
+                case AssignmentExpressionSyntax
+                    {
+                        Right: ThisExpressionSyntax,
+                        Left: IdentifierNameSyntax assigned,
+                    }
+                when assigned.Identifier.Text == identifier.Identifier.Text:
+                    if (
+                        SymbolEqualityComparer.Default.Equals(
+                            semanticModel.GetSymbolInfo(assigned).Symbol,
+                            receiverSymbol
+                        )
+                    )
+                        return true;
+                    break;
             }
         }
 
         return false;
     }
 
+    private static BlockSyntax? EnclosingFunctionBody(SyntaxNode node)
+    {
+        for (
+            var current = node;
+            current is not null;
+            current = current.Parent
+        )
+        {
+            switch (current)
+            {
+                case MethodDeclarationSyntax method:
+                    return method.Body;
+                case ConstructorDeclarationSyntax constructor:
+                    return constructor.Body;
+                case AnonymousFunctionExpressionSyntax anonymous:
+                    return anonymous.Body as BlockSyntax;
+                case LocalFunctionStatementSyntax localFunction:
+                    return localFunction.Body;
+            }
+        }
+
+        return null;
+    }
     private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
     {
         while (type != null)
