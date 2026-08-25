@@ -207,7 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.32: 1490 tests, green locally. **CC047 fixer** —
+- v1.52.32: 1491 tests, green locally. **CC047 fixer** —
   null-conditional `ExecuteNonQuery()` statements hoist to an
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`
   with token flow and a speculative rebind requiring the framework's
