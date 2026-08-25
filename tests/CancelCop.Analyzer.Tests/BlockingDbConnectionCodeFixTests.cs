@@ -485,7 +485,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExtraOpenAsyncIntOverload_NullConditional_StillReportsWithoutAFix()
+    public async Task ExtraOpenAsyncIntOverload_NullConditional_HoistsToCancellableForm()
     {
         // An unrelated OpenAsync(int) is arity-compatible with the token-taking
         // rewrite. ReachesCounterpart must keep scanning to the framework method.
@@ -520,7 +520,41 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+                var fixedCode =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class ExtraConnection : DbConnection
+{
+    public override string ConnectionString { get; set; } = """";
+    public override string Database => """";
+    public override string DataSource => """";
+    public override string ServerVersion => """";
+    public override ConnectionState State => ConnectionState.Closed;
+    public override void ChangeDatabase(string databaseName) { }
+    public override void Close() { }
+    public override void Open() { }
+    public int OpenAsync(int timeout) => 0;
+    protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => null!;
+    protected override DbCommand CreateDbCommand() => null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ExtraConnection? connection, CancellationToken cancellationToken)
+    {
+        if (connection is not null)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]

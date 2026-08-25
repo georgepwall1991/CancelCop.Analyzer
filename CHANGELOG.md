@@ -17,9 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   { await connection.OpenAsync(cancellationToken); }`, chained
   spines splice the connection into the awaited call).
 - **Shared hoist machinery:** extracted `TryPrepareHoistedCall`
-  into `NullConditionalHoist`, deduplicating the spine detection,
-  terminality, receiver resolution, and splicing used by the
-  CC015/CC022/CC030/CC045/CC049 fixers.
+  into `NullConditionalHoist`; new hoists build on it, keeping
+  spine detection, terminality, receiver resolution, and splicing
+  in one place. The rebind check walks the override chain so
+  provider `OpenAsync` overrides qualify while unrelated hiders
+  do not.
 
 ## [1.52.25] - 2026-08-24
 

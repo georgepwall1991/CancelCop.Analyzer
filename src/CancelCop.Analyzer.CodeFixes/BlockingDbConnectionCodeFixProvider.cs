@@ -109,8 +109,9 @@ public class BlockingDbConnectionCodeFixProvider : CodeFixProvider
                 || rebound.ReturnType.Name != "Task"
                 || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                     != "System.Threading.Tasks"
+                || !ReachesDbConnectionOpenAsync(rebound)
                 || openMethod == null
-                || !rebound.ContainingType.Equals(openMethod.OriginalDefinition.ContainingType)
+                || !ReachesDbConnectionOpenAsync(openMethod)
             )
                 return;
 
@@ -149,6 +150,24 @@ public class BlockingDbConnectionCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Walks the override chain and requires it to reach the framework's OpenAsync on
+    /// System.Data.Common.DbConnection — so provider overrides qualify while unrelated `new`
+    /// hiders on derived classes do not.
+    /// </summary>
+    private static bool ReachesDbConnectionOpenAsync(IMethodSymbol? method)
+    {
+        for (var current = method?.OriginalDefinition; current != null; current = current.OverriddenMethod)
+        {
+            if (
+                current.ContainingType?.ToDisplayString() == "System.Data.Common.DbConnection"
+            )
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(
