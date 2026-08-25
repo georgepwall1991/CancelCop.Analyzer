@@ -440,8 +440,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExtraExecuteNonQueryAsyncIntOverload_NullConditional_StillReportsWithoutAFix()
+    public async Task ExtraExecuteNonQueryAsyncIntOverload_NullConditional_HoistsToCancellableForm()
     {
+        // The unrelated ExecuteNonQueryAsync(int) hider is skipped: the speculative rebind
+        // selects the inherited framework ExecuteNonQueryAsync(CancellationToken).
         var source =
             MidCommandScaffold
             + @"
@@ -459,7 +461,27 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            MidCommandScaffold
+            + @"
+public class ExtraCommand : MidCommand
+{
+    public int ExecuteNonQueryAsync(int timeout) => 0;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(ExtraCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]

@@ -103,9 +103,8 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
                 );
             }
 
-            // Speculatively rebind: only framework DbCommand ExecuteNonQueryAsync overloads
-            // qualify; hidden unrelated members withhold the fix.
-            var nonQueryMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            // Speculatively rebind: only a Task<int>-returning ExecuteNonQueryAsync whose
+            // override chain reaches the framework's DbCommand.ExecuteNonQueryAsync qualifies.
             var rebound = semanticModel
                 .GetSpeculativeSymbolInfo(
                     invocation.SpanStart,
@@ -120,9 +119,17 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
                 || rebound.ReturnType.Name != "Task"
                 || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                     != "System.Threading.Tasks"
-                || nonQueryMethod == null
-                || !rebound.ContainingType.Equals(nonQueryMethod.OriginalDefinition.ContainingType)
             )
+                return;
+
+            if (
+                rebound.ReturnType is not INamedTypeSymbol namedResult
+                || namedResult.TypeArguments.Length != 1
+                || namedResult.TypeArguments[0].SpecialType != SpecialType.System_Int32
+            )
+                return;
+
+            if (!ReachesDbCommandExecuteNonQueryAsync(rebound))
                 return;
 
             context.RegisterCodeFix(
@@ -160,6 +167,26 @@ public class BlockingDbNonQueryCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Walks the override chain and requires it to reach the framework's ExecuteNonQueryAsync on
+    /// System.Data.Common.DbCommand — so provider overrides qualify while unrelated `new`
+    /// hiders on derived classes do not.
+    /// </summary>
+    private static bool ReachesDbCommandExecuteNonQueryAsync(IMethodSymbol? method)
+    {
+        for (
+            var current = method?.OriginalDefinition;
+            current != null;
+            current = current.OverriddenMethod
+        )
+        {
+            if (current.ContainingType?.ToDisplayString() == "System.Data.Common.DbCommand")
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<Document> ReplaceAsync(
