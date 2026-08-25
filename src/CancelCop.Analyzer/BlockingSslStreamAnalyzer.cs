@@ -292,6 +292,8 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
     private static bool ReceiverIsProvablyFresh(InvocationExpressionSyntax invocation)
     {
         // A bare `AuthenticateAsClient(...)` IS an implicit-this call — never fresh.
+        if (invocation.Expression is IdentifierNameSyntax)
+            return false;
 
         ExpressionSyntax? receiver;
         if (invocation.Expression is MemberBindingExpressionSyntax)

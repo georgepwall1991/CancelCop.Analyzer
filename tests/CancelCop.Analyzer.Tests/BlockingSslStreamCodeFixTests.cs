@@ -525,6 +525,32 @@ public class Client : SslStream
     }
 
     [Fact]
+    public async Task AuthenticateAsClient_BareInsideAuthenticateAsClientAsync_NoFix()
+    {
+        // A bare call inside an AuthenticateAsClientAsync-shaped member is
+        // implicit-this recursion — no rewrite.
+        var source =
+            @"
+using System.IO;
+using System.Net.Security;
+using System.Threading.Tasks;
+
+public class Worker : SslStream
+{
+    public Worker()
+        : base(Stream.Null) { }
+
+    public async Task<bool> AuthenticateAsClientAsync(string host)
+    {
+        {|#0:AuthenticateAsClient|}(host);
+        return true;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
+
+    [Fact]
     public async Task AuthenticateAsClient_NewFrameworkReceiver_StillFixes()
     {
         // `new SslStream(...)` is provably fresh — it cannot be the enclosing
