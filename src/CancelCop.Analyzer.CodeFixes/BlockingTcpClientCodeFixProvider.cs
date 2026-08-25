@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.Generic;
 using System.Composition;
 using System.Linq;
 using System.Threading;
@@ -106,34 +107,26 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
 
             // Prefer the cancellable form; older targets exposing only a tokenless ConnectAsync
             // fall back to it. Both are validated by speculative rebinding.
-            InvocationExpressionSyntax? tokenCall = null;
+            // Candidate forms in priority order: positional token, named token (works when the
+            // original call uses reordered named arguments), then tokenless for targets whose
+            // ConnectAsync has no CancellationToken overload.
+            var candidates2 = new List<InvocationExpressionSyntax>();
             if (hoistToken != null)
             {
-                tokenCall = hoistedInvocation.WithArgumentList(
+                candidates2.Add(hoistedInvocation.WithArgumentList(
                     hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, null))
-                );
+                ));
+                candidates2.Add(hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(TokenArgument(hoistToken, "cancellationToken"))
+                ));
             }
+            candidates2.Add(hoistedInvocation);
 
             // Speculatively rebind: only the framework's awaitable ConnectAsync overloads on
             // System.Net.Sockets.TcpClient qualify; hidden unrelated members withhold the fix.
             var connectMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            var boundCall =
-                tokenCall != null
-                && RebindsToTcpClientConnectAsync(
-                    semanticModel,
-                    invocation.SpanStart,
-                    tokenCall,
-                    connectMethod
-                )
-                    ? tokenCall
-                    : RebindsToTcpClientConnectAsync(
-                            semanticModel,
-                            invocation.SpanStart,
-                            hoistedInvocation,
-                            connectMethod
-                        )
-                        ? hoistedInvocation
-                        : null;
+            var boundCall = candidates2.FirstOrDefault(c =>
+                RebindsToTcpClientConnectAsync(semanticModel, invocation.SpanStart, c, connectMethod));
 
             if (boundCall is null)
                 return;
