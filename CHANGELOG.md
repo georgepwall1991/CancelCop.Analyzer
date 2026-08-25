@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.30] - 2026-08-25
+
+### Changed
+
+- **CC040 fixer:** null-conditional `GetContext()` statements now
+  rewrite instead of being withheld (`listener?.GetContext();`
+  becomes `if (listener is not null)
+  { await listener.GetContextAsync(); }`, chained spines splice
+  the listener into the awaited call). GetContextAsync is
+  tokenless, so the hoist never invents a token argument; a
+  speculative rebind withholds the rewrite when a subclass hides
+  GetContextAsync with a non-awaitable member.
+
 ## [1.52.29] - 2026-08-24
 
 ### Changed

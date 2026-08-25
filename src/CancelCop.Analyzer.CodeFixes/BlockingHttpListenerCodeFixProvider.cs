@@ -38,9 +38,21 @@ public class BlockingHttpListenerCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingHttpListenerAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingHttpListenerAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "no-safe-rewrite")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -50,6 +62,66 @@ public class BlockingHttpListenerCodeFixProvider : CodeFixProvider
 
         if (invocation is null)
             return;
+
+        // A whole null-conditional statement (`listener?.GetContext();`) hoists to
+        // `if (listener is not null) { await listener.GetContextAsync(); }` — an in-place
+        // rewrite cannot be inserted on the spine of `?.`. GetContextAsync is tokenless, so the
+        // hoist never invents a token argument.
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "GetContext",
+                "GetContextAsync",
+                out var hoistStatement,
+                out var conditionalAccess,
+                out var hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // Speculatively rebind: only the framework's awaitable GetContextAsync on
+            // System.Net.HttpListener qualifies; hidden unrelated members withhold the fix.
+            var contextMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var rebound = semanticModel
+                .GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    hoistedInvocation,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+            if (
+                rebound == null
+                || rebound.Name != "GetContextAsync"
+                || rebound.ReturnType.Name != "Task"
+                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                    != "System.Threading.Tasks"
+                || contextMethod == null
+                || !rebound.ContainingType.Equals(contextMethod.OriginalDefinition.ContainingType)
+            )
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
