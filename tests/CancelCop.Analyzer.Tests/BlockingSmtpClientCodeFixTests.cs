@@ -630,4 +630,69 @@ public class TestClass
         var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
         await CreateTest(test, test, expected).RunAsync();
     }
+    [Fact]
+    public async Task ConditionalSendWithDerivedTokenParameterName_UsesTheCounterpartName()
+    {
+        // Reordered named arguments make a positional token unbindable, so the fix resolves the
+        // counterpart's own token parameter name (`ct`) and appends it by name.
+        var test =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class DerivedClient : SmtpClient
+{
+    public new Task SendMailAsync(
+        string from,
+        string recipients,
+        string subject,
+        string body,
+        CancellationToken ct = default
+    ) => Task.CompletedTask;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(DerivedClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        client?.{|#0:Send|}(subject: ""s"", body: ""b"", from: ""f"", recipients: ""t"");
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class DerivedClient : SmtpClient
+{
+    public new Task SendMailAsync(
+        string from,
+        string recipients,
+        string subject,
+        string body,
+        CancellationToken ct = default
+    ) => Task.CompletedTask;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(DerivedClient? client, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (client is not null)
+        {
+            await client.SendMailAsync(subject: ""s"", body: ""b"", from: ""f"", recipients: ""t"", ct: cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC049", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }

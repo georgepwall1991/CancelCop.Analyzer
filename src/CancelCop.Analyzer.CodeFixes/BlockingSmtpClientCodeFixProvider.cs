@@ -126,11 +126,16 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
             {
                 if (hoistToken == null)
                     return null;
+                // Resolve the counterpart's actual token parameter name from the receiver type
+                // (a derived hider may name it anything).
+                var tokenParameterName =
+                    ResolveCounterpartTokenParameterName(semanticModel, splicedReceiver)
+                    ?? "cancellationToken";
                 return BuildRenamedInvocationWithToken(
                     invocation,
                     splicedReceiver,
                     "SendMailAsync",
-                    TokenArgument(hoistToken, "cancellationToken")
+                    TokenArgument(hoistToken, tokenParameterName)
                 );
             }
 
@@ -303,6 +308,43 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Resolves the name of the trailing CancellationToken parameter on the receiver's public
+    /// Task-returning <c>SendMailAsync</c>, walking base types — used to append the token as a
+    /// named argument when positional appending cannot bind.
+    /// </summary>
+    private static string? ResolveCounterpartTokenParameterName(
+        SemanticModel semanticModel,
+        ExpressionSyntax splicedReceiver
+    )
+    {
+        var type = semanticModel.GetTypeInfo(splicedReceiver).Type;
+        while (type != null)
+        {
+            foreach (var member in type.GetMembers("SendMailAsync"))
+            {
+                if (
+                    member is IMethodSymbol
+                    {
+                        IsStatic: false,
+                        DeclaredAccessibility: Accessibility.Public,
+                        Parameters: { Length: > 0 } parameters
+                    }
+                    && CancellationTokenHelpers.IsCancellationToken(
+                        parameters[parameters.Length - 1].Type
+                    )
+                )
+                {
+                    return parameters[parameters.Length - 1].Name;
+                }
+            }
+
+            type = type.BaseType;
+        }
+
+        return null;
     }
 
     private static async Task<Document> ReplaceAsync(
