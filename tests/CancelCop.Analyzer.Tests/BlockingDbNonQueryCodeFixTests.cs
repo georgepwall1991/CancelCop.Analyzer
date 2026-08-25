@@ -575,52 +575,46 @@ public class TestClass
     public async Task FixAll_TwoNonQueries_BothBecomeAwaitExecuteNonQueryAsync()
     {
         var test =
-            MidCommandScaffold
-            + @"
+            @"
+using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 
-public class OtherHolder
+public class TestClass
 {
-    public MidCommand Command { get; set; } = null!;
-}
-
-public class RecursiveCommand : MidCommand
-{
-    private OtherHolder? other;
-
-    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    public async Task RunAsync(DbCommand? a, DbCommand b, CancellationToken cancellationToken)
     {
-        other?.Command.{|#0:ExecuteNonQuery|}();
-        return 1;
+        a?.{|#0:ExecuteNonQuery|}();
+        b.{|#1:ExecuteNonQuery|}();
+        await Task.Yield();
     }
 }";
 
         var fixedCode =
-            MidCommandScaffold
-            + @"
+            @"
+using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 
-public class OtherHolder
+public class TestClass
 {
-    public MidCommand Command { get; set; } = null!;
-}
-
-public class RecursiveCommand : MidCommand
-{
-    private OtherHolder? other;
-
-    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    public async Task RunAsync(DbCommand? a, DbCommand b, CancellationToken cancellationToken)
     {
-        if (other is not null)
+        if (a is not null)
         {
-            await other.Command.ExecuteNonQueryAsync(cancellationToken);
+            await a.ExecuteNonQueryAsync(cancellationToken);
         }
-        return 1;
+        await b.ExecuteNonQueryAsync(cancellationToken);
+        await Task.Yield();
     }
 }";
 
+        var expected = new[]
+        {
+            new DiagnosticResult("CC047", DiagnosticSeverity.Warning).WithLocation(0),
+            new DiagnosticResult("CC047", DiagnosticSeverity.Warning).WithLocation(1),
+        };
+        await CreateTest(test, fixedCode, expected).RunAsync();
     }
 
     [Fact]
