@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.33] - 2026-08-25
+
+### Changed
+
+- **CC048 fixer:** null-conditional `ExecuteScalar()` statements
+  now rewrite instead of being withheld (`command?.ExecuteScalar();`
+  becomes `if (command is not null)
+  { await command.ExecuteScalarAsync(cancellationToken); }`,
+  chained spines splice the command into the awaited call).
+  A speculative rebind requires the framework Task-returning
+  `ExecuteScalarAsync` on System.Data.Common.DbCommand; returned
+  values and other expression positions keep reporting without a
+  rewrite.
+
 ## [1.52.32] - 2026-08-25
 
 ### Changed

@@ -133,7 +133,7 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ExecuteScalar_NullConditional_ReportsWithoutOfferingAFix()
+    public async Task ExecuteScalar_NullConditional_HoistsToIfNotNullExecuteScalarAsync()
     {
         var source =
             @"
@@ -150,7 +150,25 @@ public class TestClass
     }
 }";
 
-        await CreateTest(source, source, Expected()).RunAsync();
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand? command, CancellationToken cancellationToken)
+    {
+        if (command is not null)
+        {
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected()).RunAsync();
     }
 
     [Fact]
@@ -986,5 +1004,123 @@ public class TestClass
 }";
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalExecuteScalar_HoistsToIfNotNullExecuteScalarAsync()
+    {
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand? command, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        command?.{|#0:ExecuteScalar|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(DbCommand? command, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (command is not null)
+        {
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC048", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ChainedConditionalExecuteScalar_HoistsWithSplicedCommand()
+    {
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        host?.Command.{|#0:ExecuteScalar|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Host
+{
+    public DbCommand Command { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Host? host, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (host is not null)
+        {
+            await host.Command.ExecuteScalarAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC048", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalExecuteScalarAsReturnedValue_ReportsWithoutOfferingAFix()
+    {
+        // Only a whole null-conditional statement can be hoisted; as a returned value the
+        // diagnostic stands without a rewrite.
+        var test =
+            @"
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task<object?> RunAsync(DbCommand? command)
+    {
+        await Task.Yield();
+        return command?.{|#0:ExecuteScalar|}();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC048", DiagnosticSeverity.Warning).WithLocation(0);
+        await CreateTest(test, test, expected).RunAsync();
     }
 }

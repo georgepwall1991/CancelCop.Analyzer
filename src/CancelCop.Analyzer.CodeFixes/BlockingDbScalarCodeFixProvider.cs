@@ -37,9 +37,21 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
         if (root == null)
             return;
 
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
+            return;
+
         var diagnostic = context.Diagnostics.First();
 
-        if (diagnostic.Properties.ContainsKey(BlockingDbScalarAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingDbScalarAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // The analyzer's in-place rewrite could not apply; the statement hoist below can.
+        // "await-unsafe" and "self-async" are final: no rewrite is offered.
+        if (hasNoFix && noFixReason != "token-required")
             return;
 
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
@@ -56,6 +68,88 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
         )
             ? name
             : null;
+
+        // A whole null-conditional statement (`command?.ExecuteScalar();`) hoists to
+        // `if (command is not null) { await command.ExecuteScalarAsync(ct); }`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        if (
+            NullConditionalHoist.TryPrepareHoistedCall(
+                semanticModel,
+                invocation,
+                "ExecuteScalar",
+                "ExecuteScalarAsync",
+                out hoistStatement,
+                out conditionalAccess,
+                out hoistedInvocation
+            )
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // The analyzer drops the in-scope token when its in-place rewrite could not apply;
+            // the hoist can, so re-resolve the token here.
+            var hoistToken =
+                tokenName
+                ?? CancellationTokenHelpers
+                    .FindEnclosingCancellationToken(invocation, semanticModel)
+                    ?.ExpressionText;
+
+            if (hoistToken != null)
+            {
+                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                    hoistedInvocation.ArgumentList.AddArguments(
+                        SyntaxFactory.Argument(
+                            CancellationTokenHelpers.TokenExpression(hoistToken)
+                        )
+                    )
+                );
+            }
+
+            var scalarMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            var rebound = semanticModel
+                .GetSpeculativeSymbolInfo(
+                    invocation.SpanStart,
+                    hoistedInvocation,
+                    SpeculativeBindingOption.BindAsExpression
+                )
+                .Symbol as IMethodSymbol;
+            if (
+                rebound == null
+                || rebound.IsStatic
+                || rebound.Name != "ExecuteScalarAsync"
+                || rebound.ReturnType.Name != "Task"
+                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
+                    != "System.Threading.Tasks"
+                || scalarMethod == null
+                || !rebound.ContainingType.Equals(scalarMethod.OriginalDefinition.ContainingType)
+            )
+                return;
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (hasNoFix)
+            return;
 
         var asyncInvocation = CancellationTokenHelpers.BuildRenamedInvocation(
             invocation,
