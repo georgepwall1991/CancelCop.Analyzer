@@ -1,3 +1,11 @@
+## Release 1.52.39
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+CC051 | Usage | Warning | Avoid blocking SslStream.AuthenticateAsClient in async code
+
 ## Release 1.52.38
 
 ### New Rules
