@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.34] - 2026-08-25
+
+### Changed
+
+- **CC041 fixer:** null-conditional `WaitForConnection()` statements
+  now rewrite instead of being withheld (`pipe?.WaitForConnection();`
+  becomes `if (pipe is not null)
+  { await pipe.WaitForConnectionAsync(cancellationToken); }`,
+  chained spines splice the pipe into the awaited call).
+  A speculative rebind requires the framework Task-returning
+  `WaitForConnectionAsync` on System.IO.Pipes.NamedPipeServerStream;
+  hidden unrelated members withhold the rewrite.
+
 ## [1.52.33] - 2026-08-25
 
 ### Changed
