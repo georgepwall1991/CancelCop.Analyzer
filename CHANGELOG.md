@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.42] - 2026-08-25
+
+### Added
+
+- **CC053 (new rule):** blocking `System.Threading.Thread.Join` — the
+  parameterless, `int`-timeout, and `TimeSpan` arities — in async code now
+  reports. Verified against the net9/net10 ref packs: `Thread` declares only
+  those three non-virtual `Join` overloads, declares **no** TAP
+  `JoinAsync` counterpart on any shipped .NET, and is sealed, so CC053 is
+  analyzer-only by design — every diagnostic is reported without a rewrite,
+  with the speculative-rebind machinery retained so that a future framework
+  `JoinAsync` enables rewrites automatically. Await the task representing
+  the work instead of joining a raw thread.
+
 ## [1.52.40] - 2026-08-25
 
 ### Added

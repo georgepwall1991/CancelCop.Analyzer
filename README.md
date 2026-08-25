@@ -21,7 +21,7 @@ Runtime review and occasional CA rules miss what a dedicated cancellation-and-as
 
 ## What it catches
 
-CancelCop reports high-signal async and cancellation failures early (52 diagnostics, many with code fixes):
+CancelCop reports high-signal async and cancellation failures early (53 diagnostics, many with code fixes):
 
 - missing `CancellationToken` on public async methods and framework handlers (controllers, Minimal APIs, MediatR, SignalR, `BackgroundService`)
 - tokens accepted but not propagated to `HttpClient`, EF Core, `Task.Delay`, and other cancellable APIs
@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.40">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.42">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.40
+Install-Package CancelCop.Analyzer -Version 1.52.42
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -166,6 +166,7 @@ dotnet build samples/CancelCop.Sample
 | **CC050** | Blocking `Ping.Send` in async code | Warning | ✅ |
 | **CC051** | Blocking `SslStream.AuthenticateAsClient` in async code | Warning | ✅ |
 | **CC052** | Blocking `WebRequest.GetResponse` in async code | Warning | ✅ |
+| **CC053** | Blocking `Thread.Join` in async code (no TAP counterpart on any shipped .NET — reported without a rewrite) | Warning | ✅ |
 
 ## Quick Examples
 
@@ -1210,6 +1211,32 @@ await request.GetResponseAsync();
 > `GetResponse` inside a `GetResponseAsync` member are reported without a
 > fix.
 
+### CC053: Blocking `Thread.Join` in Async Code
+
+```csharp
+// ❌ Warning CC053 - parks the calling pool thread until the joined thread terminates
+public async Task RunAsync(Thread thread, CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    thread.Join();
+}
+
+// ✅ Preferred
+await workTask; // await the task that represents the work instead of joining a raw thread
+```
+
+> `System.Threading.Thread` declares only `Join()`, `Join(int)`, and
+> `Join(TimeSpan)` on current .NET (verified against the net9/net10 reference
+> packs) and **no** TAP `JoinAsync` counterpart on any shipped version, so
+> CC053 is analyzer-only by design: every call is reported **without a
+> rewrite** — do not expect a code fix. The fixer machinery is retained for
+> forward compatibility: if the framework ever grows a `JoinAsync`, rewrites
+> light up automatically. Prefer awaiting the task that represents the work;
+> a blocking join in async code is a deadlock risk under a starving pool.
+> CC031 covers `Join` as part of the broader sync-primitive family; CC053 is
+> the dedicated, symbol-gated rule for the type itself. `Thread` is also
+> sealed, so no derived-type receiver shapes exist.
+
 ## Configuration
 
 All rules are enabled by default. Configure severity in `.editorconfig`:
@@ -1310,8 +1337,7 @@ Key points:
 
 ## Roadmap
 
-CancelCop now ships **52 rules** spanning token presence, propagation, positioning, loop checks,
-async streams, blocking sync-over-async (including blocking File/StreamReader I/O), resource
+CancelCop now ships **53 rules** spanning token presence, propagation, positioning, loop checks,
 lifecycle, async hygiene, and framework cancellation sources. The features originally planned here have shipped (under their final IDs):
 `CancellationToken.None` misuse → **CC012**, unused token parameters → **CC016**, async void →
 **CC023**. New rules are added opportunistically as common cancellation pitfalls surface; bug fixes
