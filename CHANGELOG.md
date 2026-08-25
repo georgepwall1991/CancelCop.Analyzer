@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.23] - 2026-08-24
+
+### Changed
+
+- **CC026 fixer:** null-conditional `Wait()` statements now rewrite
+  instead of being withheld (`gate?.Wait();` becomes
+  `if (gate is not null) { await gate.WaitAsync(cancellationToken); }`,
+  chained spines like `holder?.Gate.Wait(1000);` carry the timeout
+  through: `await holder.Gate.WaitAsync(1000);`). Argument lists
+  are carried verbatim; parameterless `Wait()` gains the in-scope
+  token exactly like the direct-path fix. A speculative rebind
+  withholds the rewrite when a subclass hides `WaitAsync` with an
+  unrelated member — for direct and null-conditional calls alike.
+
 ## [1.52.22] - 2026-08-24
 
 ### Changed
