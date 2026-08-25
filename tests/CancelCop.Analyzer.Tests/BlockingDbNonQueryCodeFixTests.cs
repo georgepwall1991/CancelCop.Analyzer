@@ -608,4 +608,44 @@ public class TestClass
 
         await CreateTest(test, fixedCode, Expected(0), Expected(1)).RunAsync();
     }
+
+    [Fact]
+    public async Task SelfRecursiveThisSpine_ReportsWithoutOfferingAFix()
+    {
+        // `this?.ExecuteNonQuery()` inside an ExecuteNonQueryAsync override would rewrite to
+        // `await this.ExecuteNonQueryAsync(...)` — infinite recursion. The analyzer marks it
+        // self-async (member-binding receivers count as implicit this) and no fix is offered.
+        var source =
+            @"
+using System.Data;
+using System.Data.Common;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class RecursiveCommand : DbCommand
+{
+    public override string CommandText { get; set; } = """";
+    public override int CommandTimeout { get; set; }
+    public override CommandType CommandType { get; set; }
+    public override bool DesignTimeVisible { get; set; }
+    public override UpdateRowSource UpdatedRowSource { get; set; }
+    protected override DbConnection DbConnection { get; set; } = null!;
+    protected override DbParameterCollection DbParameterCollection => null!;
+    protected override DbTransaction DbTransaction { get; set; } = null!;
+    public override void Cancel() { }
+    public override int ExecuteNonQuery() => 0;
+    public override object ExecuteScalar() => null!;
+    public override void Prepare() { }
+    protected override DbParameter CreateDbParameter() => null!;
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => null!;
+
+    public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+    {
+        this?.{|#0:ExecuteNonQuery|}();
+        return 1;
+    }
+}";
+
+        await CreateTest(source, source, Expected()).RunAsync();
+    }
 }
