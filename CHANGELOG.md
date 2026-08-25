@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.29] - 2026-08-24
+
+### Changed
+
+- **CC038 fixer:** null-conditional `AcceptTcpClient()` /
+  `AcceptSocket()` statements now rewrite instead of being
+  withheld (`listener?.AcceptTcpClient();` becomes
+  `if (listener is not null)
+  { await listener.AcceptTcpClientAsync(cancellationToken); }`,
+  chained spines splice the listener into the awaited call).
+  The cancellable form is preferred with a parameterless fallback,
+  and a speculative rebind withholds the rewrite when a subclass
+  hides the Accept*Async member with a non-awaitable one.
+
+## [1.52.28] - 2026-08-24
+
+### Changed
+
+- **CC038 fixer:** null-conditional `AcceptTcpClient()` /
+  `AcceptSocket()` statements now rewrite instead of being
+  withheld (`listener?.AcceptTcpClient();` becomes
+  `if (listener is not null)
+  { await listener.AcceptTcpClientAsync(cancellationToken); }`,
+  chained spines splice the listener into the awaited call).
+  A speculative rebind withholds the rewrite when a subclass hides
+  the Accept*Async member with a non-awaitable one.
+
 ## [1.52.27] - 2026-08-24
 
 ### Changed
