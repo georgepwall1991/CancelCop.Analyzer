@@ -233,12 +233,16 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         var onConditionalAccessSpine = CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(
             invocation
         );
-        if (onConditionalAccessSpine)
-            properties = properties.Add(NoFixProperty, "conditional-access");
-        else if (namesWouldBeRemapped)
+        // Specific blockers outrank the conditional-access note: a renamed-parameter override
+        // breaks the hoisted call too (the argument list is copied verbatim), and an await-forbidden
+        // context (lock body, unsafe, …) survives the hoist because the new if-statement lands in
+        // the same context.
+        if (namesWouldBeRemapped)
             properties = properties.Add(NoFixProperty, "named-argument-mismatch");
         else if (CancellationTokenHelpers.AwaitInsertionIsUnsafe(context.SemanticModel, invocation))
             properties = properties.Add(NoFixProperty, CancellationTokenHelpers.AwaitUnsafeReason);
+        else if (onConditionalAccessSpine)
+            properties = properties.Add(NoFixProperty, "conditional-access");
 
         // Final authority: ask Roslyn to bind the call. The search above approximates overload
         // resolution well enough to *choose* a counterpart and decide whether a token can flow, but

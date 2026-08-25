@@ -438,11 +438,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    public async Task ChainedConditionalAccess_HoistsToIfNotNullReadLineAsync()
     {
-        // `holder?.Reader.ReadLine()` reaches the fixer as an ordinary member access,
-        // but the invocation is the WhenNotNull branch of `?.`. Wrapping just that
-        // branch yields `holder?await .Reader.ReadLineAsync(...)`, which is not valid.
+        // `holder?.Reader.ReadLine();` cannot be rewritten in place (`await` cannot sit on
+        // the spine of `?.`), so the whole statement hoists to an if-not-null guard.
         var source =
             @"
 using System.IO;
@@ -458,7 +457,30 @@ public class TestClass
 {
     public async Task RunAsync(Holder? holder, CancellationToken cancellationToken)
     {
-        _ = holder?.Reader.{|#0:ReadLine|}();
+        holder?.Reader.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public StreamReader Reader { get; set; } = null!;
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder, CancellationToken cancellationToken)
+    {
+        if (holder is not null)
+        {
+            await holder.Reader.ReadLineAsync(cancellationToken);
+        }
         await Task.Yield();
     }
 }";
@@ -466,7 +488,7 @@ public class TestClass
         var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
             .WithLocation(0)
             .WithArguments("ReadLine");
-        await CreateTest(source, source, expected).RunAsync();
+        await CreateTest(source, fixedCode, expected).RunAsync();
     }
 
     [Fact]
@@ -880,5 +902,218 @@ public class TestClass
             .WithLocation(0)
             .WithArguments("Write");
         await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task DirectSpineReadLine_HoistsToIfNotNullReadLineAsync()
+    {
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader? reader)
+    {
+        reader?.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader? reader)
+    {
+        if (reader is not null)
+        {
+            await reader.ReadLineAsync();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task DirectSpineReadToEnd_HoistsWithTokenFlow()
+    {
+        var test =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader? reader, CancellationToken cancellationToken)
+    {
+        reader?.{|#0:ReadToEnd|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader? reader, CancellationToken cancellationToken)
+    {
+        if (reader is not null)
+        {
+            await reader.ReadToEndAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadToEnd");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task DirectSpineWriteLine_HoistsToIfNotNull()
+    {
+        var test =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter? writer, string text)
+    {
+        writer?.{|#0:WriteLine|}(text);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamWriter? writer, string text)
+    {
+        if (writer is not null)
+        {
+            await writer.WriteLineAsync(text);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("WriteLine");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task NonStatementConditionalAccess_ReportsWithoutOfferingAFix()
+    {
+        // The conditional access feeds a local, so there is no whole statement to hoist and
+        // `await` cannot sit on the spine — the diagnostic stands, no fix is offered.
+        var source =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(StreamReader? reader)
+    {
+        var line = reader?.{|#0:ReadLine|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(source, source, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalAccessInsideLock_ReportsWithoutOfferingAFix()
+    {
+        // The hoist lands its if-statement in the same lock body, where await stays illegal,
+        // so the rewrite is withheld entirely.
+        var source =
+            @"
+using System.IO;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    private readonly object sync = new();
+
+    public async Task RunAsync(StreamReader? reader)
+    {
+        lock (sync)
+        {
+            reader?.{|#0:ReadLine|}();
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("ReadLine");
+        await CreateTest(source, source, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ConditionalAccessWithRenamedNamedArgument_ReportsWithoutOfferingAFix()
+    {
+        // A subclass adds a ReadAsync overload with renamed parameters (`buf`/`off`/`cnt`), so
+        // `buffer:`/`offset:`/`count:` would not bind on the rewrite target — and the hoist copies
+        // the argument list verbatim. No fix either way.
+        var source =
+            @"
+using System.IO;
+using System.IO.Compression;
+using System.Threading.Tasks;
+
+public class RenamedStream : GZipStream
+{
+    public RenamedStream(Stream stream)
+        : base(stream, CompressionMode.Decompress) { }
+
+    public new Task<int> ReadAsync(byte[] buf, int off, int cnt) =>
+        base.ReadAsync(buf, off, cnt);
+}
+
+public class TestClass
+{
+    public async Task RunAsync(RenamedStream? stream, byte[] data)
+    {
+        stream?.{|#0:Read|}(buffer: data, offset: 0, count: data.Length);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC028", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Read");
+        await CreateTest(source, source, expected).RunAsync();
     }
 }

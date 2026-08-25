@@ -37,10 +37,20 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
 
         var diagnostic = context.Diagnostics.First();
 
-        // The diagnostic is correct but the analyzer determined no safe rewrite exists (e.g. the
-        // call's named arguments do not line up with the async counterpart's parameter names).
-        // Offering a fix here would emit code that does not compile.
-        if (diagnostic.Properties.ContainsKey(BlockingFileIoAnalyzer.NoFixProperty))
+        var hasNoFix = diagnostic.Properties.TryGetValue(
+            BlockingFileIoAnalyzer.NoFixProperty,
+            out var noFixReason
+        );
+        // "await-unsafe" and "named-argument-mismatch" are final: no rewrite is offered.
+        // "conditional-access" means the in-place rewrite could not apply, but the statement
+        // hoist below still can.
+        if (hasNoFix && noFixReason != "conditional-access")
+            return;
+
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
             return;
         var invocation = root.FindToken(diagnostic.Location.SourceSpan.Start)
             .Parent?.AncestorsAndSelf()
@@ -49,16 +59,14 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         var invokedName = invocation?.Expression switch
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            // A null-conditional spine reaches the fixer as a member binding (`reader?.ReadLine()`).
+            MemberBindingExpressionSyntax binding => binding.Name,
             IdentifierNameSyntax identifier => identifier,
             _ => null,
         };
         if (invocation == null || invokedName == null)
             return;
 
-        // `holder?.Reader.ReadLine()` is an ordinary member access, but the
-        // invocation is the WhenNotNull of `?.`. Wrapping it in await does not parse.
-        if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
-            return;
 
         var tokenName = diagnostic.Properties.TryGetValue(
             BlockingFileIoAnalyzer.TokenNameProperty,
@@ -67,14 +75,72 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
             ? name
             : null;
 
-        // The counterpart's own token parameter name; an override may rename it, so a named token
-        // argument must not assume "cancellationToken".
+        // The counterpart's own token parameter name; an override may rename it, so a named
+        // token argument must not assume "cancellationToken".
         var tokenArgumentName = diagnostic.Properties.TryGetValue(
             BlockingFileIoAnalyzer.TokenArgumentNameProperty,
             out var argumentName
         )
             ? argumentName
             : "cancellationToken";
+
+        // A whole null-conditional statement (`reader?.ReadLine();`) hoists to
+        // `if (reader is not null) { await reader.ReadLineAsync(ct); }` — an in-place rewrite
+        // cannot be inserted on the spine of `?.`.
+        InvocationExpressionSyntax? hoistedInvocation = null;
+        ExpressionStatementSyntax? hoistStatement = null;
+        ConditionalAccessExpressionSyntax? conditionalAccess = null;
+        var prepared = NullConditionalHoist.TryPrepareHoistedCall(
+            semanticModel,
+            invocation!,
+            invokedName.Identifier.Text,
+            invokedName.Identifier.Text + "Async",
+            out hoistStatement,
+            out conditionalAccess,
+            out hoistedInvocation
+        );
+        if (
+            prepared
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            if (tokenName != null)
+            {
+                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                    CancellationTokenFixHelpers.AddTokenArgument(
+                        hoistedInvocation.ArgumentList,
+                        tokenName,
+                        tokenArgumentName
+                    )
+                );
+            }
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            hoistStatement,
+                            conditionalAccess,
+                            hoistedInvocation,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        // The hoist did not apply (non-statement conditional access, unsupported language level,
+        // dangling else, …). A withheld rewrite must stay withheld.
+        if (hasNoFix)
+            return;
 
         context.RegisterCodeFix(
             CodeAction.Create(
