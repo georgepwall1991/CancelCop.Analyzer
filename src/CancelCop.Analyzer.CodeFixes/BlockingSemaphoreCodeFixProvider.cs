@@ -46,13 +46,13 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
             .Parent?.AncestorsAndSelf()
             .OfType<InvocationExpressionSyntax>()
             .FirstOrDefault();
-        if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)
+        if (invocation == null)
             return;
 
-        // Only withhold when this Wait (or a postfix chain on it) is the WhenNotNull
-        // branch of `?.`. An argument nested inside an unrelated `holder?.Consume(...)`
-        // is still a legal await.
-        if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
+        var semanticModel = await context
+            .Document.GetSemanticModelAsync(context.CancellationToken)
+            .ConfigureAwait(false);
+        if (semanticModel == null)
             return;
 
         var tokenName = diagnostic.Properties.TryGetValue(
@@ -61,6 +61,91 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         )
             ? name
             : null;
+
+        // A whole null-conditional statement (`gate?.Wait();`) hoists to
+        // `if (gate is not null) { await gate.WaitAsync(…); }` — an in-place await cannot be
+        // inserted on the spine of `?.`.
+        if (
+            NullConditionalHoist.TryGetStatement(
+                semanticModel,
+                invocation,
+                out var statement,
+                out var conditionalAccess
+            )
+            && ReferenceEquals(invocation, conditionalAccess.WhenNotNull)
+            && NullConditionalHoist.SupportsIsNotNullPattern(semanticModel)
+            && !NullConditionalHoist.IsNullableStructOperation(
+                semanticModel,
+                conditionalAccess.Expression
+            )
+        )
+        {
+            // Resolve the awaited receiver. A chained spine arrives as a receiver-less member
+            // binding (`.Gate.Wait()`), so the operation is spliced under it; a direct spine is
+            // the bare `.Wait()` binding, whose receiver is the operation itself.
+            ExpressionSyntax splicedReceiver;
+            if (
+                invocation.Expression is MemberAccessExpressionSyntax chainedAccess
+                && NullConditionalHoist.TrySpliceOperation(
+                    chainedAccess.Expression,
+                    conditionalAccess.Expression.WithoutTrivia(),
+                    out var spliced
+                )
+            )
+            {
+                splicedReceiver = spliced;
+            }
+            else if (
+                invocation.Expression
+                    is MemberBindingExpressionSyntax
+                    {
+                        Name.Identifier.Text: "Wait"
+                    }
+            )
+            {
+                splicedReceiver = conditionalAccess.Expression;
+            }
+            else
+            {
+                return;
+            }
+
+            var waitAsync = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    splicedReceiver,
+                    SyntaxFactory.IdentifierName("WaitAsync")
+                ),
+                BuildArgumentList(invocation.ArgumentList, tokenName)
+            );
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    title: Title,
+                    createChangedDocument: c =>
+                        NullConditionalHoist.ReplaceStatementWithIfNotNullAsync(
+                            context.Document,
+                            statement,
+                            conditionalAccess,
+                            waitAsync,
+                            c
+                        ),
+                    equivalenceKey: Title
+                ),
+                diagnostic
+            );
+            return;
+        }
+
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return;
+
+        // Only withhold when this Wait (or a postfix chain on it) is the WhenNotNull
+        // branch of `?.`. An argument nested inside an unrelated `holder?.Consume(...)`
+        // is still a legal await.
+        if (CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation))
+            return;
+
 
         context.RegisterCodeFix(
             CodeAction.Create(
@@ -71,6 +156,26 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
             ),
             diagnostic
         );
+    }
+
+    /// <summary>
+    /// Carries the original Wait arguments (timeout and/or token) through to WaitAsync; only
+    /// when Wait() was parameterless is the in-scope token (if any) added.
+    /// </summary>
+    private static ArgumentListSyntax BuildArgumentList(
+        ArgumentListSyntax original,
+        string? tokenName
+    )
+    {
+        if (original.Arguments.Count > 0)
+            return original.WithoutTrivia();
+        if (tokenName != null)
+            return SyntaxFactory.ArgumentList(
+                SyntaxFactory.SingletonSeparatedList(
+                    SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName))
+                )
+            );
+        return SyntaxFactory.ArgumentList();
     }
 
     private static async Task<Document> ReplaceAsync(
@@ -85,30 +190,17 @@ public class BlockingSemaphoreCodeFixProvider : CodeFixProvider
         if (root == null)
             return document;
 
-        // Carry the original Wait arguments (timeout and/or token) through to WaitAsync; only when
-        // Wait() was parameterless do we add the in-scope token (if any).
-        ArgumentListSyntax argumentList;
-        if (invocation.ArgumentList.Arguments.Count > 0)
-            argumentList = invocation.ArgumentList.WithoutTrivia();
-        else if (tokenName != null)
-            argumentList = SyntaxFactory.ArgumentList(
-                SyntaxFactory.SingletonSeparatedList(
-                    SyntaxFactory.Argument(CancellationTokenHelpers.TokenExpression(tokenName))
-                )
-            );
-        else
-            argumentList = SyntaxFactory.ArgumentList();
-
         var waitAsync = SyntaxFactory.InvocationExpression(
             SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
                 memberAccess.Expression.WithoutTrivia(),
                 SyntaxFactory.IdentifierName("WaitAsync")
             ),
-            argumentList
+            BuildArgumentList(invocation.ArgumentList, tokenName)
         );
 
         ExpressionSyntax replacement = SyntaxFactory.AwaitExpression(waitAsync);
+
         if (CancellationTokenHelpers.AwaitNeedsParentheses(invocation))
             replacement = SyntaxFactory.ParenthesizedExpression(replacement);
 

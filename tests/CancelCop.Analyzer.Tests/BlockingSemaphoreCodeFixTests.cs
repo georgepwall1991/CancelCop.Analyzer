@@ -266,11 +266,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task ChainedConditionalAccess_ReportsWithoutOfferingAFix()
+    public async Task ChainedConditionalAccess_WithTimeout_HoistsToIfNotNullWaitAsync()
     {
-        // `holder?.Gate.Wait(1000)` reaches the fixer as an ordinary member access, but
-        // the invocation is the WhenNotNull branch of `?.`. Wrapping just that branch
-        // yields `holder?await .Gate.WaitAsync(1000)`, which is not valid syntax.
+        // `holder?.Gate.Wait(1000)` cannot take an in-place rewrite, but as a whole statement
+        // it hoists to an `is not null` check carrying the timeout through to WaitAsync.
         var source =
             @"
 using System.Threading;
@@ -290,8 +289,30 @@ public class TestClass
     }
 }";
 
+        var fixedCode =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Holder
+{
+    public SemaphoreSlim Gate { get; } = new SemaphoreSlim(1);
+}
+
+public class TestClass
+{
+    public async Task RunAsync(Holder? holder)
+    {
+        if (holder is not null)
+        {
+            await holder.Gate.WaitAsync(1000);
+        }
+        await Task.Yield();
+    }
+}";
+
         var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
-        await VerifyCS.VerifyCodeFixAsync(source, expected, source);
+        await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
     }
 
     [Fact]
@@ -410,6 +431,100 @@ public class TestClass
     public async Task RunAsync(Holder? holder, SemaphoreSlim gate, CancellationToken ct)
     {
         holder?.Consume(await gate.WaitAsync(1000, ct));
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task DirectConditionalWait_HoistsToIfNotNullWaitAsyncWithToken()
+    {
+        var test =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim? gate, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        gate?.{|#0:Wait|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim? gate, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        if (gate is not null)
+        {
+            await gate.WaitAsync(cancellationToken);
+        }
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task ConditionalWaitWithNestedConditionalArgument_HoistsCarryingArguments()
+    {
+        // A nested `?.` inside the ARGUMENT list is carried through verbatim — its semantics
+        // are untouched; only the outer spine is rewritten.
+        var test =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class SemaphoreHolder
+{
+    public string Name { get; } = """";
+}
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim? gate, SemaphoreHolder? other)
+    {
+        await Task.Yield();
+        gate?.{|#0:Wait|}(other?.Name.Length ?? 0);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class SemaphoreHolder
+{
+    public string Name { get; } = """";
+}
+
+public class TestClass
+{
+    public async Task RunAsync(SemaphoreSlim? gate, SemaphoreHolder? other)
+    {
+        await Task.Yield();
+        if (gate is not null)
+        {
+            await gate.WaitAsync(other?.Name.Length ?? 0);
+        }
         await Task.Yield();
     }
 }";
