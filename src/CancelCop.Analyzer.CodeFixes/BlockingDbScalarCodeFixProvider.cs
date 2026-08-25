@@ -99,35 +99,50 @@ public class BlockingDbScalarCodeFixProvider : CodeFixProvider
                     .FindEnclosingCancellationToken(invocation, semanticModel)
                     ?.ExpressionText;
 
+            // Candidate forms in priority order: cancellable (in-scope token re-resolved),
+            // then tokenless for targets whose ExecuteScalarAsync lacks a ct overload.
+            var candidates = new List<InvocationExpressionSyntax>();
             if (hoistToken != null)
             {
-                hoistedInvocation = hoistedInvocation.WithArgumentList(
+                candidates.Add(hoistedInvocation.WithArgumentList(
                     hoistedInvocation.ArgumentList.AddArguments(
                         SyntaxFactory.Argument(
                             CancellationTokenHelpers.TokenExpression(hoistToken)
                         )
                     )
-                );
+                ));
+            }
+            candidates.Add(hoistedInvocation);
+
+            InvocationExpressionSyntax? boundCall = null;
+            foreach (var candidate in candidates)
+            {
+                var reboundCandidate = semanticModel
+                    .GetSpeculativeSymbolInfo(
+                        invocation.SpanStart,
+                        candidate,
+                        SpeculativeBindingOption.BindAsExpression
+                    )
+                    .Symbol as IMethodSymbol;
+                if (
+                    reboundCandidate == null
+                    || reboundCandidate.IsStatic
+                    || reboundCandidate.Name != "ExecuteScalarAsync"
+                    || reboundCandidate.ReturnType.Name != "Task"
+                    || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
+                        != "System.Threading.Tasks"
+                    || !ReachesDbCommandExecuteScalarAsync(reboundCandidate)
+                )
+                    continue;
+
+                boundCall = candidate;
+                break;
             }
 
-            var scalarMethod = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            var rebound = semanticModel
-                .GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    hoistedInvocation,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
-            if (
-                rebound == null
-                || rebound.IsStatic
-                || rebound.Name != "ExecuteScalarAsync"
-                || rebound.ReturnType.Name != "Task"
-                || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
-                    != "System.Threading.Tasks"
-                || !ReachesDbCommandExecuteScalarAsync(rebound)
-            )
+            if (boundCall is null)
                 return;
+
+            hoistedInvocation = boundCall;
 
             context.RegisterCodeFix(
                 CodeAction.Create(

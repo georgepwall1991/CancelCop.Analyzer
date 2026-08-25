@@ -213,7 +213,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
   with in-scope token re-resolution; speculative rebind requires the
   framework's ExecuteScalarAsync on DbCommand. Returned-value and
   other expression positions keep reporting without a rewrite.
-  3 new fixer tests; 1 NoFix test converted to hoist expectation.
+  3 new fixer tests; 2 NoFix tests converted to hoist expectations.
 - v1.52.32: 1494 tests, green locally. **CC047 fixer** —
   null-conditional `ExecuteNonQuery()` statements hoist to an
   `is not null` check via `NullConditionalHoist.TryPrepareHoistedCall`
