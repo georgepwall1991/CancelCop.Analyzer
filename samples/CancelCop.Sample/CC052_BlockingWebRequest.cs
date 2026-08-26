@@ -32,7 +32,7 @@ public class CC052_BlockingWebRequest
         await request.GetResponseAsync();
     }
 
-    // CLEAN — synchronous method, no pooled thread at stake
+    // CLEAN — CC050–CC052 only inspect async functions, so a sync method stays quiet
     public void FetchSync(WebRequest request)
     {
         request.GetResponse();

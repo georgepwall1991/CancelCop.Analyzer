@@ -33,7 +33,7 @@ public class CC050_BlockingPing
         await ping.SendPingAsync("example.com");
     }
 
-    // CLEAN — synchronous method, no pooled thread at stake
+    // CLEAN — CC050–CC052 only inspect async functions, so a sync method stays quiet
     public void ProbeSync(Ping ping)
     {
         ping.Send("example.com");

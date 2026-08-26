@@ -34,7 +34,7 @@ public class CC051_BlockingSslStream
         await stream.AuthenticateAsClientAsync(options);
     }
 
-    // CLEAN — synchronous method, no pooled thread at stake
+    // CLEAN — CC050–CC052 only inspect async functions, so a sync method stays quiet
     public void HandshakeSync(SslStream stream)
     {
         stream.AuthenticateAsClient("example.com");
