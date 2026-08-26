@@ -35,10 +35,10 @@ public class BlockingSocketIoCodeFixTests
         return test;
     }
 
-    private static DiagnosticResult Expected(int location = 0) =>
+    private static DiagnosticResult Expected(string member = "Receive", int location = 0) =>
         new DiagnosticResult("CC036", DiagnosticSeverity.Warning)
             .WithLocation(location)
-            .WithArguments("Receive");
+            .WithArguments(member);
 
     [Fact]
     public async Task Receive_WithToken_FlowsIntoReceiveAsync()
@@ -443,5 +443,69 @@ public class Client
             .WithLocation(0)
             .WithArguments("Connect");
         await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReceiveFrom_RefEndpointShapeMismatch_StaysUnfixed()
+    {
+        // .NET 9 has ReceiveFromAsync(Memory<byte>, EndPoint, CancellationToken), but the
+        // sync call passes the endpoint by `ref` and receives the updated endpoint as its
+        // result — a parameter-modifier/result-shape mismatch the verbatim argument copy
+        // cannot bridge. The rewrite is withheld (a correct one needs hand-written code).
+        var source =
+            @"
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, byte[] buffer, EndPoint remote, CancellationToken ct)
+    {
+        socket.{|#0:ReceiveFrom|}(buffer, ref remote);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, source, Expected("ReceiveFrom")).RunAsync();
+    }
+
+    [Fact]
+    public async Task Disconnect_BindsDisconnectAsyncBoolCt()
+    {
+        // Modern .NET adds DisconnectAsync(bool, CancellationToken); the rebind
+        // proves the rewrite compiles.
+        var source =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, CancellationToken ct)
+    {
+        socket.{|#0:Disconnect|}(false);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket socket, CancellationToken ct)
+    {
+        await socket.DisconnectAsync(false, ct);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, fixedCode, Expected("Disconnect")).RunAsync();
     }
 }
