@@ -30,8 +30,13 @@
 // CC026_BlockingSemaphore.cs   - Avoid SemaphoreSlim.Wait() in async code
 // CC027_PrematureDisposal.cs   - Returned task uses a disposed using resource
 // CC029_LinkedTimeoutTokenSource.cs - Timeout CTS should link the in-scope token
-// FrameworkTokenMiddleware.cs - RequestAborted as the in-scope token in convention middleware
-// (CC017/CC018/CC020/CC021 are framework-specific; see their analyzer tests.)
+// CC030_BlockingProcessWait.cs     - Avoid Process.WaitForExit() in async code
+// CC031_BlockingSyncPrimitive.cs  - Avoid blocking synchronization primitives
+// FrameworkTokenMiddleware.cs      - RequestAborted as the in-scope token in convention middleware
+// (CC017/CC018/CC020/CC021 are framework-specific; see their analyzer tests.
+//  CC032-CC053 ship analyzer and/or fixer tests; sample entries cover the
+//  highest-frequency families through CC052, with CC053 documented as
+//  analyzer-only — Thread.Join has no JoinAsync on any shipped .NET.)
 //
 // VIEWING WARNINGS:
 // -----------------
