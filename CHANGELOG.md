@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.51] - 2026-08-25
+
+### Changed
+
+- Package version synced to the release train
+  (interim 1.52.47–1.52.50 tags carried documentation and
+  test-only changes).
+
+### Added / Tests
+
+- Cross-analyzer clean-code guard extended with Ping and
+  TCP TAP shapes.
+- CC036 arity-matrix pins completed: Accept, Connect
+  (host/port and EndPoint), flag-bearing Send, SendFile,
+  Disconnect, ReceiveFrom/ReceiveMessageFrom withholding.
+- CC009 fixer pins: single-statement body wrap; nested-loop
+  per-diagnostic scoping.
+- Sample entries for CC050–CC053; sample index refreshed.
+
+## [1.52.46] - 2026-08-25
 ## [1.52.46] - 2026-08-25
 
 ### Changed
