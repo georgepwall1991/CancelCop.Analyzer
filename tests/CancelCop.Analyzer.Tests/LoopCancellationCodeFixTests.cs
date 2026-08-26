@@ -370,10 +370,10 @@ public class TestClass
     }
 
     [Fact]
-    public async Task InnerWhileOfNestedLoops_CheckInsertedInInnerBodyOnly()
+    public async Task NestedLoopsWithoutChecks_BothGetTheirOwnCheck()
     {
-        // The diagnostic targets the inner while; fixing it inserts the check into
-        // the INNER body only — the outer loop's statements stay untouched.
+        // Both loops lack a check, so both diagnostics are reported and each loop
+        // ends up with its own check after fixing.
         var source = @"
 using System;
 using System.Threading;
@@ -382,9 +382,9 @@ public class TestClass
 {
     public void Process(int[][] rows, CancellationToken ct)
     {
-        foreach (var row in rows)
+        {|#0:foreach|} (var row in rows)
         {
-            {|#0:while|} (row.Length > 0)
+            {|#1:while|} (row.Length > 0)
             {
                 Console.WriteLine(row[0]);
                 break;
@@ -403,6 +403,7 @@ public class TestClass
     {
         foreach (var row in rows)
         {
+            ct.ThrowIfCancellationRequested();
             while (row.Length > 0)
             {
                 ct.ThrowIfCancellationRequested();
@@ -413,20 +414,11 @@ public class TestClass
     }
 }";
 
-        // The outer foreach reports too (no check of its own); the fix for marker 0
-        // must still touch only the inner body.
-        source = source.Replace("foreach (var row in rows)", "{|#1:foreach|} (var row in rows)");
-        // Both loops lack a check, so the harness applies both fixes; each loop ends
-        // up with its own check.
-        source = source.Replace("foreach (var row in rows)", "{|#1:foreach|} (var row in rows)");
-        fixedCode = fixedCode.Replace(
-            "foreach (var row in rows)\n        {",
-            "foreach (var row in rows)\n        {\n            ct.ThrowIfCancellationRequested();");
         var expected = new[]
         {
             VerifyCS.Diagnostic("CC009").WithLocation(0).WithArguments("ct"),
             VerifyCS.Diagnostic("CC009").WithLocation(1).WithArguments("ct"),
         };
-await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
+        await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
     }
 }
