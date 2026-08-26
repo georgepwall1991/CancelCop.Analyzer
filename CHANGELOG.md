@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.46] - 2026-08-25
+
+### Changed
+
+- **CC036 fixer:** the common `byte[]` Receive/Send arities now get a
+  real rewrite — `byte[]` implicitly converts to `Memory<byte>`, so
+  `await socket.ReceiveAsync(buffer, ct)` compiles. Every candidate is
+  proven by speculative rebind; arities with no compiling TAP form stay
+  reported without a rewrite, spines hoist, await-unsafe contexts are
+  withheld.
+
 ## [1.52.42] - 2026-08-25
 
 ### Added
