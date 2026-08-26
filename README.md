@@ -35,7 +35,7 @@ When the analyzer cannot prove a problem statically, it **stays quiet**. High-si
 ## Install
 
 ```xml
-<PackageReference Include="CancelCop.Analyzer" Version="1.52.42">
+<PackageReference Include="CancelCop.Analyzer" Version="1.52.46">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
@@ -48,7 +48,7 @@ dotnet add package CancelCop.Analyzer
 ```
 
 ```powershell
-Install-Package CancelCop.Analyzer -Version 1.52.42
+Install-Package CancelCop.Analyzer -Version 1.52.46
 ```
 
 **No runtime dependency** is added to your app. CancelCop runs as a Roslyn analyzer during build and in supported IDEs. Use `PrivateAssets="all"` so the analyzer stays a development dependency for libraries.
@@ -149,7 +149,7 @@ dotnet build samples/CancelCop.Sample
 | **CC033** | `CancellationTokenSource` field created by the type and never disposed | Warning | ❌ |
 | **CC034** | `ParallelOptions` created without `CancellationToken` while a token is in scope | Warning | ✅ |
 | **CC035** | Empty `catch (OperationCanceledException)` silently discards the cancellation | Info | ❌ |
-| **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ❌ |
+| **CC036** | Blocking `Socket` call (`Receive`, `Send`, `Accept`, `Connect`, …) in async code | Warning | ✅ |
 | **CC037** | Blocking `TcpClient.Connect` in async code | Warning | ✅ |
 | **CC038** | Blocking `TcpListener.AcceptTcpClient` / `AcceptSocket` in async code | Warning | ✅ |
 | **CC039** | Blocking `UdpClient.Receive` in async code | Warning | ✅ |
@@ -785,11 +785,14 @@ public async Task ServeAsync(Socket listener)
 var client = await listener.AcceptAsync(cancellationToken);
 ```
 
-> CC028 already covers every `Stream`, so a `NetworkStream` is handled there. `Socket` itself is not,
-> because its async counterparts are **not signature-compatible** — `Receive(byte[])` pairs with
-> `ReceiveAsync(Memory<byte>, CancellationToken)` — and that compatibility is exactly what makes
-> CC028's rewrites safe. Loosening it would trade fix safety for reach, so this is a separate,
-> analyzer-only rule.
+> CC028 already covers every `Stream`, so a `NetworkStream` is handled there. As of v1.52.46 the
+> common Receive/Send/Connect arities get a real fix — the rewrite is offered whenever a compiling
+> TAP arity exists and the fixer proves it by speculative binding: `Receive(byte[])` binds
+> `ReceiveAsync(Memory<byte>, ct)` (via the implicit `byte[]` conversion), flag-bearing
+> `Send(byte[], SocketFlags)` binds `SendAsync(..., SocketFlags, ct)`, and endpoint connects bind
+> `ConnectAsync(EndPoint, ct)`. A call whose shape has no compiling TAP form remains reported
+> without a rewrite.
+> `TcpClient.Connect` belongs to CC037 and `TcpListener.Accept` to CC038 when those types are involved.
 
 ### CC037: Blocking `TcpClient.Connect` in Async Code
 

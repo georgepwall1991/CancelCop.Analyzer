@@ -58,6 +58,17 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
     /// <summary>
     /// The blocking <c>Socket</c> members that have an asynchronous counterpart.
     /// </summary>
+    /// <summary>
+    /// Property key used to pass the in-scope token parameter name (if any) to the code fix provider.
+    /// </summary>
+    public const string TokenNameProperty = "TokenName";
+
+    /// <summary>
+    /// Property key set when the diagnostic is correct but no safe rewrite exists
+    /// ("await-unsafe") or only a statement hoist can apply ("conditional-access").
+    /// </summary>
+    public const string NoFixProperty = "NoFix";
+
     private static readonly ImmutableHashSet<string> BlockingMembers = ImmutableHashSet.Create(
         "Receive",
         "ReceiveFrom",
@@ -160,8 +171,31 @@ public class BlockingSocketIoAnalyzer : DiagnosticAnalyzer
         if (NonBlockingModeIsSetNearby(invocation, context, socketType))
             return;
 
+        var properties = ImmutableDictionary<string, string?>.Empty;
+
+        // Await-forbidden contexts are final: no rewrite of any kind is offered.
+        if (
+            CancellationTokenHelpers.AwaitInsertionIsUnsafe(
+                context.SemanticModel,
+                invocation
+            )
+        )
+            properties = properties.Add(NoFixProperty, "await-unsafe");
+        else if (
+            CancellationTokenHelpers.IsWhenNotNullOfConditionalAccess(invocation)
+        )
+            properties = properties.Add(NoFixProperty, "conditional-access");
+
+        // The in-scope token rides along so a fix can validate a token-taking candidate;
+        // on a ?. spine there is no in-place rewrite, so this feeds the hoist instead.
+        var tokenName = CancellationTokenHelpers
+            .FindEnclosingCancellationToken(invocation, context.SemanticModel)
+            ?.ExpressionText;
+        if (tokenName != null)
+            properties = properties.Add(TokenNameProperty, tokenName);
+
         context.ReportDiagnostic(
-            Diagnostic.Create(Rule, invokedName.GetLocation(), definition.Name)
+            Diagnostic.Create(Rule, invokedName.GetLocation(), properties, definition.Name)
         );
     }
 
