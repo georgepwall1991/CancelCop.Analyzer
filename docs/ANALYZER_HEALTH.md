@@ -207,7 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
-- v1.52.51: 1587 tests, green locally. **Docs/tests audit** — package version synced to the release train; consolidated changelog for the docs/test-only interim tags (1.52.47–1.50); no behavior change.
+- v1.52.51: 1587 tests, green locally. **Docs/tests audit** — package version synced to the release train; consolidated changelog for the docs/test-only interim tags (1.52.47–1.52.50); no behavior change.
 - v1.52.46: 1581 tests, green locally. **CC036 fixer** —
   first code fix for blocking Socket calls: a rewrite is offered wherever a compiling TAP arity binds (byte[] Receive/Send via the implicit Memory<byte> conversion, flag-bearing sends, endpoint connects), each proven by speculative rebind with override-walk lineage; spines hoist, await-unsafe withheld.
 - v1.52.43: 1570 tests, green locally. **Refactor** — method-group handler resolution (symbol-or-single-candidate) moved into one shared `CancellationTokenHelpers.ResolveMethodGroupHandler` used by both the Minimal API analyzer and its code fix, closing the last lockstep gap from the backlog. Behavior-neutral; 42 Minimal API tests pin it.
