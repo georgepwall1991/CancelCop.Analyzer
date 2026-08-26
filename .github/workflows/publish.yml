@@ -12,6 +12,9 @@ on:
 
 jobs:
   publish:
+    # Hold: this job runs only when the repo Actions variable NUGET_PUBLISH_ENABLED is 'true'.
+    # Unset/false means no NuGet push even if someone publishes a Release.
+    if: vars.NUGET_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-latest
 
     steps:
