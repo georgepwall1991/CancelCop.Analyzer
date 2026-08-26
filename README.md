@@ -787,12 +787,12 @@ var client = await listener.AcceptAsync(cancellationToken);
 
 > CC028 already covers every `Stream`, so a `NetworkStream` is handled there. As of v1.52.46 the
 > common Receive/Send/Connect arities get a real fix — the rewrite is offered whenever a compiling
-> TAP arity exists and the fixer proves it by speculative binding: \`Receive(byte[])\` binds
-> \`ReceiveAsync(Memory<byte>, ct)\` (via the implicit \`byte[]\` conversion), flag-bearing
-> \`Send(byte[], SocketFlags)\` binds \`SendAsync(..., SocketFlags, ct)\`, and endpoint connects bind
-> \`ConnectAsync(EndPoint, ct)\`. A call whose shape has no compiling TAP form remains reported
+> TAP arity exists and the fixer proves it by speculative binding: `Receive(byte[])` binds
+> `ReceiveAsync(Memory<byte>, ct)` (via the implicit `byte[]` conversion), flag-bearing
+> `Send(byte[], SocketFlags)` binds `SendAsync(..., SocketFlags, ct)`, and endpoint connects bind
+> `ConnectAsync(EndPoint, ct)`. A call whose shape has no compiling TAP form remains reported
 > without a rewrite.
-> \`Accept\`/\`Connect\` shapes belong to CC037/CC038 when a \`TcpListener\`/\`TcpClient\` is involved.
+> `TcpClient.Connect` belongs to CC037 and `TcpListener.Accept` to CC038 when those types are involved.
 
 ### CC037: Blocking `TcpClient.Connect` in Async Code
 
