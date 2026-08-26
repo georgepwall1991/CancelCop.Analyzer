@@ -366,4 +366,82 @@ public class Worker : Socket
 
         await CreateTest(test, fixedCode, Expected()).RunAsync();
     }
+
+    [Fact]
+    public async Task Accept_BindsAcceptAsyncCt()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket listener, CancellationToken ct)
+    {
+        listener.{|#0:Accept|}();
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(Socket listener, CancellationToken ct)
+    {
+        await listener.AcceptAsync(ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC036", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Accept");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task Connect_HostPort_BindsConnectAsyncHostPortCt()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, CancellationToken ct)
+    {
+        socket.{|#0:Connect|}(""host"", 443);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, CancellationToken ct)
+    {
+        await socket.ConnectAsync(""host"", 443, ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC036", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Connect");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
 }
