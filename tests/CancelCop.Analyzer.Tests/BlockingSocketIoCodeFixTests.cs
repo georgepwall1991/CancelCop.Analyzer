@@ -446,10 +446,12 @@ public class Client
     }
 
     [Fact]
-    public async Task ReceiveFrom_NoCompilingTapArity_StaysUnfixed()
+    public async Task ReceiveFrom_RefEndpointShapeMismatch_StaysUnfixed()
     {
-        // ReceiveFromAsync requires SocketFlags + EndPoint (by-ref style) and cannot
-        // bind a verbatim argument copy — the call stays reported without a fix.
+        // .NET 9 has ReceiveFromAsync(Memory<byte>, EndPoint, CancellationToken), but the
+        // sync call passes the endpoint by `ref` and receives the updated endpoint as its
+        // result — a parameter-modifier/result-shape mismatch the verbatim argument copy
+        // cannot bridge. The rewrite is withheld (a correct one needs hand-written code).
         var source =
             @"
 using System.Net;
