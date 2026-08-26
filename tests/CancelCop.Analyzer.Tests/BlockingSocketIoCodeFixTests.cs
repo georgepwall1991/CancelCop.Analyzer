@@ -508,4 +508,81 @@ public class Server
 
         await CreateTest(source, fixedCode, Expected("Disconnect")).RunAsync();
     }
+
+    [Fact]
+    public async Task SendFile_BindsSendFileAsyncPathCt()
+    {
+        // Modern .NET adds SendFileAsync(string? filePath, CancellationToken); the
+        // rebind proves the path-form rewrite compiles and flows the token.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, CancellationToken ct)
+    {
+        socket.{|#0:SendFile|}(""payload.bin"");
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, CancellationToken ct)
+    {
+        await socket.SendFileAsync(""payload.bin"", ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC036", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("SendFile");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task ReceiveMessageFrom_RefShapeMismatch_StaysUnfixed()
+    {
+        // The sync call passes SocketFlags/EndPoint by `ref`; the TAP form takes them
+        // by value and returns a result struct. The verbatim argument copy cannot
+        // bridge that, so the rewrite is withheld.
+        var source =
+            @"
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Server
+{
+    public async Task RunAsync(
+        Socket socket,
+        byte[] buffer,
+        SocketFlags flags,
+        EndPoint remote,
+        CancellationToken ct)
+    {
+        socket.{|#0:ReceiveMessageFrom|}(
+            buffer,
+            0,
+            buffer.Length,
+            ref flags,
+            ref remote,
+            out _);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(source, source, Expected("ReceiveMessageFrom")).RunAsync();
+    }
 }
