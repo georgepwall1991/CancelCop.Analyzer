@@ -50,6 +50,17 @@ internal sealed class CleanService
         await using var resource = new AsyncResource();
         await resource.UseAsync(cancellationToken);
 
+        var ping = new System.Net.NetworkInformation.Ping();
+        await ping.SendPingAsync(
+            System.Net.IPAddress.Loopback,
+            System.TimeSpan.FromMilliseconds(500),
+            null,
+            null,
+            cancellationToken);
+
+        using var tcpClient = new System.Net.Sockets.TcpClient();
+        await tcpClient.ConnectAsync(""localhost"", 443, cancellationToken);
+
         try
         {
             await Task.Delay(1, cancellationToken);
