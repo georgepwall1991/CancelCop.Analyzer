@@ -330,4 +330,95 @@ public class TestClass
 
         await VerifyCS.VerifyCodeFixAsync(test, expected, fixedCode);
     }
+
+    [Fact]
+    public async Task SingleStatementBody_WrapsInBlockWithCheckFirst()
+    {
+        // A brace-less loop body must become a block so the check executes every
+        // iteration, not only the first statement of a malformed rewrite.
+        var source = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(System.Collections.Generic.List<int> items, CancellationToken ct)
+    {
+        {|#0:foreach|} (var item in items)
+            Console.WriteLine(item);
+    }
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(System.Collections.Generic.List<int> items, CancellationToken ct)
+    {
+        foreach (var item in items)
+        {
+            ct.ThrowIfCancellationRequested();
+            Console.WriteLine(item);
+        }
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC009").WithLocation(0).WithArguments("ct");
+        await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
+    }
+
+    [Fact]
+    public async Task NestedLoopsWithoutChecks_BothGetTheirOwnCheck()
+    {
+        // Both loops lack a check, so both diagnostics are reported and each loop
+        // ends up with its own check after fixing.
+        var source = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(int[][] rows, CancellationToken ct)
+    {
+        {|#0:foreach|} (var row in rows)
+        {
+            {|#1:while|} (row.Length > 0)
+            {
+                Console.WriteLine(row[0]);
+                break;
+            }
+        }
+    }
+}";
+
+        var fixedCode = @"
+using System;
+using System.Threading;
+
+public class TestClass
+{
+    public void Process(int[][] rows, CancellationToken ct)
+    {
+        foreach (var row in rows)
+        {
+            ct.ThrowIfCancellationRequested();
+            while (row.Length > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                Console.WriteLine(row[0]);
+                break;
+            }
+        }
+    }
+}";
+
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("CC009").WithLocation(0).WithArguments("ct"),
+            VerifyCS.Diagnostic("CC009").WithLocation(1).WithArguments("ct"),
+        };
+        await VerifyCS.VerifyCodeFixAsync(source, expected, fixedCode);
+    }
 }
