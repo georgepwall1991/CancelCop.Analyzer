@@ -242,4 +242,128 @@ public class TestClass
 
         await CreateTest(source, source).RunAsync();
     }
+
+    [Fact]
+    public async Task Send_WithSocketFlags_BindsFlagsArity()
+    {
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, byte[] payload, CancellationToken ct)
+    {
+        socket.{|#0:Send|}(payload, SocketFlags.None);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, byte[] payload, CancellationToken ct)
+    {
+        await socket.SendAsync(payload, SocketFlags.None, ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC036", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Send");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task Connect_EndPoint_BindsConnectAsyncEndPointCt()
+    {
+        var test =
+            @"
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, EndPoint endpoint, CancellationToken ct)
+    {
+        socket.{|#0:Connect|}(endpoint);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Client
+{
+    public async Task RunAsync(Socket socket, EndPoint endpoint, CancellationToken ct)
+    {
+        await socket.ConnectAsync(endpoint, ct);
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC036", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Connect");
+        await CreateTest(test, fixedCode, expected).RunAsync();
+    }
+
+    [Fact]
+    public async Task Receive_InheritedUnqualifiedCall_InSocketSubclass_Fixes()
+    {
+        // An unqualified inherited call resolves through the subclass; the rewrite
+        // must still bind to the framework's ReceiveAsync.
+        var test =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker : Socket
+{
+    public Worker()
+        : base(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { }
+
+    public async Task Pump(byte[] buffer, CancellationToken ct)
+    {
+        {|#0:Receive|}(buffer);
+        await Task.Yield();
+    }
+}";
+
+        var fixedCode =
+            @"
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Worker : Socket
+{
+    public Worker()
+        : base(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { }
+
+    public async Task Pump(byte[] buffer, CancellationToken ct)
+    {
+        await ReceiveAsync(buffer, ct);
+        await Task.Yield();
+    }
+}";
+
+        await CreateTest(test, fixedCode, Expected()).RunAsync();
+    }
 }

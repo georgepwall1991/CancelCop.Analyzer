@@ -72,10 +72,14 @@ public class BlockingSocketIoCodeFixProvider : CodeFixProvider
         if (invocation is null)
             return;
 
+        // An unqualified inherited call (`Receive(buffer)` in a Socket subclass)
+        // reaches the fixer as a plain identifier — the renamed invocation stays
+        // bare and resolves through the same lineage walk.
         var memberName = invocation.Expression switch
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.Text,
             MemberBindingExpressionSyntax memberBinding => memberBinding.Name.Identifier.Text,
+            IdentifierNameSyntax identifier => identifier.Identifier.Text,
             _ => null,
         };
         if (memberName is null)
