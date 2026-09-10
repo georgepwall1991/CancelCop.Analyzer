@@ -176,6 +176,7 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
     /// Applies the shared gates — the call must return an awaitable, and must not already be covered
     /// by CS4014 — and reports.
     /// </summary>
+    /// <param name="context">The analysis context; supplies the semantic model and report sink.</param>
     /// <param name="invocation">The call whose task is discarded; used to resolve the symbol.</param>
     /// <param name="reportOn">
     /// The whole expression the reader sees. For a null-conditional call these differ — the
@@ -211,13 +212,7 @@ public class UnawaitedAsyncCallAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
 
         context.ReportDiagnostic(
             Diagnostic.Create(

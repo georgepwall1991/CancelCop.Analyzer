@@ -830,6 +830,94 @@ public static class CancellationTokenHelpers
     }
 
     /// <summary>
+    /// Returns the simple name being invoked: the member name for <c>x.Name(...)</c> and for the
+    /// member-binding half of <c>x?.Name(...)</c>, or the identifier for a bare <c>Name(...)</c>
+    /// (an implicit-<c>this</c> call or a <c>using static</c> import). <c>null</c> for any other
+    /// invocation shape. Used as the cheap syntactic gate before paying for semantic binding.
+    /// </summary>
+    public static SimpleNameSyntax? GetInvokedSimpleName(InvocationExpressionSyntax invocation) =>
+        invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
+            IdentifierNameSyntax identifier => identifier,
+            _ => null,
+        };
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is or derives from <c>Task</c>/<c>Task&lt;T&gt;</c>/
+    /// <c>ValueTask</c>/<c>ValueTask&lt;T&gt;</c> in <c>System.Threading.Tasks</c>. The base-type
+    /// walk keeps task-derived types (e.g. a custom awaitable deriving from Task) covered, and the
+    /// <see cref="ISymbol.OriginalDefinition"/> compare keeps constructed generics matching.
+    /// </summary>
+    public static bool IsTaskLike(ITypeSymbol type)
+    {
+        for (
+            var current = type as INamedTypeSymbol;
+            current is not null;
+            current = current.BaseType
+        )
+        {
+            var definition = current.OriginalDefinition;
+            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
+                continue;
+
+            if (definition.Name is "Task" or "ValueTask")
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="type"/> is <paramref name="baseType"/> or derives from it.
+    /// </summary>
+    public static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
+    {
+        while (type != null)
+        {
+            if (SymbolEqualityComparer.Default.Equals(type, baseType))
+                return true;
+            type = type.BaseType;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Builds <paramref name="invocation"/> renamed to <paramref name="asyncName"/> (with the
+    /// optional token argument appended, named when <paramref name="tokenArgumentName"/> is set)
+    /// via <see cref="BuildRenamedInvocation"/> and speculatively binds it at the call site.
+    /// Returns the bound method symbol, or <c>null</c> when the rewrite cannot be built or does
+    /// not bind. Callers apply their own shape checks on the returned symbol.
+    /// </summary>
+    public static IMethodSymbol? SpeculativelyBindRenamedInvocation(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation,
+        string asyncName,
+        string? tokenName,
+        string? tokenArgumentName = null
+    )
+    {
+        var speculative = BuildRenamedInvocation(
+            invocation,
+            asyncName,
+            tokenName,
+            tokenArgumentName
+        );
+        if (speculative is null)
+            return null;
+
+        return context
+            .SemanticModel.GetSpeculativeSymbolInfo(
+                invocation.SpanStart,
+                speculative,
+                SpeculativeBindingOption.BindAsExpression
+            )
+            .Symbol as IMethodSymbol;
+    }
+
+    /// <summary>
     /// Rewrites <paramref name="invocation"/> to call <paramref name="newName"/> instead, appending
     /// <paramref name="tokenName"/> as an argument when one is supplied: the shape a rule rewrites a
     /// blocking call into. When <paramref name="tokenArgumentName"/> is set, the token is appended

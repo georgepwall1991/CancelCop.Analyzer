@@ -121,13 +121,7 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (
             invokedName is null
             || invokedName.Identifier.Text != "GetResponse"
@@ -283,8 +277,8 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
 
         return enclosing is not null
             && enclosing.Name == "GetResponseAsync"
-            && DerivesFromOrEquals(enclosing.ContainingType, webRequestType)
-            && IsTaskLike(enclosing.ReturnType);
+            && CancellationTokenHelpers.DerivesFromOrEquals(enclosing.ContainingType, webRequestType)
+            && CancellationTokenHelpers.IsTaskLike(enclosing.ReturnType);
     }
 
     private static bool ReceiverIsProvablyFresh(
@@ -348,18 +342,6 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
             && SymbolEqualityComparer.Default.Equals(createdType, webRequestType);
     }
 
-    private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
-    {
-        while (type != null)
-        {
-            if (SymbolEqualityComparer.Default.Equals(type, baseType))
-                return true;
-            type = type.BaseType;
-        }
-
-        return false;
-    }
-
     private static string? FindTokenParameterName(INamedTypeSymbol webRequestType)
     {
         for (var current = webRequestType; current != null; current = current.BaseType)
@@ -390,27 +372,17 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             "GetResponseAsync",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && !bound.IsStatic
             && bound.Name == "GetResponseAsync"
-            && IsTaskLike(bound.ReturnType)
+            && CancellationTokenHelpers.IsTaskLike(bound.ReturnType)
             && ResolvesOnFrameworkRequest(bound, webRequestType)
             && bound.Parameters.Count(p =>
                 !CancellationTokenHelpers.IsCancellationToken(p.Type)
@@ -430,24 +402,5 @@ public class BlockingWebRequestAnalyzer : DiagnosticAnalyzer
             definition = definition.OverriddenMethod.OriginalDefinition;
 
         return SymbolEqualityComparer.Default.Equals(definition.ContainingType, webRequestType);
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 }

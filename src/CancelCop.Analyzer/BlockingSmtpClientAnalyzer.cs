@@ -124,13 +124,7 @@ public class BlockingSmtpClientAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || invokedName.Identifier.Text != "Send")
             return;
 
@@ -595,23 +589,13 @@ public class BlockingSmtpClientAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName = null
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             "SendMailAsync",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && IsUsableAsyncCounterpart(bound)
             && MatchesSendShape(bound, send);
@@ -643,7 +627,7 @@ public class BlockingSmtpClientAnalyzer : DiagnosticAnalyzer
         if (bound is not { IsStatic: false, Name: "SendMailAsync" })
             return false;
 
-        if (!IsTaskLike(bound.ReturnType))
+        if (!CancellationTokenHelpers.IsTaskLike(bound.ReturnType))
             return false;
 
         if (bound.Parameters.Length == 0)
@@ -654,25 +638,6 @@ public class BlockingSmtpClientAnalyzer : DiagnosticAnalyzer
             return bound.Parameters.Length >= 2;
 
         return true;
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 
     private static bool ReachesCounterpart(

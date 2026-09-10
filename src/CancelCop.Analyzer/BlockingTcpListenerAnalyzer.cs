@@ -119,13 +119,7 @@ public class BlockingTcpListenerAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || !BlockingMembers.Contains(invokedName.Identifier.Text))
             return;
 
@@ -1151,23 +1145,13 @@ public class BlockingTcpListenerAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             accept.Name + "Async",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && IsUsableAsyncCounterpart(bound, accept)
             && MatchesAcceptShape(bound, accept);

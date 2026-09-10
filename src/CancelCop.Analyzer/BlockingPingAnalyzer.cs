@@ -119,13 +119,7 @@ public class BlockingPingAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || invokedName.Identifier.Text != "Send")
             return;
 
@@ -268,20 +262,8 @@ public class BlockingPingAnalyzer : DiagnosticAnalyzer
 
         return enclosing is not null
             && enclosing.Name == "SendPingAsync"
-            && DerivesFromOrEquals(enclosing.ContainingType, pingType)
-            && IsTaskLike(enclosing.ReturnType);
-    }
-
-    private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
-    {
-        while (type != null)
-        {
-            if (SymbolEqualityComparer.Default.Equals(type, baseType))
-                return true;
-            type = type.BaseType;
-        }
-
-        return false;
+            && CancellationTokenHelpers.DerivesFromOrEquals(enclosing.ContainingType, pingType)
+            && CancellationTokenHelpers.IsTaskLike(enclosing.ReturnType);
     }
 
     private static string? FindTokenParameterName(INamedTypeSymbol pingType)
@@ -310,27 +292,17 @@ public class BlockingPingAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             "SendPingAsync",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && !bound.IsStatic
             && bound.Name == "SendPingAsync"
-            && IsTaskLike(bound.ReturnType)
+            && CancellationTokenHelpers.IsTaskLike(bound.ReturnType)
             && SymbolEqualityComparer.Default.Equals(
                 bound.OriginalDefinition.ContainingType,
                 pingType
@@ -338,24 +310,5 @@ public class BlockingPingAnalyzer : DiagnosticAnalyzer
             && bound.Parameters.Count(p =>
                 !CancellationTokenHelpers.IsCancellationToken(p.Type)
             ) == invocation.ArgumentList.Arguments.Count;
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 }

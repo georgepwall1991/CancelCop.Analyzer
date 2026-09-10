@@ -22,7 +22,7 @@ namespace CancelCop.Analyzer;
 /// entire TLS handshake — network round-trips, certificate validation, and
 /// cipher negotiation. In async code use <c>AuthenticateAsClientAsync</c>,
 /// which yields the thread and accepts a <c>CancellationToken</c> (on its
-/// <see cref="System.Net.Security.SslClientAuthenticationOptions"/> overload).
+/// <c>SslClientAuthenticationOptions</c> overload).
 /// </para>
 /// <para>
 /// The TAP counterpart is <c>AuthenticateAsClientAsync</c>, verified by name.
@@ -123,13 +123,7 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (
             invokedName is null
             || invokedName.Identifier.Text != "AuthenticateAsClient"
@@ -285,8 +279,8 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
 
         return enclosing is not null
             && enclosing.Name == "AuthenticateAsClientAsync"
-            && DerivesFromOrEquals(enclosing.ContainingType, sslStreamType)
-            && IsTaskLike(enclosing.ReturnType);
+            && CancellationTokenHelpers.DerivesFromOrEquals(enclosing.ContainingType, sslStreamType)
+            && CancellationTokenHelpers.IsTaskLike(enclosing.ReturnType);
     }
 
     private static bool ReceiverIsProvablyFresh(InvocationExpressionSyntax invocation)
@@ -343,18 +337,6 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             };
     }
 
-    private static bool DerivesFromOrEquals(ITypeSymbol? type, INamedTypeSymbol baseType)
-    {
-        while (type != null)
-        {
-            if (SymbolEqualityComparer.Default.Equals(type, baseType))
-                return true;
-            type = type.BaseType;
-        }
-
-        return false;
-    }
-
     private static string? FindTokenParameterName(INamedTypeSymbol sslStreamType)
     {
         for (var current = sslStreamType; current != null; current = current.BaseType)
@@ -385,27 +367,17 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             "AuthenticateAsClientAsync",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && !bound.IsStatic
             && bound.Name == "AuthenticateAsClientAsync"
-            && IsTaskLike(bound.ReturnType)
+            && CancellationTokenHelpers.IsTaskLike(bound.ReturnType)
             && ResolvesOnFrameworkStream(bound, sslStreamType)
             && bound.Parameters.Count(p =>
                 !CancellationTokenHelpers.IsCancellationToken(p.Type)
@@ -425,24 +397,5 @@ public class BlockingSslStreamAnalyzer : DiagnosticAnalyzer
             definition = definition.OverriddenMethod.OriginalDefinition;
 
         return SymbolEqualityComparer.Default.Equals(definition.ContainingType, sslStreamType);
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 }

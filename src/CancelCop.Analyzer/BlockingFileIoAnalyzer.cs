@@ -164,13 +164,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null)
             return;
 
@@ -385,11 +379,6 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         type?.Name == name && type.ContainingNamespace?.ToDisplayString() == "System.IO";
 
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="type"/> or any of its base types is the
-    /// <c>System.IO</c> type named <paramref name="name"/>. Namespace-gated so a same-named
-    /// user type is never mistaken for the framework one.
-    /// </summary>
-    /// <summary>
     /// Walks an override chain back to the method that originally declared it, so a member inherited
     /// from <c>Stream</c> is recognised through any depth of subclassing.
     /// </summary>
@@ -401,6 +390,11 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
         return current;
     }
 
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="type"/> or any of its base types is the
+    /// <c>System.IO</c> type named <paramref name="name"/>. Namespace-gated so a same-named
+    /// user type is never mistaken for the framework one.
+    /// </summary>
     private static bool DerivesFrom(ITypeSymbol? type, string name)
     {
         // A generic receiver (`T where T : MemoryStream`) carries its base through constraints
@@ -432,6 +426,7 @@ public class BlockingFileIoAnalyzer : DiagnosticAnalyzer
     /// in scope and will be flowed); <c>false</c> to accept a tokenless call, which also matches an
     /// overload whose trailing token is optional (e.g. <c>File.ReadAllTextAsync</c>).
     /// </param>
+    /// <param name="match">The winning counterpart when one is usable; <c>null</c> otherwise.</param>
     /// <remarks>
     /// <para>
     /// The walk mirrors C# overload resolution closely enough for this rule's purpose: it goes from

@@ -116,13 +116,7 @@ public class BlockingTcpClientAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || invokedName.Identifier.Text != "Connect")
             return;
 
@@ -918,23 +912,13 @@ public class BlockingTcpClientAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             "ConnectAsync",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && IsUsableAsyncCounterpart(bound)
             && MatchesConnectShape(bound, connect);
@@ -994,7 +978,7 @@ public class BlockingTcpClientAnalyzer : DiagnosticAnalyzer
         if (bound is not { IsStatic: false, Name: "ConnectAsync" })
             return false;
 
-        if (!IsTaskLike(bound.ReturnType))
+        if (!CancellationTokenHelpers.IsTaskLike(bound.ReturnType))
             return false;
 
         if (bound.Parameters.Length == 0)
@@ -1047,24 +1031,5 @@ public class BlockingTcpClientAnalyzer : DiagnosticAnalyzer
         }
 
         return true;
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 }

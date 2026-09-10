@@ -132,13 +132,7 @@ public class BlockingOnAsyncAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var memberName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var memberName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (memberName is null)
             return;
 

@@ -101,14 +101,9 @@ public class BlockingProcessWaitAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            // An inherited call written without `this.` inside a Process subclass.
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        // The IdentifierName arm of GetInvokedSimpleName covers an inherited call written
+        // without `this.` inside a Process subclass.
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || invokedName.Identifier.Text != "WaitForExit")
             return;
 

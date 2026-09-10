@@ -116,13 +116,7 @@ public class BlockingDbScalarAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || invokedName.Identifier.Text != "ExecuteScalar")
             return;
 
@@ -444,30 +438,11 @@ public class BlockingDbScalarAnalyzer : DiagnosticAnalyzer
 
         if (
             method.ReturnType.SpecialType == SpecialType.System_Void
-            || IsTaskLike(method.ReturnType)
+            || CancellationTokenHelpers.IsTaskLike(method.ReturnType)
         )
             return false;
 
         return method.Parameters.Length == 0;
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 
     private static bool ResolvesToUsableCounterpart(

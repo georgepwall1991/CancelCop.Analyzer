@@ -117,13 +117,7 @@ public class BlockingDnsGetHostEntryAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName is null || invokedName.Identifier.Text != "GetHostEntry")
             return;
 
@@ -244,23 +238,13 @@ public class BlockingDnsGetHostEntryAnalyzer : DiagnosticAnalyzer
         string? tokenArgumentName
     )
     {
-        var speculative = CancellationTokenHelpers.BuildRenamedInvocation(
+        var bound = CancellationTokenHelpers.SpeculativelyBindRenamedInvocation(
+            context,
             invocation,
             "GetHostEntryAsync",
             tokenName,
             tokenArgumentName
         );
-        if (speculative is null)
-            return false;
-
-        var bound =
-            context
-                .SemanticModel.GetSpeculativeSymbolInfo(
-                    invocation.SpanStart,
-                    speculative,
-                    SpeculativeBindingOption.BindAsExpression
-                )
-                .Symbol as IMethodSymbol;
         return bound is not null
             && IsUsableAsyncCounterpart(bound, dnsType)
             && MatchesGetHostEntryShape(bound, getHostEntry);
@@ -318,7 +302,7 @@ public class BlockingDnsGetHostEntryAnalyzer : DiagnosticAnalyzer
         if (!SymbolEqualityComparer.Default.Equals(bound.ContainingType, dnsType))
             return false;
 
-        if (!IsTaskLike(bound.ReturnType))
+        if (!CancellationTokenHelpers.IsTaskLike(bound.ReturnType))
             return false;
 
         if (bound.Parameters.IsEmpty)
@@ -356,24 +340,5 @@ public class BlockingDnsGetHostEntryAnalyzer : DiagnosticAnalyzer
         }
 
         return true;
-    }
-
-    private static bool IsTaskLike(ITypeSymbol type)
-    {
-        for (
-            var current = type as INamedTypeSymbol;
-            current is not null;
-            current = current.BaseType
-        )
-        {
-            var definition = current.OriginalDefinition;
-            if (definition.ContainingNamespace?.ToDisplayString() != "System.Threading.Tasks")
-                continue;
-
-            if (definition.Name is "Task" or "ValueTask")
-                return true;
-        }
-
-        return false;
     }
 }
