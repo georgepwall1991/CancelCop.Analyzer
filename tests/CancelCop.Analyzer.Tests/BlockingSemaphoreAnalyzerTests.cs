@@ -219,6 +219,31 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Wait_InSemaphoreSlimSubclass_ShouldReportDiagnostic()
+    {
+        // SemaphoreSlim is not sealed, so a subclass can call the inherited Wait() without a
+        // `this.` receiver — the same blocking call, written in implicit-this form.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class Gate : SemaphoreSlim
+{
+    public Gate()
+        : base(1) { }
+
+    public async Task RunAsync()
+    {
+        {|#0:Wait|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = VerifyCS.Diagnostic("CC026").WithLocation(0);
+        await VerifyCS.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task WaitOnNonSemaphore_ShouldNotReportDiagnostic()
     {
         var test = @"

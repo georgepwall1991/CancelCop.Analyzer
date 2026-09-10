@@ -82,12 +82,9 @@ public class BlockingSemaphoreAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var memberName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            _ => null,
-        };
+        // The IdentifierName arm covers an inherited Wait() written without `this.` inside a
+        // SemaphoreSlim subclass (SemaphoreSlim is not sealed).
+        var memberName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (memberName is null)
             return;
         if (memberName.Identifier.Text != "Wait")

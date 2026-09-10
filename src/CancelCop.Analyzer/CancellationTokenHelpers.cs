@@ -18,7 +18,6 @@ namespace CancelCop.Analyzer;
 public static class CancellationTokenHelpers
 {
     private const string CancellationTokenTypeName = "CancellationToken";
-    private const string SystemThreadingNamespace = "System.Threading";
     private const string SystemThreadingTasksNamespace = "System.Threading.Tasks";
 
     /// <summary>
@@ -29,8 +28,21 @@ public static class CancellationTokenHelpers
         if (type == null)
             return false;
 
-        return type.Name == CancellationTokenTypeName
-            && type.ContainingNamespace?.ToString() == SystemThreadingNamespace;
+        // A nested type reports its *outer* type's namespace, so `Threading.Outer.CancellationToken`
+        // would otherwise pass a namespace-and-name check (same hazard IsAsyncReturnType guards).
+        // The framework type is top level.
+        if (type.ContainingType != null)
+            return false;
+
+        if (type.Name != CancellationTokenTypeName)
+            return false;
+
+        // Segment walk rather than ContainingNamespace.ToString(): this check runs per parameter
+        // during the in-scope-token walk, so it stays allocation-free.
+        var ns = type.ContainingNamespace;
+        return ns is { Name: "Threading" }
+            && ns.ContainingNamespace is { Name: "System" }
+            && ns.ContainingNamespace.ContainingNamespace?.IsGlobalNamespace == true;
     }
 
     /// <summary>

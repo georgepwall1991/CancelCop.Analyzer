@@ -253,6 +253,28 @@ public class TestClass
     }
 
     [Fact]
+    public async Task Cancel_InTokenSourceSubclass_ShouldReportDiagnostic()
+    {
+        // CancellationTokenSource is not sealed, so a subclass can call the inherited Cancel()
+        // without a `this.` receiver — the same sync-callback call, written in implicit-this form.
+        var test = @"
+using System.Threading;
+using System.Threading.Tasks;
+
+public class MyCts : CancellationTokenSource
+{
+    public async Task StopAsync()
+    {
+        {|#0:Cancel|}();
+        await Task.Yield();
+    }
+}";
+
+        var expected = new DiagnosticResult("CC022", DiagnosticSeverity.Info).WithLocation(0);
+        await CreateTest(test, expected).RunAsync();
+    }
+
+    [Fact]
     public async Task CancelOnNonTokenSource_ShouldNotReportDiagnostic()
     {
         var test = @"

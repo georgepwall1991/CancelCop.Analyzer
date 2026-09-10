@@ -90,12 +90,9 @@ public class PreferCancelAsyncAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            _ => null,
-        };
+        // The IdentifierName arm covers an inherited Cancel() written without `this.` inside a
+        // CancellationTokenSource subclass (CancellationTokenSource is not sealed).
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
         if (invokedName == null)
             return;
         if (invokedName.Identifier.Text != "Cancel")
