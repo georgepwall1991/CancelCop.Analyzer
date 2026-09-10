@@ -89,6 +89,12 @@ public class BlockingSleepAnalyzer : DiagnosticAnalyzer
     private void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
+
+        // Cheap syntactic gate: only calls literally named `Sleep` can bind to Thread.Sleep, so
+        // every other invocation is skipped without paying for semantic binding.
+        if (invokedName is null || invokedName.Identifier.ValueText != "Sleep")
+            return;
 
         if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return;

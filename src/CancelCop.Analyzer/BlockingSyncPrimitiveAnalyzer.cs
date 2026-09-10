@@ -114,6 +114,14 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
     );
 
     /// <summary>
+    /// Union of every member name in <see cref="BlockingMembersByType"/>, used as a cheap syntactic
+    /// prefilter so the analyzer only pays for semantic binding on invocations whose invoked name
+    /// could be a blocking primitive member.
+    /// </summary>
+    private static readonly ImmutableHashSet<string> BlockingMemberNames =
+        BlockingMembersByType.Values.SelectMany(names => names).ToImmutableHashSet();
+
+    /// <summary>
     /// Declaring types whose members can block even with a zero timeout, so the probe exclusion must
     /// not apply. <c>Monitor.Wait</c> releases the monitor and must reacquire it before returning.
     /// <c>Barrier.SignalAndWait</c> runs the post-phase action synchronously on the last arriver
@@ -181,14 +189,11 @@ public class BlockingSyncPrimitiveAnalyzer : DiagnosticAnalyzer
     )
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        var invokedName = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name,
-            MemberBindingExpressionSyntax memberBinding => memberBinding.Name,
-            IdentifierNameSyntax identifier => identifier,
-            _ => null,
-        };
-        if (invokedName is null)
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
+        if (
+            invokedName is null
+            || !BlockingMemberNames.Contains(invokedName.Identifier.ValueText)
+        )
             return;
 
         if (

@@ -164,14 +164,16 @@ public static class CancellationTokenHelpers
         DiagnosticDescriptor rule
     )
     {
-        // Check if a CancellationToken was already passed in the invocation
-        if (HasCancellationTokenArgument(invocation, context.SemanticModel))
-            return;
-
         // Find the nearest in-scope CancellationToken — a parameter, or a framework property
-        // (HttpContext.RequestAborted / ServerCallContext.CancellationToken).
+        // (HttpContext.RequestAborted / ServerCallContext.CancellationToken). This runs first
+        // because it is the cheaper gate: with no token in scope nothing can be reported, so the
+        // per-argument type binding below is skipped in the common tokenless case.
         var token = FindEnclosingCancellationToken(invocation, context.SemanticModel);
         if (token == null)
+            return;
+
+        // Check if a CancellationToken was already passed in the invocation
+        if (HasCancellationTokenArgument(invocation, context.SemanticModel))
             return;
 
         // An invocation inside an expression tree is data, not executable code: the token cannot

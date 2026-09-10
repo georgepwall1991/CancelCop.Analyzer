@@ -86,6 +86,11 @@ public class TokenPropagationAnalyzer : DiagnosticAnalyzer
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
 
+        // With no CancellationToken in scope nothing can be reported, so the invocation's own
+        // binding is skipped entirely in the common tokenless case.
+        if (CancellationTokenHelpers.FindEnclosingCancellationToken(invocation, context.SemanticModel) == null)
+            return;
+
         // Get the method symbol for the invocation
         var methodSymbol = context.SemanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
         if (methodSymbol == null)

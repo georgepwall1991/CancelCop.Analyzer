@@ -77,6 +77,12 @@ public class EFCoreAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
+        var invokedName = CancellationTokenHelpers.GetInvokedSimpleName(invocation);
+
+        // Cheap syntactic gate: only calls literally named like an EF Core async method can match,
+        // so every other invocation is skipped without paying for semantic binding.
+        if (invokedName is null || !EFCoreAsyncMethods.Contains(invokedName.Identifier.ValueText))
+            return;
 
         // Get the method symbol for the invocation
         var methodSymbol = context.SemanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
