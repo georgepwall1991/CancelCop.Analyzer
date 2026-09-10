@@ -243,7 +243,8 @@ public class BlockingTcpListenerCodeFixProvider : CodeFixProvider
             || resolved.Parameters.Length != call.ArgumentList.Arguments.Count
             || (
                 acceptMethod != null
-                && !resolved.ContainingType.Equals(
+                && !SymbolEqualityComparer.Default.Equals(
+                    resolved.ContainingType,
                     acceptMethod.OriginalDefinition.ContainingType
                 )
             )

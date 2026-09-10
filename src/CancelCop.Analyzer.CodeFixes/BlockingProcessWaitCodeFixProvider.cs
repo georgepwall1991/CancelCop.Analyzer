@@ -84,6 +84,7 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
                 tokenName,
                 out var hoistedInvocation
             )
+            && hoistedInvocation != null
         )
         {
             context.RegisterCodeFix(
@@ -210,7 +211,7 @@ public class BlockingProcessWaitCodeFixProvider : CodeFixProvider
             || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                 != "System.Threading.Tasks"
             || waitMethod == null
-            || !rebound.ContainingType.Equals(waitMethod.OriginalDefinition.ContainingType)
+            || !SymbolEqualityComparer.Default.Equals(rebound.ContainingType, waitMethod.OriginalDefinition.ContainingType)
         )
         {
             asyncInvocation = null;

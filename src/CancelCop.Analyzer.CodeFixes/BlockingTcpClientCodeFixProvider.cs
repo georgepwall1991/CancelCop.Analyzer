@@ -211,7 +211,7 @@ public class BlockingTcpClientCodeFixProvider : CodeFixProvider
             && resolved.Parameters.Take(connectMethod.Parameters.Length)
                 .Select((p, i) => (p, i))
                 .All(x =>
-                    x.p.Type.Equals(connectMethod.Parameters[x.i].Type)
+                    SymbolEqualityComparer.Default.Equals(x.p.Type, connectMethod.Parameters[x.i].Type)
                     || string.Equals(
                         x.p.Name,
                         connectMethod.Parameters[x.i].Name,

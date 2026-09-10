@@ -136,7 +136,8 @@ public class BlockingNamedPipeCodeFixProvider : CodeFixProvider
                     || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                         != "System.Threading.Tasks"
                     || waitForMethod == null
-                    || !rebound.ContainingType.Equals(
+                    || !SymbolEqualityComparer.Default.Equals(
+                        rebound.ContainingType,
                         waitForMethod.OriginalDefinition.ContainingType
                     )
                 )

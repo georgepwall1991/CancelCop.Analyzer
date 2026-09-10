@@ -101,7 +101,7 @@ public class BlockingHttpListenerCodeFixProvider : CodeFixProvider
                 || rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                     != "System.Threading.Tasks"
                 || contextMethod == null
-                || !rebound.ContainingType.Equals(contextMethod.OriginalDefinition.ContainingType)
+                || !SymbolEqualityComparer.Default.Equals(rebound.ContainingType, contextMethod.OriginalDefinition.ContainingType)
             )
                 return;
 

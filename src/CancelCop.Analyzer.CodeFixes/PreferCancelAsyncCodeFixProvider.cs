@@ -226,7 +226,7 @@ public class PreferCancelAsyncCodeFixProvider : CodeFixProvider
             && rebound.ReturnType.ContainingNamespace?.ToDisplayString()
                 == "System.Threading.Tasks"
             && cancelMethod != null
-            && rebound.ContainingType.Equals(cancelMethod.OriginalDefinition.ContainingType);
+            && SymbolEqualityComparer.Default.Equals(rebound.ContainingType, cancelMethod.OriginalDefinition.ContainingType);
     }
 
     private static bool Withhold(out ExpressionSyntax hoistedCall)

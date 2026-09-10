@@ -332,32 +332,6 @@ public class Client : SslStream
     }
 }";
 
-        var fixedCode =
-            @"
-using System.IO;
-using System.Net.Security;
-using System.Threading.Tasks;
-
-public class Client : SslStream
-{
-    public Client()
-        : base(Stream.Null) { }
-
-    public async Task<bool> AuthenticateAsClientAsync(string host, SslStream other)
-    {
-        SslStream self = this;
-        return await Task.Run(async () =>
-        {
-            SslStream self = other;
-            if (self is not null)
-            {
-                await self.AuthenticateAsClientAsync(host);
-            }
-            return true;
-        });
-    }
-}";
-
         await CreateTest(test, test, Expected()).RunAsync();
     }
 
@@ -495,28 +469,6 @@ public class Client : SslStream
     public async Task<bool> AuthenticateAsClientAsync(SslStream? other)
     {
         other?.{|#0:AuthenticateAsClient|}(""host"");
-        return true;
-    }
-}";
-
-        var fixedCode =
-            @"
-using System.IO;
-using System.Net.Security;
-using System.Threading;
-using System.Threading.Tasks;
-
-public class Client : SslStream
-{
-    public Client()
-        : base(Stream.Null) { }
-
-    public async Task<bool> AuthenticateAsClientAsync(SslStream? other)
-    {
-        if (other is not null)
-        {
-            await other.AuthenticateAsClientAsync(""host"");
-        }
         return true;
     }
 }";

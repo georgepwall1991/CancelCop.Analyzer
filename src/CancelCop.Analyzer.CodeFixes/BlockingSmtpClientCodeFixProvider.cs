@@ -159,7 +159,7 @@ public class BlockingSmtpClientCodeFixProvider : CodeFixProvider
             if (hoistToken != null)
             {
                 var positional = BuildCall(hoistToken);
-                if (IsValid(positional))
+                if (positional != null && IsValid(positional))
                 {
                     sendCall = positional;
                 }

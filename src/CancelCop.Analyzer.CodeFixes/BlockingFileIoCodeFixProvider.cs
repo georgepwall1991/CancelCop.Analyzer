@@ -78,9 +78,9 @@ public class BlockingFileIoCodeFixProvider : CodeFixProvider
         // The counterpart's own token parameter name; an override may rename it, so a named
         // token argument must not assume "cancellationToken".
         var tokenArgumentName = diagnostic.Properties.TryGetValue(
-            BlockingFileIoAnalyzer.TokenArgumentNameProperty,
-            out var argumentName
-        )
+                BlockingFileIoAnalyzer.TokenArgumentNameProperty,
+                out var argumentName
+            ) && argumentName != null
             ? argumentName
             : "cancellationToken";
 

@@ -25,6 +25,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="All" />
+    <!-- 10.0.401 pulls Microsoft.Build.Tasks.Git 10.0.401, patching CVE-2026-62900 (NU1902). -->
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
   </ItemGroup>
 </Project>

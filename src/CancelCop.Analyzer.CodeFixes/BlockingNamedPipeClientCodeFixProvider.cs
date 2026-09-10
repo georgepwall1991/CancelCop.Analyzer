@@ -139,7 +139,8 @@ public class BlockingNamedPipeClientCodeFixProvider : CodeFixProvider
                     || reboundCandidate.ReturnType.ContainingNamespace?.ToDisplayString()
                         != "System.Threading.Tasks"
                     || clientMethod == null
-                    || !reboundCandidate.ContainingType.Equals(
+                    || !SymbolEqualityComparer.Default.Equals(
+                        reboundCandidate.ContainingType,
                         clientMethod.OriginalDefinition.ContainingType
                     )
                     // Non-token parameters must mirror the original Connect arguments.
