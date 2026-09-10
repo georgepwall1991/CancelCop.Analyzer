@@ -207,6 +207,7 @@ Grading: **P0** = release-blocking; **P1** = next hardening loop; **P2** = oppor
 
 ## Verification Baseline
 
+- v1.52.52: 1590 tests, green locally, zero-warning Release build. **Hardening + dedup** — `IsCancellationToken` rejects nested lookalikes; CC026/CC022 catch implicit-this calls inside SemaphoreSlim/CancellationTokenSource subclasses; CC002/003/004/013/031 gate on syntax before semantic binding; the Blocking* invoked-name/task-like/rebind scaffolding moved into `CancellationTokenHelpers` (~50 duplicated blocks → 4 shared helpers).
 - v1.52.51: 1587 tests, green locally. **Docs/tests audit** — package version synced to the release train; consolidated changelog for the docs/test-only interim tags (1.52.47–1.52.50); no behavior change.
 - v1.52.46: 1581 tests, green locally. **CC036 fixer** —
   first code fix for blocking Socket calls: a rewrite is offered wherever a compiling TAP arity binds (byte[] Receive/Send via the implicit Memory<byte> conversion, flag-bearing sends, endpoint connects), each proven by speculative rebind with override-walk lineage; spines hoist, await-unsafe withheld.

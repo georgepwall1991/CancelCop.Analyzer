@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.52] - 2026-09-10
+
+### Fixed
+
+- **CC002 token scoping:** `IsCancellationToken` now rejects nested types — a
+  lookalike `System.Threading.*.CancellationToken` nested inside another type no
+  longer counts as an in-scope token. The framework type is top level; the guard
+  mirrors the same check `IsAsyncReturnType` already makes.
+- **CC026 / CC022:** `Wait()` on a `SemaphoreSlim` subclass and `Cancel()` on a
+  `CancellationTokenSource` subclass written without `this.` now report. Both
+  types are unsealed, so the implicit-this form binds the same blocking member —
+  the invoked-name gate just was not looking at it.
+
+### Performance
+
+- **CC002** reorders its gates: the in-scope-token check now runs before the
+  per-argument type binding, so invocations in tokenless methods skip all
+  argument semantic work.
+- **CC013 / CC031 / CC003 / CC004** gate on the invoked name before semantic
+  binding, so calls that cannot match never pay for `GetSymbolInfo`. CC031's
+  member-name union is computed once from the rule table.
+- `IsCancellationToken` compares the namespace by segments instead of
+  `ToString()`, keeping the per-parameter check allocation-free.
+
+### Internal
+
+- Extracted the copy-pasted Blocking\* scaffolding into
+  `CancellationTokenHelpers`: `GetInvokedSimpleName` (26 sites),
+  `IsTaskLike` (11 identical copies — one in `BlockingThreadJoinAnalyzer` was
+  dead code), `DerivesFromOrEquals` (3 copies), and
+  `SpeculativelyBindRenamedInvocation` (11 rebind plumbing blocks). Net −340
+  lines.
+- Release builds are now warning-free: XML doc tag fixes, RS1024
+  symbol-comparison fixes in the code-fix providers, CS8604 nullability fixes,
+  and dead test variables removed.
+- `Microsoft.SourceLink.GitHub` bumped 10.0.301 → 10.0.401, which pulls the
+  patched `Microsoft.Build.Tasks.Git` and clears NU1902 (CVE-2026-62900).
+
 ## [1.52.51] - 2026-08-26
 
 ### Changed
